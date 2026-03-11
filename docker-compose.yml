@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: rderico-db-edge
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: rderico
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: rderico-api-edge
+    restart: always
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/api:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/rderico
+      - PORT=3001
+    depends_on:
+      - db
+
+  pos:
+    build:
+      context: .
+      dockerfile: apps/pos/Dockerfile
+    container_name: rderico-pos
+    restart: always
+    ports:
+      - "3000:80"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+
+volumes:
+  pgdata:
