@@ -2,9 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { VisionScanner } from './VisionScanner';
 import { OpenAccountsCorkboard } from './OpenAccountsCorkboard';
 
-// Las categorías e initialProducts ya no provienen del archivo JSON local quemado.
-// Cargarán asíncronamente desde el backend de FastAPI.
-
 const INITIAL_CATEGORIES = [
     { name: "1.-EMPAQUE Y PAN BLANCO", icon: "🥖", visionEnabled: true },
     { name: "2.-A - B", icon: "🍪", visionEnabled: true },
@@ -26,10 +23,11 @@ const INITIAL_CATEGORIES = [
 ];
 
 const getProductEmoji = (p) => {
-    const name = p.name.toUpperCase();
-    const cat = p.category.toUpperCase();
+    const name = (p.name || '').toUpperCase();
+    const categoryObj = p.category;
+    const catName = (typeof categoryObj === 'string' ? categoryObj : (categoryObj?.name || 'GENERAL')).toUpperCase();
     
-    if (cat.includes('LACTEOS') || name.includes('LECHE')) return '🥛';
+    if (catName.includes('LACTEOS') || name.includes('LECHE')) return '🥛';
     if (name.includes('CAF')) return '☕';
     if (name.includes('AGUA')) return '💧';
     if (name.includes('HELADO')) return '🍨';
@@ -43,7 +41,7 @@ const getProductEmoji = (p) => {
     if (name.includes('CROISSANT') || name.includes('CUERNITO')) return '🥐';
     if (name.includes('GALLETA') || name.includes('POLVORON')) return '🍪';
     if (name.includes('MUFFIN') || name.includes('MAGDALENA')) return '🧁';
-    if (cat.includes('PAN')) return '🍞';
+    if (catName.includes('PAN')) return '🍞';
     return '📦';
 };
 
@@ -66,17 +64,14 @@ export const RetailVisionPOS = () => {
     const [initialProducts, setInitialProducts] = useState([]);
     const [activeCategory, setActiveCategory] = useState('TODOS');
     const [currentAccountNum, setCurrentAccountNum] = useState('');
-    const [viewMode, setViewMode] = useState('CAMERA'); // 'CAMERA' or 'GRID'
+    const [viewMode, setViewMode] = useState('CAMERA');
 
-    // Fetch initial data from backend
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Obtenemos categorias
                 const catRes = await fetch("http://localhost:3001/api/v1/catalog/categories");
                 if(catRes.ok) {
                     const catData = await catRes.json();
-                    
                     const normalized = catData.map(c => {
                         const original = INITIAL_CATEGORIES.find(ic => ic.name === c.name);
                         return { ...c, icon: c.icon || (original ? original.icon : '📦') };
@@ -84,7 +79,6 @@ export const RetailVisionPOS = () => {
                     setCategories(normalized);
                 }
 
-                // Obtenemos productos
                 const prodRes = await fetch("http://localhost:3001/api/v1/catalog/products");
                 if(prodRes.ok) {
                     const prodData = await prodRes.json();
@@ -92,7 +86,7 @@ export const RetailVisionPOS = () => {
                 }
             } catch (error) {
                 console.error("Error connecting to backend API:", error);
-                alert("No se pudo conectar con el Backend (Servidor Local). Asegúrese de que FastAPI esté corriendo en el puerto 3001.");
+                alert("No se pudo conectar con el Backend (Servidor Local). Asegurese de que FastAPI este corriendo en el puerto 3001.");
             }
         };
         fetchData();
@@ -102,7 +96,7 @@ export const RetailVisionPOS = () => {
         ...p,
         id: p.id, 
         image: getProductEmoji(p),
-        category: p.category ? p.category.name : 'OTROS'
+        category: p.category ? (typeof p.category === 'string' ? p.category : p.category.name) : 'OTROS'
     })), [initialProducts]);
 
     useEffect(() => {
@@ -111,18 +105,15 @@ export const RetailVisionPOS = () => {
         }
     }, [selectedTerminal, currentAccountNum]);
 
-    // Escáner de Código de Barras (Simulado con Teclado)
     useEffect(() => {
         let barcodeBuffer = '';
         let lastKeyTime = Date.now();
 
         const handleGlobalKeyDown = (e) => {
-            // Ignorar si el usuario está escribiendo en un input
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
             const now = Date.now();
             
-            // Si pasa mucho tiempo entre teclas, reiniciamos el buffer (evita capturar tecleo manual lento)
             if (now - lastKeyTime > 100) {
                 barcodeBuffer = '';
             }
@@ -138,7 +129,6 @@ export const RetailVisionPOS = () => {
                     
                     if (product) {
                         addToCart(product);
-                        // Feedback visual/sonoro podría ir aquí
                     }
                     barcodeBuffer = '';
                 }
@@ -158,7 +148,6 @@ export const RetailVisionPOS = () => {
 
     const addToCart = (product) => {
         setCart(prev => {
-            // Si el producto viene de la IA, lo buscamos por nombre exacto en PRODUCTS
             let targetProduct = product;
             
             if (product.isAI) {
@@ -171,7 +160,6 @@ export const RetailVisionPOS = () => {
                 if (found) {
                     targetProduct = { ...found, quantity: product.quantity || 1 };
                 } else {
-                    // Si no hay coincidencia exacta de nombre, intentamos búsqueda por aproximación
                     const looseFound = PRODUCTS.find(p => 
                         p.name.toUpperCase().includes(searchName) || 
                         searchName.includes(p.name.toUpperCase())
@@ -202,7 +190,7 @@ export const RetailVisionPOS = () => {
             <div className="text-5xl group-hover:scale-110 transition-transform">{product.image}</div>
             <div className="text-center">
                 <p className="text-[10px] font-black uppercase tracking-tighter text-white group-hover:text-black mb-1 line-clamp-1">{product.name}</p>
-                <p className="text-lg font-black text-[#c1d72e] group-hover:text-black italic font-mono">${product.price.toFixed(2)}</p>
+                <p className="text-lg font-black text-[#c1d72e] group-hover:text-black italic font-mono">${(product.price || 0).toFixed(2)}</p>
             </div>
             <div className="absolute top-4 right-4 w-6 h-6 bg-white/5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <span className="text-black font-black text-xs">+</span>
@@ -219,8 +207,8 @@ export const RetailVisionPOS = () => {
                 </div>
                 {filtered.length === 0 && (
                     <div className="h-64 flex flex-col items-center justify-center text-gray-600">
-                        <span className="text-4xl mb-4 opacity-20">ðŸ“¦</span>
-                        <p className="font-black uppercase tracking-widest text-[10px]">Sin productos en esta categorÃ­a</p>
+                        <span className="text-4xl mb-4 opacity-20">📦</span>
+                        <p className="font-black uppercase tracking-widest text-[10px]">Sin productos en esta categoria</p>
                     </div>
                 )}
             </div>
@@ -228,19 +216,18 @@ export const RetailVisionPOS = () => {
     };
 
     const handleHoldAccount = () => {
-        alert("Cuenta guardada en el pizarrÃ³n 📌");
+        alert("Cuenta guardada en el pizarron 📌");
         setCart([]);
         setCurrentAccountNum('');
     };
 
     const handleCheckout = async (paymentMethod) => {
         if (cart.length === 0) {
-            alert("El ticket está vacío.");
+            alert("El ticket esta vacio.");
             return;
         }
 
         try {
-            // 1. Simular obtener o crear una sesión de terminal
             const sessionRes = await fetch(`http://localhost:3001/api/v1/pos/sessions/${selectedTerminal || 'T1'}/active`);
             let sessionId;
             
@@ -248,7 +235,6 @@ export const RetailVisionPOS = () => {
                 const sessionData = await sessionRes.json();
                 sessionId = sessionData.id;
             } else {
-                // Crear nueva sesión si no existe
                 const newSessionRes = await fetch(`http://localhost:3001/api/v1/pos/sessions`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -258,7 +244,6 @@ export const RetailVisionPOS = () => {
                 sessionId = newSessionData.id;
             }
 
-            // 2. Armar el request del Ticket
             const ticketPayload = {
                 account_num: currentAccountNum,
                 session_id: sessionId,
@@ -268,7 +253,6 @@ export const RetailVisionPOS = () => {
                 }))
             };
 
-            // 3. Enviar al Backend
             const ticketRes = await fetch("http://localhost:3001/api/v1/pos/tickets", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -286,7 +270,7 @@ export const RetailVisionPOS = () => {
 
         } catch (error) {
             console.error("Checkout validation error:", error);
-            alert("No se pudo conectar al Backend para validar el ticket. Solo modo Offline soportado por ahora.");
+            alert("No se pudo conectar al Backend para validar el ticket.");
         }
     };
 
@@ -295,7 +279,7 @@ export const RetailVisionPOS = () => {
         setShowCorkboard(false);
     };
 
-    const total = cart.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
+    const total = cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
 
     const allOpenAccounts = [
         { id: '1', accountNum: 'ACC-8845', terminal: 'T6', total: 450.00, items: 3, time: 'Hace 5 min' },
@@ -313,7 +297,7 @@ export const RetailVisionPOS = () => {
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-20 animate-in fade-in zoom-in-95 duration-700">
                 <div className="text-center mb-16">
-                    <h3 className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-4">Configuración de Estación</h3>
+                    <h3 className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-4">Configuracion de Estacion</h3>
                     <h2 className="text-6xl font-black uppercase tracking-tighter italic">Selecciona tu <span className="text-white/20">Terminal</span></h2>
                 </div>
 
@@ -344,11 +328,8 @@ export const RetailVisionPOS = () => {
 
     return (
         <div className="flex flex-col h-full bg-transparent text-white overflow-hidden">
-            {/* Cabecera Superior y CategorÃ­as (Full Width) */}
-            {/* Cabecera Superior y Categorías (Compacta) */}
             <div className="p-4 pb-2 z-20">
                 <div className="flex justify-between items-center mb-3">
-                    {/* Columna Izquierda: Terminal */}
                     <div className="w-1/3 flex justify-start">
                         <button
                             onClick={() => setSelectedTerminal(null)}
@@ -359,23 +340,21 @@ export const RetailVisionPOS = () => {
                             </div>
                             <div className="text-left">
                                 <p className="text-[9px] font-black text-white/90 uppercase tracking-tighter">Terminal {selectedTerminal}</p>
-                                <p className="text-[7px] font-bold text-orange-400 uppercase tracking-widest group-hover:underline">Cambiar Estación</p>
+                                <p className="text-[7px] font-bold text-orange-400 uppercase tracking-widest group-hover:underline">Cambiar Estacion</p>
                             </div>
                         </button>
                     </div>
 
-                    {/* Columna Central: Logo y ID de Cuenta */}
                     <div className="w-1/3 flex flex-col items-center gap-2">
                         <img src="/assets/logo.png" alt="R de Rico" className="w-10 h-10 object-contain drop-shadow-xl" />
                         <div className="bg-black border border-white/10 px-6 py-1 rounded-2xl shadow-2x flex flex-col items-center">
-                            <span className="text-[7px] font-black uppercase text-white/40 tracking-[0.5em] mb-0.5">Transacción Activa</span>
+                            <span className="text-[7px] font-black uppercase text-white/40 tracking-[0.5em] mb-0.5">Transaccion Activa</span>
                             <span className="text-xl font-black uppercase tracking-tighter italic text-[#c1d72e] drop-shadow-[0_0_8px_rgba(193,215,46,0.3)]">
-                                CUENTA #{currentAccountNum.slice(-2)}
+                                CUENTA #{(currentAccountNum || '----').slice(-4)}
                             </span>
                         </div>
                     </div>
 
-                    {/* Columna Derecha: Pizarrón */}
                     <div className="w-1/3 flex justify-end">
                         <button
                             onClick={() => setShowCorkboard(true)}
@@ -383,14 +362,13 @@ export const RetailVisionPOS = () => {
                         >
                             <span className="text-lg">📌</span>
                             <div className="text-left">
-                                <p className="text-[7px] font-black uppercase text-white/40 tracking-widest">Ver Pizarrón</p>
+                                <p className="text-[7px] font-black uppercase text-white/40 tracking-widest">Ver Pizarron</p>
                                 <p className="text-[9px] font-bold text-[#c1d72e] uppercase tracking-tighter">{visibleAccounts.length} {selectedTerminal === 'CAJA' ? 'TOTALES' : 'MIAS'}</p>
                             </div>
                         </button>
                     </div>
                 </div>
 
-                {/* Barra de Categorías con Toggle de Cámara */}
                 <div className="bg-black/40 backdrop-blur-md rounded-2xl p-2 border border-white/5 shadow-2xl">
                     <div className="overflow-x-auto custom-scrollbar pb-1">
                         <div className="flex gap-2 min-w-max">
@@ -399,7 +377,7 @@ export const RetailVisionPOS = () => {
                                 className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap shadow-xl flex items-center gap-2 ${viewMode === 'CAMERA' ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-white/5 text-white/90 hover:bg-white/10'}`}
                             >
                                 <span className="text-sm">👁️</span>
-                                ESCÁNER IA
+                                ESCANER IA
                             </button>
                             <div className="w-px h-8 bg-white/5 mx-1"></div>
                             <button
@@ -422,18 +400,15 @@ export const RetailVisionPOS = () => {
                 </div>
             </div>
 
-            {/* Area de Trabajo Principal */}
             <div className="flex-1 flex overflow-hidden">
-                {/* Espacio de Trabajo Compartido (Izquierda) */}
                 <div className="flex-1 flex flex-col p-4 pt-0 bg-transparent overflow-hidden">
                     {viewMode === 'CAMERA' ? (
                         <div className="flex-1 relative rounded-[40px] overflow-hidden shadow-2xl border border-white/10 group bg-black/5 animate-in fade-in zoom-in-95 duration-500">
                             <VisionScanner isScanning={isScanning} onScan={addToCart} products={PRODUCTS} categories={categories} />
 
-                            {/* Leyenda Integrada (HUD Style) */}
                             <div className="absolute top-8 left-8 z-30 pointer-events-none">
                                 <div className="bg-black/40 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/10">
-                                    <h3 className="text-[9px] font-black text-[#c1d72e] uppercase tracking-[0.4em] mb-1 drop-shadow-lg">Visión Inteligente</h3>
+                                    <h3 className="text-[9px] font-black text-[#c1d72e] uppercase tracking-[0.4em] mb-1 drop-shadow-lg">Vision Inteligente</h3>
                                     <h2 className="text-xl font-black uppercase tracking-tighter italic text-white/90 drop-shadow-lg">Scanner R-1 <span className="text-white/20 font-black">PRO</span></h2>
                                 </div>
                             </div>
@@ -462,7 +437,7 @@ export const RetailVisionPOS = () => {
                                     <button
                                         onClick={() => setIsScanning(false)}
                                         className="bg-red-500 hover:bg-red-600 text-white p-4 rounded-3xl shadow-xl border border-red-500/50 flex items-center justify-center transition-all hover:scale-105 active:scale-95 animate-in fade-in zoom-in"
-                                        title="Detener Escáner"
+                                        title="Detener Escaner"
                                     >
                                         <span className="text-xl">⏹️</span>
                                     </button>
@@ -480,16 +455,13 @@ export const RetailVisionPOS = () => {
                     )}
                 </div>
 
-                {/* Panel Derecho: Checkout (FIJO) - RECEIPT AESTHETIC */}
                 <div className="w-[420px] bg-[#fdfbf7] px-8 pt-10 pb-8 flex flex-col shadow-2xl relative border-l border-black/10 overflow-visible transition-all duration-500 text-black font-mono z-50">
-                    {/* Zigzag torn-paper edge (top) */}
                     <div className="absolute top-[-14px] left-0 right-0 w-full overflow-hidden" style={{ height: '14px' }}>
                         <svg viewBox="0 0 420 14" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
                             <path d="M0,14 L10,0 L20,14 L30,0 L40,14 L50,0 L60,14 L70,0 L80,14 L90,0 L100,14 L110,0 L120,14 L130,0 L140,14 L150,0 L160,14 L170,0 L180,14 L190,0 L200,14 L210,0 L220,14 L230,0 L240,14 L250,0 L260,14 L270,0 L280,14 L290,0 L300,14 L310,0 L320,14 L330,0 L340,14 L350,0 L360,14 L370,0 L380,14 L390,0 L400,14 L410,0 L420,14 Z" fill="#fdfbf7" />
                         </svg>
                     </div>
 
-                    {/* Header del Ticket (Expandido — usa margen superior) */}
                     <div className="flex justify-between items-start border-b-[1.5px] border-dashed border-gray-400 pb-3 mb-2 -mt-4">
                         <div className="flex items-start gap-3">
                             <img src="/assets/logo.png" alt="R de Rico Logo" className="w-16 h-16 object-contain grayscale opacity-80 -mt-2" />
@@ -504,10 +476,9 @@ export const RetailVisionPOS = () => {
                         </div>
                     </div>
 
-
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                         <div className="flex justify-between text-xs text-gray-600 font-black border-b-2 border-black/20 pb-2 mb-3 uppercase tracking-wider">
-                            <span>Cant. - Artículo</span>
+                            <span>Cant. - Articulo</span>
                             <span>Importe</span>
                         </div>
                         {cart.map((item) => (
@@ -517,11 +488,11 @@ export const RetailVisionPOS = () => {
                                         <div className="font-black min-w-[40px] text-right text-3xl leading-none">{item.quantity || 1}x</div>
                                         <div>
                                             <p className="font-black text-lg uppercase leading-tight text-gray-900">{item.name}</p>
-                                            <p className="text-base text-gray-500 uppercase">${item.price.toFixed(2)} c/u</p>
+                                            <p className="text-base text-gray-500 uppercase">${(item.price || 0).toFixed(2)} c/u</p>
                                         </div>
                                     </div>
                                     <div className="text-right flex flex-col items-end">
-                                        <p className="font-black text-2xl">${(item.price * (item.quantity || 1)).toFixed(2)}</p>
+                                        <p className="font-black text-2xl">${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</p>
                                         <button
                                             onClick={() => setCart(prev => prev.filter(i => i.id !== item.id))}
                                             className="text-[9px] text-red-500 font-bold uppercase opacity-0 group-hover:opacity-100 transition-opacity mt-1 hover:underline"
@@ -534,7 +505,7 @@ export const RetailVisionPOS = () => {
                         ))}
                         {cart.length === 0 && (
                             <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
-                                <p className="font-mono text-xs uppercase text-center border-2 border-dashed border-gray-300 p-4 w-full">★ El ticket está vacío ★</p>
+                                <p className="font-mono text-xs uppercase text-center border-2 border-dashed border-gray-300 p-4 w-full">★ El ticket esta vacio ★</p>
                             </div>
                         )}
                     </div>
