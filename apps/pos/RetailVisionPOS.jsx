@@ -65,6 +65,8 @@ export const RetailVisionPOS = () => {
     const [activeCategory, setActiveCategory] = useState('TODOS');
     const [currentAccountNum, setCurrentAccountNum] = useState('');
     const [viewMode, setViewMode] = useState('CAMERA');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 12;
 
     useEffect(() => {
         const fetchData = async () => {
@@ -200,17 +202,48 @@ export const RetailVisionPOS = () => {
 
     const ProductGrid = ({ category }) => {
         const filtered = PRODUCTS.filter(p => category === 'TODOS' || p.category === category);
+        const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+        const paginatedProducts = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
         return (
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 p-2">
-                    {filtered.map(p => <ProductCard key={p.id} product={p} />)}
-                </div>
-                {filtered.length === 0 && (
-                    <div className="h-64 flex flex-col items-center justify-center text-gray-600">
-                        <span className="text-4xl mb-4 opacity-20">📦</span>
-                        <p className="font-black uppercase tracking-widest text-[10px]">Sin productos en esta categoria</p>
+            <div className="flex-1 flex gap-4 overflow-hidden">
+                {/* Lado Izquierdo: Botones de Paginación Estilo Touch */}
+                {totalPages > 1 && (
+                    <div className="w-16 flex flex-col gap-3 py-2 animate-in fade-in slide-in-from-left-4 duration-500">
+                        {Array.from({ length: totalPages }).map((_, i) => (
+                            <button
+                                key={i + 1}
+                                onClick={() => setCurrentPage(i + 1)}
+                                className={`w-14 h-14 rounded-full flex items-center justify-center font-black text-lg transition-all border-2 ${
+                                    currentPage === i + 1 
+                                    ? 'bg-[#c1d72e] text-black border-[#c1d72e] shadow-lg shadow-[#c1d72e]/40 scale-110' 
+                                    : 'bg-black/40 text-white/40 border-white/10 hover:border-white/30'
+                                }`}
+                            >
+                                {i + 1}
+                            </button>
+                        ))}
                     </div>
                 )}
+
+                {/* Centro: Grid de Productos */}
+                <div className="flex-1 overflow-hidden">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 grid-rows-3 gap-4 h-full">
+                        {paginatedProducts.map(p => <ProductCard key={p.id} product={p} />)}
+                        
+                        {/* Espacios vacios para mantener el grid estable si hay menos de 12 productos */}
+                        {paginatedProducts.length < ITEMS_PER_PAGE && Array.from({length: ITEMS_PER_PAGE - paginatedProducts.length}).map((_, i) => (
+                            <div key={`empty-${i}`} className="bg-black/5 rounded-[35px] border border-white/2"></div>
+                        ))}
+                    </div>
+
+                    {filtered.length === 0 && (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-600">
+                            <span className="text-4xl mb-4 opacity-20">📦</span>
+                            <p className="font-black uppercase tracking-widest text-[10px]">Sin productos en esta categoria</p>
+                        </div>
+                    )}
+                </div>
             </div>
         );
     };
@@ -381,7 +414,7 @@ export const RetailVisionPOS = () => {
                             </button>
                             <div className="w-px h-8 bg-white/5 mx-1"></div>
                             <button
-                                onClick={() => { setActiveCategory('TODOS'); setViewMode('GRID'); }}
+                                onClick={() => { setActiveCategory('TODOS'); setViewMode('GRID'); setCurrentPage(1); }}
                                 className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap drop-shadow-sm ${viewMode === 'GRID' && activeCategory === 'TODOS' ? 'bg-[#c1d72e] text-black' : 'bg-white/5 text-white/90 hover:bg-white/10'}`}
                             >
                                 TODOS
@@ -389,7 +422,7 @@ export const RetailVisionPOS = () => {
                             {categories.map(cat => (
                                 <button
                                     key={cat.name}
-                                    onClick={() => { setActiveCategory(cat.name); setViewMode('GRID'); }}
+                                    onClick={() => { setActiveCategory(cat.name); setViewMode('GRID'); setCurrentPage(1); }}
                                     className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap drop-shadow-sm ${viewMode === 'GRID' && activeCategory === cat.name ? 'bg-[#c1d72e] text-black' : 'bg-white/5 text-white/90 hover:bg-white/10'}`}
                                 >
                                     {cat.name}
