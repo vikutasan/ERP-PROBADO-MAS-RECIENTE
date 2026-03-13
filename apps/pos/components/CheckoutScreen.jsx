@@ -15,6 +15,8 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
         setReceivedAmount(prev => prev + num);
     };
 
+    const handleClear = () => setReceivedAmount('');
+
     const handleAddPayment = () => {
         const amount = parseFloat(receivedAmount);
         if (!amount || amount <= 0) return;
@@ -59,7 +61,7 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
                 {/* Header */}
                 <div className="p-8 border-b border-white/5 flex justify-between items-center bg-black/20">
                     <div>
-                        <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">Finalizar <span className="text-[#c1d72e]">Venta</span></h2>
+                        <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">SUITE DE <span className="text-[#c1d72e]">COBRO</span></h2>
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.4em] mt-1 italic">Gestión de Pagos Mixtos</p>
                     </div>
                     <button onClick={onCancel} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-2xl hover:bg-red-500/20 hover:text-red-500 transition-all">✕</button>
