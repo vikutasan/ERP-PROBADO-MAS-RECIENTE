@@ -55,9 +55,10 @@ class POSService:
         db_ticket = result.scalars().first()
 
         if db_ticket:
-            # Si el ticket ya existe, actualizamos total y estatus
+            # Si el ticket ya existe, actualizamos total, estatus y detalles de pago
             db_ticket.total = total
             db_ticket.status = ticket.status or "PAID"
+            db_ticket.payment_details = ticket.payment_details
             # Eliminamos items anteriores para reemplazarlos (simplifica la lógica de actualización)
             await db.execute(
                 models.TicketItem.__table__.delete().where(models.TicketItem.ticket_id == db_ticket.id)
@@ -68,7 +69,8 @@ class POSService:
                 account_num=ticket.account_num,
                 session_id=ticket.session_id,
                 total=total,
-                status=ticket.status or "PAID"
+                status=ticket.status or "PAID",
+                payment_details=ticket.payment_details
             )
             db.add(db_ticket)
             await db.flush() # Para obtener db_ticket.id

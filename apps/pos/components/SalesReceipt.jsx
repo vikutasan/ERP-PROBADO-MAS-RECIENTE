@@ -2,7 +2,7 @@ import React from 'react';
 
 export const SalesReceipt = ({ cart, removeFromCart, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount }) => {
     return (
-        <div className="w-[420px] bg-[#fdfbf7] px-8 pt-10 pb-8 flex flex-col shadow-2xl relative border-l border-black/10 overflow-visible transition-all duration-500 text-black font-mono z-50">
+        <div className="w-[420px] bg-[#fdfbf7] px-6 pt-6 pb-6 flex flex-col shadow-2xl relative border-l border-black/10 overflow-visible transition-all duration-500 text-black font-mono z-50">
             <div className="absolute top-[-14px] left-0 right-0 w-full overflow-hidden" style={{ height: '14px' }}>
                 <svg viewBox="0 0 420 14" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
                     <path d="M0,14 L10,0 L20,14 L30,0 L40,14 L50,0 L60,14 L70,0 L80,14 L90,0 L100,14 L110,0 L120,14 L130,0 L140,14 L150,0 L160,14 L170,0 L180,14 L190,0 L200,14 L210,0 L220,14 L230,0 L240,14 L250,0 L260,14 L270,0 L280,14 L290,0 L300,14 L310,0 L320,14 L330,0 L340,14 L350,0 L360,14 L370,0 L380,14 L390,0 L400,14 L410,0 L420,14 Z" fill="#fdfbf7" />
@@ -57,17 +57,17 @@ export const SalesReceipt = ({ cart, removeFromCart, total, currentAccountNum, s
                 )}
             </div>
 
-            <div className="mt-6 pt-6 border-t-2 border-dashed border-gray-400 space-y-6">
+            <div className="mt-4 pt-4 border-t-2 border-dashed border-gray-400 space-y-4">
                 <button 
                     onClick={() => handleCheckout()}
-                    className="w-full bg-black group relative overflow-hidden p-6 rounded-[35px] border-2 border-black transition-all hover:scale-[1.02] active:scale-95 shadow-[0_15px_40px_rgba(0,0,0,0.2)]"
+                    className="w-full bg-black group relative overflow-hidden p-4 rounded-[30px] border-2 border-black transition-all hover:scale-[1.02] active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.2)]"
                 >
-                    <div className="flex justify-between items-center relative z-10 px-2">
+                    <div className="flex justify-between items-center relative z-10 px-1">
                         <div className="text-left">
-                            <span className="block text-[10px] font-black uppercase tracking-[0.3em] text-[#c1d72e] mb-1">Total a Pagar</span>
-                            <span className="block text-3xl font-black text-white italic tracking-tighter">COBRAR</span>
+                            <span className="block text-[8px] font-black uppercase tracking-[0.3em] text-[#c1d72e] mb-0.5">Total a Pagar</span>
+                            <span className="block text-2xl font-black text-white italic tracking-tighter">COBRAR</span>
                         </div>
-                        <span className="text-4xl font-black text-[#c1d72e] tracking-tighter">${total.toFixed(2)}</span>
+                        <span className="text-3xl font-black text-[#c1d72e] tracking-tighter">${total.toFixed(2)}</span>
                     </div>
                     {/* Glow effect */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>

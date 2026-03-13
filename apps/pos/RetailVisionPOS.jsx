@@ -144,11 +144,11 @@ export const RetailVisionPOS = () => {
     }, [PRODUCTS, addToCart]);
 
     // --- Lógica de Negocio (Tickets) ---
-    const handleTicketAction = async (status, paymentMethod = null) => {
+    const handleTicketAction = async (status, paymentData = []) => {
         if (cart.length === 0) return alert("El ticket esta vacio.");
         
-        // Si no hay método de pago y se intenta cobrar, abrir pantalla de pago
-        if (status === 'PAID' && !paymentMethod) {
+        // Si no hay datos de pago y se intenta cobrar, abrir pantalla de pago
+        if (status === 'PAID' && (!paymentData || paymentData.length === 0)) {
             setShowCheckout(true);
             return;
         }
@@ -162,11 +162,12 @@ export const RetailVisionPOS = () => {
                 account_num: currentAccountNum,
                 session_id: session.id,
                 items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
-                status: status
+                status: status,
+                payment_details: paymentData
             };
 
             await posService.createTicket(payload);
-            if (status === 'PAID') alert(`Pago exitoso con ${paymentMethod}. Ticket registrado.`);
+            if (status === 'PAID') alert(`Venta finalizada exitosamente. Ticket registrado.`);
             
             clearCart();
             generateNewAccountNum();

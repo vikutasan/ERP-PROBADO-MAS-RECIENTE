@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from core.database import Base
@@ -20,6 +20,7 @@ class Ticket(Base):
     id = Column(Integer, primary_key=True, index=True)
     account_num = Column(String, unique=True, index=True, nullable=False)
     total = Column(Float, nullable=False, default=0.0)
+    payment_details = Column(JSON, nullable=True) # Almacena lista de pagos mixtos
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="OPEN") # OPEN, PAID, CANCELLED
     session_id = Column(Integer, ForeignKey("terminal_sessions.id"))

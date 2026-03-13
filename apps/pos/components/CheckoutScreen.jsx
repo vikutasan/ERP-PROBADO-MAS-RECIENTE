@@ -1,114 +1,189 @@
 import React, { useState, useEffect } from 'react';
 
 export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
+    const [payments, setPayments] = useState([]);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('EFECTIVO');
-    const [change, setChange] = useState(0);
-
-    useEffect(() => {
-        const numReceived = parseFloat(receivedAmount) || 0;
-        setChange(Math.max(0, numReceived - total));
-    }, [receivedAmount, total]);
+    const [cardType, setCardType] = useState('DEBITO'); // DEBITO, CREDITO, QR
+    
+    const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
+    const pendingAmount = Math.max(0, total - totalPaid);
+    const change = Math.max(0, (parseFloat(receivedAmount) || 0) + totalPaid - total);
 
     const handleNumberClick = (num) => {
         if (receivedAmount.includes('.') && num === '.') return;
         setReceivedAmount(prev => prev + num);
     };
 
-    const handleClear = () => setReceivedAmount('');
+    const handleAddPayment = () => {
+        const amount = parseFloat(receivedAmount);
+        if (!amount || amount <= 0) return;
 
-    const handleConfirm = () => {
-        if (paymentMethod === 'EFECTIVO' && (parseFloat(receivedAmount) || 0) < total) {
-            alert('El monto recibido es insuficiente.');
-            return;
+        const newPayment = {
+            method: paymentMethod,
+            amount: Math.min(amount, pendingAmount + change), // No abonar más del total si es efectivo, el resto es cambio
+            displayAmount: amount,
+            type: paymentMethod === 'TARJETA' ? cardType : null,
+            id: Date.now()
+        };
+
+        if (paymentMethod === 'EFECTIVO') {
+            // El efectivo siempre liquida o abona. Si hay cambio, el abono físico es el total pendiente.
+            const realAbono = Math.min(amount, pendingAmount);
+            setPayments([...payments, { ...newPayment, amount: realAbono }]);
+        } else {
+            // Tarjeta no suele tener cambio en el ERP
+            setPayments([...payments, { ...newPayment, amount: Math.min(amount, pendingAmount) }]);
         }
-        onConfirm(paymentMethod, parseFloat(receivedAmount) || total);
+        
+        setReceivedAmount('');
+    };
+
+    const handleFinalize = () => {
+        if (pendingAmount > 0 && parseFloat(receivedAmount) > 0) {
+            // Si el usuario no presionó "Abonar" pero ingresó cantidad, lo procesamos
+            handleAddPayment();
+        }
+        
+        // Si después de eso el saldo es 0, enviamos todos los pagos
+        if (pendingAmount <= 0 || (pendingAmount - (parseFloat(receivedAmount) || 0) <= 0)) {
+            onConfirm(payments);
+        } else {
+            alert('Aún queda saldo pendiente por cubrir.');
+        }
     };
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
-            <div className="bg-[#1a1a1a] w-[500px] rounded-[50px] border border-white/10 shadow-[0_0_100px_rgba(193,215,46,0.1)] overflow-hidden flex flex-col">
+            <div className="bg-[#1a1a1a] w-[600px] rounded-[50px] border border-white/10 shadow-[0_0_100px_rgba(193,215,46,0.1)] overflow-hidden flex flex-col">
                 {/* Header */}
-                <div className="p-8 border-b border-white/5 flex justify-between items-center">
+                <div className="p-8 border-b border-white/5 flex justify-between items-center bg-black/20">
                     <div>
-                        <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">Procesar <span className="text-[#c1d72e]">Pago</span></h2>
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.4em] mt-1">Terminal de Cobro R-DE-RICO</p>
+                        <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">Finalizar <span className="text-[#c1d72e]">Venta</span></h2>
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.4em] mt-1 italic">Gestión de Pagos Mixtos</p>
                     </div>
                     <button onClick={onCancel} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-2xl hover:bg-red-500/20 hover:text-red-500 transition-all">✕</button>
                 </div>
 
-                <div className="p-10 space-y-8 flex-1">
-                    {/* Total Display */}
-                    <div className="flex justify-between items-end bg-black/40 p-6 rounded-3xl border border-white/5">
-                        <span className="text-[10px] font-black uppercase text-gray-500 mb-2">Total a Pagar</span>
-                        <span className="text-5xl font-black text-[#c1d72e] font-mono">${total.toFixed(2)}</span>
-                    </div>
+                <div className="flex flex-row flex-1 overflow-hidden">
+                    {/* Left Panel: Payment Entry */}
+                    <div className="w-3/5 p-8 border-r border-white/5 space-y-6">
+                        {/* Status Display */}
+                        <div className="flex flex-col bg-black/40 p-5 rounded-3xl border border-white/5">
+                            <div className="flex justify-between items-center opacity-50 mb-1">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Total Original</span>
+                                <span className="text-sm font-bold font-mono">${total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between items-end">
+                                <span className="text-[10px] font-black uppercase text-[#c1d72e] tracking-widest">Saldo Pendiente</span>
+                                <span className="text-4xl font-black text-[#c1d72e] font-mono tracking-tighter">${pendingAmount.toFixed(2)}</span>
+                            </div>
+                        </div>
 
-                    {/* Payment Method Selector */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <button 
-                            onClick={() => setPaymentMethod('EFECTIVO')}
-                            className={`p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'EFECTIVO' ? 'border-[#c1d72e] bg-[#c1d72e]/10 text-[#c1d72e]' : 'border-white/5 bg-white/5 text-gray-500'}`}
-                        >
-                            <span className="text-3xl">💵</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest">Efectivo</span>
-                        </button>
-                        <button 
-                            onClick={() => setPaymentMethod('TARJETA')}
-                            className={`p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'TARJETA' ? 'border-orange-500 bg-orange-500/10 text-orange-500' : 'border-white/5 bg-white/5 text-gray-500'}`}
-                        >
-                            <span className="text-3xl">💳</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest">Tarjeta / QR</span>
-                        </button>
-                    </div>
+                        {/* Method Selector */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <button 
+                                onClick={() => setPaymentMethod('EFECTIVO')}
+                                className={`py-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-3 ${paymentMethod === 'EFECTIVO' ? 'border-[#c1d72e] bg-[#c1d72e]/10 text-[#c1d72e]' : 'border-white/5 bg-white/5 text-gray-400'}`}
+                            >
+                                <span className="text-xl">💵</span>
+                                <span className="text-[9px] font-black uppercase tracking-widest">Efectivo</span>
+                            </button>
+                            <button 
+                                onClick={() => setPaymentMethod('TARJETA')}
+                                className={`py-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-3 ${paymentMethod === 'TARJETA' ? 'border-orange-500 bg-orange-500/10 text-orange-500' : 'border-white/5 bg-white/5 text-gray-400'}`}
+                            >
+                                <span className="text-xl">💳</span>
+                                <span className="text-[9px] font-black uppercase tracking-widest">Tarjeta</span>
+                            </button>
+                        </div>
 
-                    {paymentMethod === 'EFECTIVO' && (
-                        <div className="animate-in slide-in-from-top-4 duration-500 space-y-8">
-                            {/* Input Display */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-[9px] font-black uppercase text-gray-500 tracking-widest block ml-2">Recibido</label>
-                                    <div className="bg-white text-black p-4 rounded-2xl text-3xl font-black text-right shadow-inner min-h-[60px]">
-                                        {receivedAmount ? `$${receivedAmount}` : '$0.00'}
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[9px] font-black uppercase text-gray-500 tracking-widest block ml-2">Cambio</label>
-                                    <div className="bg-[#c1d72e] text-black p-4 rounded-2xl text-3xl font-black text-right shadow-inner min-h-[60px]">
-                                        ${change.toFixed(2)}
-                                    </div>
-                                </div>
+                        {paymentMethod === 'TARJETA' && (
+                            <div className="grid grid-cols-3 gap-2 animate-in fade-in zoom-in-95 duration-300">
+                                {['DEBITO', 'CREDITO', 'QR'].map(t => (
+                                    <button 
+                                        key={t}
+                                        onClick={() => setCardType(t)}
+                                        className={`py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${cardType === t ? 'bg-orange-500 text-black border-orange-500 shadow-lg shadow-orange-500/20' : 'bg-white/5 text-gray-500 border-white/5 hover:border-white/20'}`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Input Area */}
+                        <div className="space-y-4">
+                            <div className="bg-white text-black p-4 rounded-2xl text-4xl font-black text-right shadow-inner min-h-[70px] flex flex-col justify-center">
+                                <span className="text-[8px] absolute top-[-10px] left-2 font-black uppercase text-gray-400">Importe a Recibir</span>
+                                {receivedAmount ? `$${receivedAmount}` : '$0.00'}
                             </div>
 
-                            {/* Numpad */}
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-3 gap-2">
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, '.', 0].map((num) => (
                                     <button 
                                         key={num}
                                         onClick={() => handleNumberClick(num.toString())}
-                                        className="h-16 rounded-2xl bg-white/5 border border-white/10 text-xl font-black hover:bg-white/20 active:scale-95 transition-all"
+                                        className="h-12 rounded-xl bg-white/5 border border-white/10 text-lg font-black hover:bg-white/10 active:scale-90 transition-all"
                                     >
                                         {num}
                                     </button>
                                 ))}
-                                <button 
-                                    onClick={handleClear}
-                                    className="h-16 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-black uppercase hover:bg-red-500/20 transition-all"
-                                >
-                                    Borrar
-                                </button>
+                                <button onClick={handleClear} className="h-12 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black uppercase hover:bg-red-500/20">C</button>
                             </div>
                         </div>
-                    )}
+                    </div>
+
+                    {/* Right Panel: Payments List */}
+                    <div className="w-2/5 p-8 bg-black/10 flex flex-col">
+                        <h3 className="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500 mb-6 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                            Resumen de Pagos
+                        </h3>
+
+                        <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
+                            {payments.map(p => (
+                                <div key={p.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center animate-in slide-in-from-right-4 duration-300">
+                                    <div>
+                                        <p className="text-[9px] font-black uppercase text-white/90 tracking-tighter">{p.method} {p.type && `(${p.type})`}</p>
+                                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Procesado</p>
+                                    </div>
+                                    <span className="text-sm font-black text-[#c1d72e] font-mono">+${p.amount.toFixed(2)}</span>
+                                </div>
+                            ))}
+                            {payments.length === 0 && (
+                                <div className="h-full flex flex-col items-center justify-center text-gray-700 text-center px-4">
+                                    <span className="text-4xl mb-4 opacity-10">🎫</span>
+                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-30 italic leading-relaxed">No hay abonos registrados para esta cuenta</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {change > 0 && (
+                            <div className="mt-4 p-4 bg-[#c1d72e] rounded-2xl animate-in zoom-in-95 duration-300">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[9px] font-black uppercase text-black/60 tracking-widest">Cambio a entregar</span>
+                                    <span className="text-xl font-black text-black font-mono">-${change.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Footer Action */}
-                <div className="p-8 bg-black/40 border-t border-white/5">
+                <div className="p-8 bg-black/40 border-t border-white/5 flex gap-4">
                     <button 
-                        onClick={handleConfirm}
-                        className="w-full bg-[#c1d72e] text-black font-black py-6 rounded-[30px] text-xl uppercase italic tracking-tighter hover:scale-[1.02] active:scale-95 transition-all shadow-[0_10px_30px_rgba(193,215,46,0.3)]"
+                        disabled={!receivedAmount || pendingAmount <= 0}
+                        onClick={handleAddPayment}
+                        className="flex-1 bg-white/10 text-white font-black py-5 rounded-[25px] text-[10px] uppercase tracking-widest hover:bg-white/20 active:scale-95 transition-all disabled:opacity-20"
                     >
-                        Finalizar Venta
+                        Abonar Pago
+                    </button>
+                    <button 
+                        onClick={handleFinalize}
+                        className={`flex-[1.5] py-5 rounded-[25px] text-lg font-black uppercase italic tracking-tighter transition-all shadow-2xl active:scale-95 ${pendingAmount <= 0 || (receivedAmount && parseFloat(receivedAmount) >= pendingAmount) ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-gray-800 text-gray-500 grayscale cursor-not-allowed'}`}
+                    >
+                        {pendingAmount <= 0 ? 'Finalizar Venta' : 'Liquidar e Imprimir'}
                     </button>
                 </div>
             </div>
