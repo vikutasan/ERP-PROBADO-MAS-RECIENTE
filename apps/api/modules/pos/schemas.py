@@ -25,11 +25,13 @@ class TicketBase(BaseModel):
 
 class TicketCreate(TicketBase):
     items: List[TicketItemCreate]
+    status: Optional[str] = "OPEN"
 
 class TicketResponse(TicketBase):
     id: int
     total: float
     status: str
+    terminal_id: Optional[str] = None
     created_at: datetime
     items: List[TicketItemResponse] = []
     model_config = ConfigDict(from_attributes=True)

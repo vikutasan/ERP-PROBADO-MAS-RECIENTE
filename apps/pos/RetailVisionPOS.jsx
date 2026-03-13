@@ -248,10 +248,56 @@ export const RetailVisionPOS = () => {
         );
     };
 
-    const handleHoldAccount = () => {
-        alert("Cuenta guardada en el pizarron 📌");
-        setCart([]);
-        setCurrentAccountNum('');
+    const handleHoldAccount = async () => {
+        if (cart.length === 0) {
+            alert("El ticket esta vacio.");
+            return;
+        }
+
+        try {
+            // Reutilizamos la lógica de sesión de handleCheckout
+            const sessionRes = await fetch(`http://localhost:3001/api/v1/pos/sessions/${selectedTerminal || 'T1'}/active`);
+            let sessionId;
+            
+            if (sessionRes.ok) {
+                const sessionData = await sessionRes.json();
+                sessionId = sessionData.id;
+            } else {
+                const newSessionRes = await fetch(`http://localhost:3001/api/v1/pos/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ terminal_id: selectedTerminal || 'T1' })
+                });
+                const newSessionData = await newSessionRes.json();
+                sessionId = newSessionData.id;
+            }
+
+            const ticketPayload = {
+                account_num: currentAccountNum,
+                session_id: sessionId,
+                items: cart.map(item => ({
+                    product_id: item.id,
+                    quantity: item.quantity || 1
+                })),
+                status: "OPEN" // Esto lo manda al pizarron
+            };
+
+            const res = await fetch("http://localhost:3001/api/v1/pos/tickets", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(ticketPayload)
+            });
+
+            if (res.ok) {
+                setCart([]);
+                generateNewAccountNum();
+            } else {
+                alert("Error al enviar al pizarron.");
+            }
+        } catch (error) {
+            console.error("Hold error:", error);
+            alert("Error de conexion al pizarron.");
+        }
     };
 
     const handleCheckout = async (paymentMethod) => {
@@ -283,7 +329,8 @@ export const RetailVisionPOS = () => {
                 items: cart.map(item => ({
                     product_id: item.id,
                     quantity: item.quantity || 1
-                }))
+                })),
+                status: "PAID"
             };
 
             const ticketRes = await fetch("http://localhost:3001/api/v1/pos/tickets", {
@@ -308,19 +355,55 @@ export const RetailVisionPOS = () => {
     };
 
     const handleRecoverAccount = (account) => {
-        alert(`Recuperando cuenta ${account.accountNum}`);
-        setShowCorkboard(false);
+        // Reconstruir el carrito con los artículos del ticket
+        if (account.rawItems && account.rawItems.length > 0) {
+            const recoveredCart = account.rawItems.map(item => ({
+                id: item.product.id,
+                name: item.product.name,
+                price: item.product.price,
+                quantity: item.quantity,
+                category: item.product.category ? item.product.category.name : 'OTROS'
+            }));
+            setCart(recoveredCart);
+            setCurrentAccountNum(account.accountNum);
+            setShowCorkboard(false);
+        } else {
+            alert("Esta cuenta no tiene articulos.");
+        }
     };
 
     const total = cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
 
-    const allOpenAccounts = [
-        { id: '1', accountNum: 'ACC-8845', terminal: 'T6', total: 450.00, items: 3, time: 'Hace 5 min' },
-        { id: '2', accountNum: 'ACC-9212', terminal: 'T5', total: 120.50, items: 1, time: 'Hace 12 min' },
-        { id: '3', accountNum: 'ACC-3311', terminal: 'T4', total: 85.00, items: 2, time: 'Hace 1 min' },
-        { id: '4', accountNum: 'ACC-7742', terminal: 'T6', total: 210.00, items: 4, time: 'Hace 8 min' },
-        { id: '5', accountNum: 'ACC-1100', terminal: 'T2', total: 55.00, items: 1, time: 'Hace 15 min' },
-    ];
+    const [allOpenAccounts, setAllOpenAccounts] = useState([]);
+
+    useEffect(() => {
+        if (showCorkboard) {
+            const fetchOpen = async () => {
+                try {
+                    const res = await fetch("http://localhost:3001/api/v1/pos/tickets/open");
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Mapear los datos de la API al formato que espera el Corkboard
+                        const mapped = data.map(t => ({
+                            id: t.account_num,
+                            accountNum: t.account_num,
+                            terminal: t.terminal_id || 'T1',
+                            total: t.total,
+                            items: t.items.length,
+                            rawItems: t.items, // Guardamos los items reales para recuperarlos
+                            timestamp: t.created_at,
+                            cashierName: 'Operador',
+                            clientName: 'Público General'
+                        }));
+                        setAllOpenAccounts(mapped);
+                    }
+                } catch (e) {
+                    console.error("Fetch open tickets error:", e);
+                }
+            };
+            fetchOpen();
+        }
+    }, [showCorkboard]);
 
     const visibleAccounts = selectedTerminal === 'CAJA'
         ? allOpenAccounts
@@ -549,18 +632,36 @@ export const RetailVisionPOS = () => {
                             <span className="text-4xl font-black text-black tracking-tighter">${total.toFixed(2)}</span>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <button 
+                                    onClick={() => handleCheckout('Efectivo')}
+                                    className="bg-white border-2 border-black hover:bg-black hover:text-white p-4 flex flex-col items-center justify-center transition-all active:scale-95 group shadow-[4px_4px_0_rgba(0,0,0,1)] hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]">
+                                    <span className="text-xl mb-1 grayscale group-hover:grayscale-0">💵</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-widest">Efectivo</span>
+                                </button>
+                                <button 
+                                    onClick={() => handleCheckout('Tarjeta')}
+                                    className="bg-white border-2 border-black hover:bg-black hover:text-white p-4 flex flex-col items-center justify-center transition-all active:scale-95 group shadow-[4px_4px_0_rgba(0,0,0,1)] hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]">
+                                    <span className="text-xl mb-1 grayscale group-hover:grayscale-0">💳</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-widest">Tarjeta/QR</span>
+                                </button>
+                            </div>
+                            
+                            {/* Botón Nueva Cuenta (Envío al Pizarron) */}
                             <button 
-                                onClick={() => handleCheckout('Efectivo')}
-                                className="bg-white border-2 border-black hover:bg-black hover:text-white p-4 flex flex-col items-center justify-center transition-all active:scale-95 group shadow-[4px_4px_0_rgba(0,0,0,1)] hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]">
-                                <span className="text-xl mb-1 grayscale group-hover:grayscale-0">💵</span>
-                                <span className="text-[10px] font-bold uppercase tracking-widest">Efectivo</span>
-                            </button>
-                            <button 
-                                onClick={() => handleCheckout('Tarjeta')}
-                                className="bg-white border-2 border-black hover:bg-black hover:text-white p-4 flex flex-col items-center justify-center transition-all active:scale-95 group shadow-[4px_4px_0_rgba(0,0,0,1)] hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]">
-                                <span className="text-xl mb-1 grayscale group-hover:grayscale-0">💳</span>
-                                <span className="text-[10px] font-bold uppercase tracking-widest">Tarjeta/QR</span>
+                                onClick={handleHoldAccount}
+                                className="w-full bg-[#c1d72e] border-2 border-black hover:bg-black hover:text-[#c1d72e] p-6 flex flex-col items-center justify-center transition-all active:scale-95 group shadow-[4px_4px_0_rgba(0,0,0,1)] hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] relative overflow-hidden">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-3xl grayscale group-hover:grayscale-0 animate-bounce">📌</span>
+                                    <div className="text-left">
+                                        <span className="block text-[14px] font-black uppercase tracking-tighter leading-none">ABRIR NUEVA CUENTA</span>
+                                        <span className="block text-[8px] font-bold text-black/40 group-hover:text-[#c1d72e]/40 uppercase tracking-widest mt-1">Enviar ticket al pizarron central</span>
+                                    </div>
+                                </div>
+                                <div className="absolute right-[-10px] bottom-[-10px] text-6xl opacity-10 group-hover:opacity-20 transition-opacity">
+                                    🛒
+                                </div>
                             </button>
                         </div>
                     </div>

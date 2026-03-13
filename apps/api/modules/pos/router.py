@@ -22,3 +22,7 @@ async def get_active_session(terminal_id: str, db: AsyncSession = Depends(get_db
 @router.post("/tickets", response_model=schemas.TicketResponse)
 async def create_ticket(ticket: schemas.TicketCreate, db: AsyncSession = Depends(get_db)):
     return await pos_service.create_ticket(db, ticket)
+
+@router.get("/tickets/open", response_model=List[schemas.TicketResponse])
+async def get_open_tickets(db: AsyncSession = Depends(get_db)):
+    return await pos_service.get_open_tickets(db)
