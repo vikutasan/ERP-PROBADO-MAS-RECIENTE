@@ -10,6 +10,7 @@ import { CategoryBar } from './components/CategoryBar';
 import { SalesReceipt } from './components/SalesReceipt';
 import { VisionVisor } from './components/VisionVisor';
 import { CheckoutScreen } from './components/CheckoutScreen';
+import { TicketTemplate } from './components/TicketTemplate';
 
 const INITIAL_CATEGORIES = [
     { name: "1.-EMPAQUE Y PAN BLANCO", icon: "🥖", visionEnabled: true },
@@ -75,6 +76,8 @@ export const RetailVisionPOS = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [allOpenAccounts, setAllOpenAccounts] = useState([]);
     const [showCheckout, setShowCheckout] = useState(false);
+    const [paymentsHistory, setPaymentsHistory] = useState([]);
+    const printRef = React.useRef();
 
     // --- Hooks Personalizados ---
     const PRODUCTS = useMemo(() => initialProducts.map(p => ({
@@ -144,7 +147,7 @@ export const RetailVisionPOS = () => {
     }, [PRODUCTS, addToCart]);
 
     // --- Lógica de Negocio (Tickets) ---
-    const handleTicketAction = async (status, paymentData = []) => {
+    const handleTicketAction = async (status, paymentData = null) => {
         if (cart.length === 0) return alert("El ticket esta vacio.");
         
         // Si no hay datos de pago y se intenta cobrar, abrir pantalla de pago
@@ -154,6 +157,7 @@ export const RetailVisionPOS = () => {
         }
 
         try {
+            if (paymentData) setPaymentsHistory(paymentData);
             const terminalId = selectedTerminal || 'T1';
             let session = await posService.getActiveSession(terminalId);
             if (!session) session = await posService.createSession(terminalId);
@@ -167,7 +171,24 @@ export const RetailVisionPOS = () => {
             };
 
             await posService.createTicket(payload);
-            if (status === 'PAID') alert(`Venta finalizada exitosamente. Ticket registrado.`);
+            
+            // --- Disparo de Impresión Económica ---
+            if (status === 'PAID') {
+                const printContent = printRef.current;
+                const printWindow = window.open('', 'PRINT', 'height=600,width=400');
+                printWindow.document.write('<html><head><title>Ticket R de Rico</title>');
+                printWindow.document.write('<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">');
+                printWindow.document.write('</head><body>');
+                printWindow.document.write(printContent.innerHTML);
+                printWindow.document.write('</body></html>');
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                }, 250);
+                alert(`Venta finalizada exitosamente. Ticket impreso.`);
+            }
             
             clearCart();
             generateNewAccountNum();
@@ -364,6 +385,17 @@ export const RetailVisionPOS = () => {
                     onClose={() => setShowCorkboard(false)}
                 />
             )}
+
+            {/* Impresora Oculta (Económica) */}
+            <div style={{ display: 'none' }}>
+                <TicketTemplate 
+                    ref={printRef}
+                    cart={cart}
+                    total={total}
+                    payments={paymentsHistory} // Pasar el historial real para el ticket
+                    ticket={{ account_num: currentAccountNum }}
+                />
+            </div>
         </div>
     );
 };
