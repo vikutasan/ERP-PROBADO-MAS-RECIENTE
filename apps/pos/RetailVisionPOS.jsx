@@ -62,7 +62,7 @@ export const RetailVisionPOS = () => {
     const [clientName, setClientName] = useState('');
     const [categories, setCategories] = useState([]);
     const [initialProducts, setInitialProducts] = useState([]);
-    const [activeCategory, setActiveCategory] = useState('TODOS');
+    const [activeCategory, setActiveCategory] = useState(null);
     const [currentAccountNum, setCurrentAccountNum] = useState('');
     const [viewMode, setViewMode] = useState('CAMERA');
     const [currentPage, setCurrentPage] = useState(1);
@@ -74,11 +74,16 @@ export const RetailVisionPOS = () => {
                 const catRes = await fetch("http://localhost:3001/api/v1/catalog/categories");
                 if(catRes.ok) {
                     const catData = await catRes.json();
-                    const normalized = catData.map(c => {
-                        const original = INITIAL_CATEGORIES.find(ic => ic.name === c.name);
-                        return { ...c, icon: c.icon || (original ? original.icon : '📦') };
-                    });
+                    const normalized = catData
+                        .filter(c => c.name !== 'TODOS')
+                        .map(c => {
+                            const original = INITIAL_CATEGORIES.find(ic => ic.name === c.name);
+                            return { ...c, icon: c.icon || (original ? original.icon : '📦') };
+                        });
                     setCategories(normalized);
+                    if (normalized.length > 0 && !activeCategory) {
+                        setActiveCategory(normalized[0].name);
+                    }
                 }
 
                 const prodRes = await fetch("http://localhost:3001/api/v1/catalog/products");
@@ -201,7 +206,7 @@ export const RetailVisionPOS = () => {
     );
 
     const ProductGrid = ({ category }) => {
-        const filtered = PRODUCTS.filter(p => category === 'TODOS' || p.category === category);
+        const filtered = PRODUCTS.filter(p => p.category === category);
         const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
         const paginatedProducts = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
@@ -496,12 +501,6 @@ export const RetailVisionPOS = () => {
                                 ESCANER IA
                             </button>
                             <div className="w-px h-8 bg-white/5 mx-1"></div>
-                            <button
-                                onClick={() => { setActiveCategory('TODOS'); setViewMode('GRID'); setCurrentPage(1); }}
-                                className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap drop-shadow-sm ${viewMode === 'GRID' && activeCategory === 'TODOS' ? 'bg-[#c1d72e] text-black' : 'bg-white/5 text-white/90 hover:bg-white/10'}`}
-                            >
-                                TODOS
-                            </button>
                             {categories.map(cat => (
                                 <button
                                     key={cat.name}
