@@ -289,13 +289,14 @@ export const RetailVisionPOS = () => {
         const jpgUrl = `${baseStaticUrl}/Img1118_${product.sku}.jpg`;
 
         return (
-            <button onClick={() => addToCart(product)} className="group relative bg-black/20 hover:bg-[#c1d72e] p-6 rounded-[35px] border border-white/5 transition-all duration-500 flex flex-col items-center gap-4 hover:scale-105 active:scale-95 shadow-xl hover:shadow-[#c1d72e]/20">
-                <div className="w-24 h-24 flex items-center justify-center">
+            <button onClick={() => addToCart(product)} className="group relative bg-black/20 hover:bg-[#c1d72e] p-3 rounded-[35px] border border-white/5 transition-all duration-500 flex flex-col items-center justify-between gap-2 hover:scale-105 active:scale-95 shadow-xl hover:shadow-[#c1d72e]/20 h-full w-full">
+                {/* Imagen expandida con menos márgenes */}
+                <div className="w-full h-32 flex items-center justify-center mt-1">
                     {imgStatus === 'TRY_PNG' && (
                         <img 
                             src={pngUrl} 
                             alt={product.name} 
-                            className="w-full h-full object-contain drop-shadow-2xl"
+                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
                             onError={() => setImgStatus('TRY_JPG')}
                         />
                     )}
@@ -303,19 +304,26 @@ export const RetailVisionPOS = () => {
                         <img 
                             src={jpgUrl} 
                             alt={product.name} 
-                            className="w-full h-full object-contain drop-shadow-2xl"
+                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
                             onError={() => setImgStatus('FALLBACK')}
                         />
                     )}
                     {imgStatus === 'FALLBACK' && (
-                        <div className="text-5xl group-hover:scale-110 transition-transform">{product.image}</div>
+                        <div className="text-6xl group-hover:scale-110 transition-transform">{product.image}</div>
                     )}
                 </div>
-                <div className="text-center">
-                    <p className="text-[10px] font-black uppercase tracking-tighter text-white group-hover:text-black mb-1 line-clamp-1">{product.name}</p>
-                    <p className="text-lg font-black text-[#c1d72e] group-hover:text-black italic font-mono">${(product.price || 0).toFixed(2)}</p>
+                
+                {/* Nombre y Precio reestructurados */}
+                <div className="text-center w-full flex flex-col items-center gap-1.5 mb-2">
+                    <p className="text-xs font-black uppercase leading-tight text-white group-hover:text-black line-clamp-2 px-1 text-shadow-sm">{product.name}</p>
+                    <div className="bg-[#c1d72e] group-hover:bg-black px-3 py-0.5 rounded-full shadow-md mt-1">
+                        <p className="text-[14px] font-black text-black group-hover:text-[#c1d72e] italic font-mono tracking-tighter">${(product.price || 0).toFixed(2)}</p>
+                    </div>
                 </div>
-                <div className="absolute top-4 right-4 w-6 h-6 bg-white/5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><span className="text-black font-black text-xs">+</span></div>
+
+                <div className="absolute top-3 right-3 w-6 h-6 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-inner">
+                    <span className="text-black font-black text-xs">+</span>
+                </div>
             </button>
         );
     };
