@@ -114,10 +114,17 @@ export const RetailVisionPOS = () => {
         loadInitialData();
     }, []);
 
-    const generateNewAccountNum = useCallback(() => {
-        const num = Math.floor(1000 + Math.random() * 9000);
-        setCurrentAccountNum(`V${num}`);
-    }, []);
+    const generateNewAccountNum = useCallback(async () => {
+        try {
+            const terminalId = selectedTerminal || 'T1';
+            const ticket = await posService.reserveTicket(terminalId);
+            setCurrentAccountNum(ticket.account_num);
+        } catch (error) {
+            console.error("Error reservando cuenta oficial, usando fallback:", error);
+            const num = Math.floor(1000 + Math.random() * 9000);
+            setCurrentAccountNum(`V${num}`);
+        }
+    }, [selectedTerminal]);
 
     useEffect(() => {
         if (selectedTerminal && !currentAccountNum) generateNewAccountNum();

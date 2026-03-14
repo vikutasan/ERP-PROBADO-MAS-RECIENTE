@@ -42,6 +42,16 @@ class POSService {
         return res.json();
     }
 
+    async reserveTicket(terminalId) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/reserve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ terminal_id: terminalId })
+        });
+        if (!res.ok) throw new Error("Error reservando ticket. Verifique conexión ERP.");
+        return res.json();
+    }
+
     async getOpenTickets() {
         const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/open`);
         if (!res.ok) throw new Error("Error cargando pizarron");

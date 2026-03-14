@@ -106,11 +106,51 @@ class POSService:
                 selectinload(models.Ticket.session)
             )
             .where(models.Ticket.status == "OPEN")
+            .where(models.Ticket.total > 0)
             .order_by(models.Ticket.created_at.desc())
         )
         tickets = result.scalars().all()
         for t in tickets:
             t.terminal_id = t.session.terminal_id
         return tickets
+
+    async def reserve_ticket(self, db: AsyncSession, terminal_id: str):
+        import uuid
+        session = await self.get_active_session(db, terminal_id)
+        if not session:
+            raise HTTPException(status_code=400, detail="No active session for terminal")
+
+        # 1. Buscar ticket reservado, vacío y abierto
+        result = await db.execute(
+            select(models.Ticket)
+            .options(selectinload(models.Ticket.items))
+            .where(models.Ticket.session_id == session.id)
+            .where(models.Ticket.status == "OPEN")
+            .where(models.Ticket.total == 0.0)
+        )
+        tickets = result.scalars().all()
+        for t in tickets:
+            if len(t.items) == 0:
+                t.terminal_id = session.terminal_id
+                return t
+
+        # 2. Reclamar nuevo ID consecutivo
+        temp_num = f"TEMP_{uuid.uuid4().hex[:8]}"
+        db_ticket = models.Ticket(
+            account_num=temp_num,
+            session_id=session.id,
+            total=0.0,
+            status="OPEN"
+        )
+        db.add(db_ticket)
+        await db.flush()
+        
+        db_ticket.account_num = f"V{db_ticket.id:04d}"
+        await db.commit()
+        await db.refresh(db_ticket)
+        
+        db_ticket.terminal_id = session.terminal_id
+        db_ticket.items = []
+        return db_ticket
 
 pos_service = POSService()
