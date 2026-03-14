@@ -23,12 +23,7 @@ class POSService:
         return result.scalars().first()
 
     async def create_ticket(self, db: AsyncSession, ticket: schemas.TicketCreate):
-        # 1. Validar Sesión
-        session = await db.get(models.TerminalSession, ticket.session_id)
-        if not session or not session.is_active:
-            raise HTTPException(status_code=400, detail="Terminal session invalid or inactive")
-
-        # 2. Calcular Totales y Validar Productos
+        # 1. Calcular Totales y Validar Productos
         total = 0.0
         db_items = []
         for item in ticket.items:
@@ -49,14 +44,14 @@ class POSService:
             )
             db_items.append(db_item)
 
-        # 3. Guardar o Actualizar Ticket
+        # 2. Buscar ticket existente por account_num
         result = await db.execute(
             select(models.Ticket).where(models.Ticket.account_num == ticket.account_num)
         )
         db_ticket = result.scalars().first()
 
         if db_ticket:
-            # Si el ticket ya existe, actualizamos total, estatus y detalles de pago
+            # El ticket ya existe - actualizamos directamente sin importar qué sesión mandó el request
             db_ticket.total = total
             db_ticket.status = ticket.status
             db_ticket.payment_details = ticket.payment_details
@@ -65,7 +60,11 @@ class POSService:
                 delete(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
             )
         else:
-            # Si no existe, creamos uno nuevo
+            # Ticket nuevo - validar que la sesión del payload sea activa
+            session = await db.get(models.TerminalSession, ticket.session_id)
+            if not session or not session.is_active:
+                raise HTTPException(status_code=400, detail="Terminal session invalid or inactive")
+            
             db_ticket = models.Ticket(
                 account_num=ticket.account_num,
                 session_id=ticket.session_id,
