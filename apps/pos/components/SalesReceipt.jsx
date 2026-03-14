@@ -134,8 +134,8 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
 
             {/* Modal de Edición de Cantidad */}
             {editMode && editingItem && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-200" style={{ marginLeft: '-100vw', width: '200vw' /* Hack para asegurar el overlay en toda la pantalla debido a z-index relativos */ }}>
-                    <div className="bg-[#1a1a1a] p-8 rounded-[30px] shadow-2xl border border-white/10 flex flex-col items-center w-[400px] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                <div style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh', zIndex: 99999 }} className="flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="bg-[#1a1a1a] p-8 rounded-[30px] shadow-[0_0_100px_rgba(249,115,22,0.1)] border border-white/10 flex flex-col items-center w-[400px] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                         <h3 className="text-white text-lg font-black uppercase tracking-widest mb-1 text-center">Modificar Cantidad</h3>
                         <p className="text-orange-500 font-bold text-xl uppercase mb-6 text-center">{editingItem.name}</p>
                         
