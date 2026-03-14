@@ -147,7 +147,23 @@ export const RetailVisionPOS = () => {
     }, [PRODUCTS, addToCart]);
 
     // --- Lógica de Negocio (Tickets) ---
-    const handleTicketAction = async (status, paymentData = null) => {
+    const handlePrintTicket = () => {
+        const printContent = printRef.current;
+        const printWindow = window.open('', 'PRINT', 'height=600,width=400');
+        printWindow.document.write('<html><head><title>Ticket R de Rico</title>');
+        printWindow.document.write('<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">');
+        printWindow.document.write('</head><body>');
+        printWindow.document.write(printContent.innerHTML);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
+    };
+
+    const handleTicketAction = async (status, paymentData = null, finalizeUI = true) => {
         if (cart.length === 0) return alert("El ticket esta vacio.");
         
         // Si no hay datos de pago y se intenta cobrar, abrir pantalla de pago
@@ -172,27 +188,16 @@ export const RetailVisionPOS = () => {
 
             await posService.createTicket(payload);
             
-            // --- Disparo de Impresión Económica ---
-            if (status === 'PAID') {
-                const printContent = printRef.current;
-                const printWindow = window.open('', 'PRINT', 'height=600,width=400');
-                printWindow.document.write('<html><head><title>Ticket R de Rico</title>');
-                printWindow.document.write('<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">');
-                printWindow.document.write('</head><body>');
-                printWindow.document.write(printContent.innerHTML);
-                printWindow.document.write('</body></html>');
-                printWindow.document.close();
-                printWindow.focus();
-                setTimeout(() => {
-                    printWindow.print();
-                    printWindow.close();
-                }, 250);
-                alert(`Venta finalizada exitosamente. Ticket impreso.`);
+            if (finalizeUI) {
+                if (status === 'PAID') {
+                    handlePrintTicket();
+                    alert(`Venta finalizada exitosamente. Ticket impreso.`);
+                }
+                clearCart();
+                generateNewAccountNum();
+                setShowCheckout(false);
+                setPaymentsHistory([]);
             }
-            
-            clearCart();
-            generateNewAccountNum();
-            setShowCheckout(false);
         } catch (error) {
             console.error("Ticket action error:", error);
             alert(error.message);
@@ -400,8 +405,25 @@ export const RetailVisionPOS = () => {
             {showCheckout && (
                 <CheckoutScreen 
                     total={total}
-                    onConfirm={(method, received) => handleTicketAction('PAID', method)}
-                    onCancel={() => setShowCheckout(false)}
+                    onConfirm={async (method) => {
+                        await handleTicketAction('PAID', method, false);
+                    }}
+                    onClose={() => {
+                        setShowCheckout(false);
+                    }}
+                    onFinish={() => {
+                        clearCart();
+                        generateNewAccountNum();
+                        setShowCheckout(false);
+                        setPaymentsHistory([]);
+                    }}
+                    onPrint={() => {
+                        handlePrintTicket();
+                        clearCart();
+                        generateNewAccountNum();
+                        setShowCheckout(false);
+                        setPaymentsHistory([]);
+                    }}
                 />
             )}
 

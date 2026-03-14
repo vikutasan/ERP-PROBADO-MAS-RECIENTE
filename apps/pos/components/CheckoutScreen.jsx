@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
-export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
+export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint }) => {
     const [payments, setPayments] = useState([]);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('EFECTIVO');
     const [cardType, setCardType] = useState('DEBITO'); // DEBITO, CREDITO, QR
+    const [isLiquidado, setIsLiquidado] = useState(false);
     
     const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
     const pendingAmount = Math.max(0, total - totalPaid);
@@ -18,6 +19,7 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
     const handleClear = () => setReceivedAmount('');
 
     const handleAddPayment = () => {
+        if (isLiquidado) return;
         const amount = parseFloat(receivedAmount);
         if (!amount || amount <= 0) return;
 
@@ -41,7 +43,8 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
         setReceivedAmount('');
     };
 
-    const handleFinalize = () => {
+    const handleFinalize = async () => {
+        if (isLiquidado) return;
         if (pendingAmount > 0 && parseFloat(receivedAmount) > 0) {
             // Si el usuario no presionó "Abonar" pero ingresó cantidad, lo procesamos
             handleAddPayment();
@@ -49,7 +52,13 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
         
         // Si después de eso el saldo es 0, enviamos todos los pagos
         if (pendingAmount <= 0 || (pendingAmount - (parseFloat(receivedAmount) || 0) <= 0)) {
-            onConfirm(payments);
+            try {
+                await onConfirm(payments);
+                setIsLiquidado(true);
+            } catch (error) {
+                console.error("Error liquidando:", error);
+                alert("Hubo un error al liquidar la cuenta.");
+            }
         } else {
             alert('Aún queda saldo pendiente por cubrir.');
         }
@@ -64,7 +73,7 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
                         <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">SUITE DE <span className="text-[#c1d72e]">COBRO</span></h2>
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.4em] mt-1 italic">Gestión de Pagos Mixtos</p>
                     </div>
-                    <button onClick={onCancel} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-2xl hover:bg-red-500/20 hover:text-red-500 transition-all">✕</button>
+                    <button onClick={isLiquidado ? onFinish : onClose} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-2xl hover:bg-red-500/20 hover:text-red-500 transition-all">✕</button>
                 </div>
 
                 <div className="flex flex-row flex-1 overflow-hidden">
@@ -125,13 +134,14 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, '.', 0].map((num) => (
                                     <button 
                                         key={num}
+                                        disabled={isLiquidado}
                                         onClick={() => handleNumberClick(num.toString())}
-                                        className="h-12 rounded-xl bg-white/5 border border-white/10 text-lg font-black hover:bg-white/10 active:scale-90 transition-all"
+                                        className={`h-12 rounded-xl border text-lg font-black transition-all ${isLiquidado ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 active:scale-90 text-white'}`}
                                     >
                                         {num}
                                     </button>
                                 ))}
-                                <button onClick={handleClear} className="h-12 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black uppercase hover:bg-red-500/20">C</button>
+                                <button disabled={isLiquidado} onClick={handleClear} className={`h-12 rounded-xl text-[10px] font-black uppercase transition-all ${isLiquidado ? 'bg-red-500/5 text-red-500/20 cursor-not-allowed' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}>C</button>
                             </div>
                         </div>
                     </div>
@@ -174,19 +184,38 @@ export const CheckoutScreen = ({ total, onConfirm, onCancel }) => {
 
                 {/* Footer Action */}
                 <div className="p-8 bg-black/40 border-t border-white/5 flex gap-4">
-                    <button 
-                        disabled={!receivedAmount || pendingAmount <= 0}
-                        onClick={handleAddPayment}
-                        className="flex-1 bg-white/10 text-white font-black py-5 rounded-[25px] text-[10px] uppercase tracking-widest hover:bg-white/20 active:scale-95 transition-all disabled:opacity-20"
-                    >
-                        Abonar Pago
-                    </button>
-                    <button 
-                        onClick={handleFinalize}
-                        className={`flex-[1.5] py-5 rounded-[25px] text-lg font-black uppercase italic tracking-tighter transition-all shadow-2xl active:scale-95 ${pendingAmount <= 0 || (receivedAmount && parseFloat(receivedAmount) >= pendingAmount) ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-gray-800 text-gray-500 grayscale cursor-not-allowed'}`}
-                    >
-                        {pendingAmount <= 0 ? 'Finalizar Venta' : 'Liquidar e Imprimir'}
-                    </button>
+                    {!isLiquidado ? (
+                        <>
+                            <button 
+                                disabled={!receivedAmount || pendingAmount <= 0}
+                                onClick={handleAddPayment}
+                                className="flex-1 bg-white/10 text-white font-black py-5 rounded-[25px] text-[10px] uppercase tracking-widest hover:bg-white/20 active:scale-95 transition-all disabled:opacity-20"
+                            >
+                                Abonar Pago
+                            </button>
+                            <button 
+                                onClick={handleFinalize}
+                                className={`flex-[1.5] py-5 rounded-[25px] text-lg font-black uppercase italic tracking-tighter transition-all shadow-2xl active:scale-95 ${pendingAmount <= 0 || (receivedAmount && parseFloat(receivedAmount) >= pendingAmount) ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-gray-800 text-gray-500 grayscale cursor-not-allowed'}`}
+                            >
+                                {pendingAmount <= 0 ? 'Liquidar Cuenta' : 'Liquidar Cuenta'}
+                            </button>
+                        </>
+                    ) : (
+                        <div className="flex-1 flex gap-4 animate-in slide-in-from-bottom-4 duration-500">
+                            <button 
+                                onClick={onFinish}
+                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-black py-5 rounded-[25px] text-xs uppercase tracking-widest transition-all"
+                            >
+                                CERRAR (SIN TICKET)
+                            </button>
+                            <button 
+                                onClick={onPrint}
+                                className="flex-[2] bg-orange-500 hover:bg-orange-600 text-white font-black py-5 rounded-[25px] text-lg uppercase italic tracking-tighter transition-all shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)]"
+                            >
+                                🖨️ IMPRIMIR TICKET
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
