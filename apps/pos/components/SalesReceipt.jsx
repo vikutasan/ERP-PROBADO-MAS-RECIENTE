@@ -1,18 +1,39 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount }) => {
+    const [editMode, setEditMode] = useState(false);
+    const [editingItem, setEditingItem] = useState(null);
+    const [editInputValue, setEditInputValue] = useState('');
+
     const handleQuantityClick = (item) => {
-        const input = window.prompt(`Ingrese la nueva cantidad para:\n${item.name}`, item.quantity || 1);
-        if (input !== null) {
-            const newQty = parseInt(input, 10);
-            if (!isNaN(newQty) && newQty > 0) {
-                updateQuantity(item.id, newQty);
-            } else if (newQty === 0) {
-                removeFromCart(item.id);
-            } else {
-                alert("Por favor, ingrese un número válido mayor a 0.");
-            }
+        setEditingItem(item);
+        setEditInputValue(item.quantity?.toString() || '1');
+        setEditMode(true);
+    };
+
+    const handleEditNumberClick = (num) => {
+        setEditInputValue(prev => {
+            if (prev === '0' || prev === '') return num.toString();
+            return prev + num;
+        });
+    };
+
+    const handleEditClear = () => setEditInputValue('');
+
+    const handleEditConfirm = () => {
+        const newQty = parseInt(editInputValue, 10);
+        if (!isNaN(newQty) && newQty > 0) {
+            updateQuantity(editingItem.id, newQty);
+        } else if (newQty === 0) {
+            removeFromCart(editingItem.id);
         }
+        setEditMode(false);
+        setEditingItem(null);
+    };
+
+    const handleEditCancel = () => {
+        setEditMode(false);
+        setEditingItem(null);
     };
 
     return (
@@ -110,6 +131,46 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                     </button>
                 </div>
             </div>
+
+            {/* Modal de Edición de Cantidad */}
+            {editMode && editingItem && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-200" style={{ marginLeft: '-100vw', width: '200vw' /* Hack para asegurar el overlay en toda la pantalla debido a z-index relativos */ }}>
+                    <div className="bg-[#1a1a1a] p-8 rounded-[30px] shadow-2xl border border-white/10 flex flex-col items-center w-[400px] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-white text-lg font-black uppercase tracking-widest mb-1 text-center">Modificar Cantidad</h3>
+                        <p className="text-orange-500 font-bold text-xl uppercase mb-6 text-center">{editingItem.name}</p>
+                        
+                        <div className="w-full bg-white text-black p-4 rounded-2xl text-5xl font-black text-right shadow-inner min-h-[80px] flex items-center justify-end mb-6">
+                            {editInputValue || '0'}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 w-full mb-6">
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map((key) => (
+                                <button
+                                    key={key}
+                                    onClick={() => {
+                                        if (key === 'C') handleEditClear();
+                                        else if (key === 'OK') handleEditConfirm();
+                                        else handleEditNumberClick(key);
+                                    }}
+                                    className={`h-16 rounded-2xl text-2xl font-black transition-all active:scale-95 flex items-center justify-center 
+                                        ${key === 'OK' ? 'bg-[#c1d72e] text-black shadow-[0_0_15px_rgba(193,215,46,0.5)]' : 
+                                          key === 'C' ? 'bg-red-500/20 text-red-500 hover:bg-red-500/40 text-xl' : 
+                                          'bg-white/5 border border-white/10 text-white hover:bg-white/20'}`}
+                                >
+                                    {key}
+                                </button>
+                            ))}
+                        </div>
+                        
+                        <button 
+                            onClick={handleEditCancel}
+                            className="w-full py-4 text-gray-500 hover:text-white uppercase tracking-widest font-black text-xs transition-colors"
+                        >
+                            [ Cancelar ]
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
