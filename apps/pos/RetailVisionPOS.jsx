@@ -149,17 +149,35 @@ export const RetailVisionPOS = () => {
     // --- Lógica de Negocio (Tickets) ---
     const handlePrintTicket = () => {
         const printContent = printRef.current;
-        const printWindow = window.open('', 'PRINT', 'height=600,width=400');
-        printWindow.document.write('<html><head><title>Ticket R de Rico</title>');
-        printWindow.document.write('<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">');
-        printWindow.document.write('</head><body>');
-        printWindow.document.write(printContent.innerHTML);
-        printWindow.document.write('</body></html>');
-        printWindow.document.close();
-        printWindow.focus();
+        
+        // Crear un iframe invisible
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write('<html><head><title>Ticket R de Rico</title>');
+        doc.write('<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">');
+        doc.write('</head><body>');
+        doc.write(printContent.innerHTML);
+        doc.write('</body></html>');
+        doc.close();
+
+        // Esperar a que el CSS cargue y disparar impresión en el iframe
         setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            
+            // Limpiar el iframe después de un tiempo prudencial
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
         }, 250);
     };
 
