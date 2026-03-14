@@ -45,24 +45,41 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
     const handleFinalize = async () => {
         if (isLiquidado) return;
-        if (pendingAmount > 0 && parseFloat(receivedAmount) > 0) {
-            // Si el usuario no presionó "Abonar" pero ingresó cantidad, lo procesamos
-            handleAddPayment();
+        
+        // Calcular pagos finales localmente (sin depender del state de React)
+        let finalPayments = [...payments];
+        const entered = parseFloat(receivedAmount) || 0;
+        const currentPending = Math.max(0, total - finalPayments.reduce((s, p) => s + p.amount, 0));
+        
+        // Si hay monto ingresado y saldo pendiente, agregarlo a los pagos
+        if (currentPending > 0 && entered > 0) {
+            const realAbono = paymentMethod === 'EFECTIVO' 
+                ? Math.min(entered, currentPending) 
+                : Math.min(entered, currentPending);
+            finalPayments = [...finalPayments, {
+                method: paymentMethod,
+                amount: realAbono,
+                displayAmount: entered,
+                type: paymentMethod === 'TARJETA' ? cardType : null,
+                id: Date.now()
+            }];
         }
         
-        // Si después de eso el saldo es 0, enviamos todos los pagos
-        if (pendingAmount <= 0 || (pendingAmount - (parseFloat(receivedAmount) || 0) <= 0)) {
+        const totalFinalPaid = finalPayments.reduce((s, p) => s + p.amount, 0);
+        
+        if (totalFinalPaid >= total) {
             try {
-                await onConfirm(payments);
+                await onConfirm(finalPayments);
                 setIsLiquidado(true);
             } catch (error) {
                 console.error("Error liquidando:", error);
-                alert("Hubo un error al liquidar la cuenta.");
+                alert("Hubo un error al liquidar la cuenta. Intente de nuevo.");
             }
         } else {
             alert('Aún queda saldo pendiente por cubrir.');
         }
     };
+
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
