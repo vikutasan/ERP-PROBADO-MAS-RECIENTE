@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy import delete
 from fastapi import HTTPException
 from . import models, schemas
 from modules.catalog.models import Product
@@ -57,11 +58,11 @@ class POSService:
         if db_ticket:
             # Si el ticket ya existe, actualizamos total, estatus y detalles de pago
             db_ticket.total = total
-            db_ticket.status = ticket.status or "PAID"
+            db_ticket.status = ticket.status
             db_ticket.payment_details = ticket.payment_details
             # Eliminamos items anteriores para reemplazarlos (simplifica la lógica de actualización)
             await db.execute(
-                models.TicketItem.__table__.delete().where(models.TicketItem.ticket_id == db_ticket.id)
+                delete(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
             )
         else:
             # Si no existe, creamos uno nuevo
