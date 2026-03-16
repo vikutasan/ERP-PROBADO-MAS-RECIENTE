@@ -55,6 +55,7 @@ class POSService:
             db_ticket.total = total
             db_ticket.status = ticket.status
             db_ticket.payment_details = ticket.payment_details
+            db_ticket.cash_session_id = ticket.cash_session_id
             # Eliminamos items anteriores para reemplazarlos (simplifica la lógica de actualización)
             await db.execute(
                 delete(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
@@ -70,7 +71,8 @@ class POSService:
                 session_id=ticket.session_id,
                 total=total,
                 status=ticket.status or "PAID",
-                payment_details=ticket.payment_details
+                payment_details=ticket.payment_details,
+                cash_session_id=ticket.cash_session_id
             )
             db.add(db_ticket)
             await db.flush() # Para obtener db_ticket.id

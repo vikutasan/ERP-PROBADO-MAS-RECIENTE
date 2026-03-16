@@ -24,6 +24,7 @@ class Ticket(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="OPEN") # OPEN, PAID, CANCELLED
     session_id = Column(Integer, ForeignKey("terminal_sessions.id"))
+    cash_session_id = Column(Integer, ForeignKey("cash_sessions.id"), nullable=True)
 
     session = relationship("TerminalSession", back_populates="tickets")
     items = relationship("TicketItem", back_populates="ticket")

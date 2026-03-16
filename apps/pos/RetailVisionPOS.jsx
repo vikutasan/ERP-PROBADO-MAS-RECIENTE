@@ -11,6 +11,8 @@ import { SalesReceipt } from './components/SalesReceipt';
 import { VisionVisor } from './components/VisionVisor';
 import { CheckoutScreen } from './components/CheckoutScreen';
 import { TicketTemplate } from './components/TicketTemplate';
+import { GestorDeCaja } from './components/GestorDeCaja';
+import { cashService } from './services/cashService';
 
 const INITIAL_CATEGORIES = [
     { name: "1.-EMPAQUE Y PAN BLANCO", icon: "🥖", visionEnabled: true },
@@ -79,6 +81,11 @@ export const RetailVisionPOS = () => {
     const [paymentsHistory, setPaymentsHistory] = useState([]);
     const printRef = React.useRef();
 
+    // --- Estado del Gestor de Caja ---
+    const [isCashEnabled, setIsCashEnabled] = useState(false);
+    const [showGestorCaja, setShowGestorCaja] = useState(false);
+    const [cashSessionId, setCashSessionId] = useState(null);
+
     // --- Hooks Personalizados ---
     const PRODUCTS = useMemo(() => initialProducts.map(p => ({
         ...p,
@@ -127,7 +134,26 @@ export const RetailVisionPOS = () => {
     }, [selectedTerminal]);
 
     useEffect(() => {
-        if (selectedTerminal && !currentAccountNum) generateNewAccountNum();
+        if (selectedTerminal) {
+            if (!currentAccountNum) generateNewAccountNum();
+            
+            // Verificar si hay sesión de caja activa para habilitar el cobro inmediatamente
+            const syncCashState = async () => {
+                try {
+                    const session = await cashService.obtenerSesionActiva(selectedTerminal);
+                    if (session) {
+                        setIsCashEnabled(true);
+                        setCashSessionId(session.id);
+                    } else {
+                        setIsCashEnabled(false);
+                        setCashSessionId(null);
+                    }
+                } catch (e) {
+                    console.error("Error sincronizando estado de caja:", e);
+                }
+            };
+            syncCashState();
+        }
     }, [selectedTerminal, currentAccountNum, generateNewAccountNum]);
 
     // --- Teclado (Barcode) ---
@@ -208,7 +234,8 @@ export const RetailVisionPOS = () => {
                 session_id: session.id,
                 items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
                 status: status,
-                payment_details: paymentData
+                payment_details: paymentData,
+                cash_session_id: cashSessionId
             };
 
             await posService.createTicket(payload);
@@ -382,12 +409,31 @@ export const RetailVisionPOS = () => {
                             <span className="text-4xl font-black uppercase tracking-tighter italic text-[#c1d72e] drop-shadow-[0_0_12px_rgba(193,215,46,0.4)]">CUENTA #{(currentAccountNum || '00').slice(-2)}</span>
                         </div>
                     </div>
-                    <div className="w-1/3 flex justify-end">
-                        <button onClick={() => setShowCorkboard(true)} className="bg-[#2d1e13] border border-white/10 px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#3d2b1f] transition-all group shadow-xl">
-                            <span className="text-lg">📌</span>
+                    <div className="w-1/3 flex justify-end gap-2">
+                        {/* Botón CAJA — uso infrecuente, estilo discreto */}
+                        <button
+                            onClick={() => setShowGestorCaja(true)}
+                            className="bg-black/60 border border-[#c1d72e]/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#c1d72e]/20 hover:border-[#c1d72e] transition-all shadow-xl"
+                            title={isCashEnabled ? 'Gestionar Caja (Activa)' : 'Habilitar como Caja'}
+                        >
                             <div className="text-left">
-                                <p className="text-[7px] font-black uppercase text-white/40 tracking-widest">Ver Pizarron</p>
-                                <p className="text-[9px] font-bold text-[#c1d72e] uppercase tracking-tighter">{visibleAccounts.length} {selectedTerminal === 'CAJA' ? 'TOTALES' : 'MIAS'}</p>
+                                <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">Caja</p>
+                                <p className={`text-[14px] font-black uppercase tracking-tighter leading-none ${isCashEnabled ? 'text-[#c1d72e]' : 'text-[#c1d72e]/60'}`}>
+                                    {isCashEnabled ? '● Activa' : '○ Habilitar'}
+                                </p>
+                            </div>
+                        </button>
+
+                        {/* Botón Pizarrón — uso frecuente, estilo prominente */}
+                        <button 
+                            onClick={() => setShowCorkboard(true)} 
+                            className="bg-[#2d1e13] border border-orange-900/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#3d2b1f] hover:border-orange-500/50 transition-all group shadow-xl"
+                        >
+                            <div className="text-left">
+                                <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">Pizarron</p>
+                                <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
+                                    {visibleAccounts.length} {selectedTerminal === 'CAJA' ? 'TOTALES' : 'MIAS'}
+                                </p>
                             </div>
                         </button>
                     </div>
@@ -433,7 +479,8 @@ export const RetailVisionPOS = () => {
                     currentAccountNum={currentAccountNum} 
                     selectedTerminal={selectedTerminal} 
                     handleCheckout={(method) => handleTicketAction('PAID', method)} 
-                    handleHoldAccount={() => handleTicketAction('OPEN')} 
+                    handleHoldAccount={() => handleTicketAction('OPEN')}
+                    cashEnabled={isCashEnabled}
                 />
             </div>
 
@@ -469,6 +516,22 @@ export const RetailVisionPOS = () => {
                     onClose={() => setShowCorkboard(false)}
                 />
             )}
+
+            {showGestorCaja && (
+                <GestorDeCaja
+                    terminalId={selectedTerminal}
+                    onCajaHabilitada={(sessionId) => {
+                        setIsCashEnabled(true);
+                        setCashSessionId(sessionId);
+                    }}
+                    onCajaDeshabilitada={() => {
+                        setIsCashEnabled(false);
+                        setCashSessionId(null);
+                    }}
+                    onClose={() => setShowGestorCaja(false)}
+                />
+            )}
+
 
             {/* Impresora Oculta (Económica) */}
             <div style={{ display: 'none' }}>

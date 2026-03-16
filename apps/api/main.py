@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from modules.catalog.router import router as catalog_router
 from modules.pos.router import router as pos_router
+from modules.security.router import router as security_router
+from modules.cash.router import router as cash_router
 
 app = FastAPI(
     title="R de Rico ERP API",
@@ -13,7 +15,7 @@ app = FastAPI(
 # Configurar CORS (Permitir requests desde React)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # En producción se debe restringir a los dominios correctos
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,6 +27,8 @@ async def health_check():
 
 app.include_router(catalog_router, prefix="/api/v1/catalog", tags=["Catalog"])
 app.include_router(pos_router, prefix="/api/v1/pos", tags=["POS"])
+app.include_router(security_router, prefix="/api/v1/security", tags=["Security"])
+app.include_router(cash_router, prefix="/api/v1/cash", tags=["Cash"])
 
 # Montar carpeta de imágenes estáticas
 app.mount("/static/catalog", StaticFiles(directory="static/catalog"), name="static")

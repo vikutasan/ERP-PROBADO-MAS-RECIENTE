@@ -27,12 +27,14 @@ class TicketCreate(TicketBase):
     items: List[TicketItemCreate]
     status: Optional[str] = "OPEN"
     payment_details: Optional[List] = None
+    cash_session_id: Optional[int] = None
 
 class TicketResponse(TicketBase):
     id: int
     total: float
     status: str
     payment_details: Optional[List] = None
+    cash_session_id: Optional[int] = None
     terminal_id: Optional[str] = None
     created_at: datetime
     items: List[TicketItemResponse] = []

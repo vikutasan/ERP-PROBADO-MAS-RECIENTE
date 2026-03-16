@@ -1,19 +1,17 @@
 import React, { useState } from 'react';
 
 // Importación de módulos creados (Simulada para el demo)
-import { HRDashboardUI } from './hr/HRDashboardUI';
 import { B2BManagerUI } from './b2b/B2BManagerUI';
 import { CakeConfiguratorUI } from './ecommerce/CakeConfiguratorUI';
 import { LogisticsDashboardUI } from './logistics/LogisticsDashboardUI';
 import { DriverAppUI } from './driver-app/DriverAppUI';
 import { MaestroPanaderoDashboard } from './production/MaestroPanaderoUI';
 import { WaiterAppUI } from './waiter-app/WaiterAppUI';
-import { PasswordRecoveryUI } from './auth/PasswordRecoveryUI';
 import { LoginUI } from './auth/LoginUI';
+import { SeguridadAccesoUI } from './auth/SeguridadAccesoUI';
 import { FinancialHubUI } from './financials/FinancialHubUI';
 import { InvoicingHubUI } from './financials/InvoicingHubUI';
 import { CustomerInvoicingPortal } from './financials/CustomerInvoicingPortal';
-import { PayrollHubUI } from './hr/PayrollHubUI';
 import { WarehouseHubUI } from './inventory/WarehouseHubUI';
 import { PurchasingHubUI } from './inventory/PurchasingHubUI';
 import { TableServicePOS } from './pos/TableServicePOS';
@@ -54,12 +52,14 @@ const INITIAL_CATEGORIES = [
 export const ExperimentCenterUI = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [categories, setCategories] = useState(INITIAL_CATEGORIES);
-    const [userRole, setUserRole] = useState('ADMIN'); // Default para demo, se cambia al loguear 
+    const [userRole, setUserRole] = useState('ADMIN'); 
+    const [userName, setUserName] = useState('');
     const [activeModule, setActiveModule] = useState('overview');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-    const handleLogin = ({ role }) => {
+    const handleLogin = ({ role, name }) => {
         setUserRole(role);
+        setUserName(name || '');
         setIsAuthenticated(true);
     };
 
@@ -76,11 +76,10 @@ export const ExperimentCenterUI = () => {
         { id: 'purchasing', name: 'Gestión de Compras', color: 'bg-indigo-900', icon: '🛒', access: ['ADMIN', 'MANAGER'] },
         { id: 'procurement', name: 'B2B Procurement', color: 'bg-blue-900', icon: '🤝', access: ['ADMIN', 'MANAGER'] },
         { id: 'logistics', name: 'Logística de Rutas', color: 'bg-blue-600', icon: '🚚', access: ['ADMIN', 'MANAGER', 'LOGISTICS'] },
-        { id: 'payroll', name: 'Nómina y RRHH', color: 'bg-purple-900', icon: '👥', access: ['ADMIN', 'MANAGER'] },
         { id: 'pos_tables', name: 'TPV Mesas & KDS', color: 'bg-orange-600', icon: '🍽️', access: ['ADMIN', 'MANAGER', 'WAITER'] },
         { id: 'waiter', name: 'App Mesero', color: 'bg-rose-700', icon: '📱', access: ['ADMIN', 'WAITER'] },
         { id: 'driver', name: 'App Repartidor', color: 'bg-gray-800', icon: '📱', access: ['ADMIN', 'DRIVER', 'LOGISTICS'] },
-        { id: 'auth', name: 'Seguridad (Acceso)', color: 'bg-indigo-900', icon: '🔑', access: ['ADMIN', 'MANAGER'] },
+        { id: 'seguridad_acceso', name: 'Seguridad y Acceso', color: 'bg-indigo-900', icon: '🔑', access: ['ADMIN', 'MANAGER'] },
     ];
 
 
@@ -186,10 +185,10 @@ export const ExperimentCenterUI = () => {
                 </nav>
 
                 <div className={`mt-auto transition-all duration-500 ${isSidebarCollapsed ? 'opacity-0 scale-0 h-0 overflow-hidden' : 'opacity-100 scale-100'}`}>
-                    <div className="p-6 bg-indigo-600/10 border border-indigo-500/20 rounded-[30px] relative overflow-hidden group">
-                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/20 blur-3xl rounded-full" />
-                        <p className="text-[10px] font-black uppercase text-indigo-400 mb-2">IA Status</p>
-                        <p className="text-xs font-bold leading-relaxed">Agente Live & WhatsApp conectado.</p>
+                    <div className="p-6 bg-orange-600/10 border border-orange-500/20 rounded-[30px] relative overflow-hidden group">
+                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-orange-500/10 blur-3xl rounded-full" />
+                        <p className="text-[10px] font-black uppercase text-orange-400 mb-2 tracking-widest">Usuario</p>
+                        <p className="text-sm font-black leading-relaxed uppercase italic truncate text-white">{userName || 'Administrador'}</p>
                     </div>
                 </div>
 
@@ -264,12 +263,10 @@ export const ExperimentCenterUI = () => {
                         {activeModule === 'inventory' && <ProductMasterUI />}
                         {activeModule === 'warehouse' && <WarehouseManagerUI />}
                         {activeModule === 'purchasing' && <PurchaseManagerUI />}
-                        {activeModule === 'procurement' && <PurchasingHubUI />}
-                        {activeModule === 'hr' && <HRDashboardUI />}
-                        {activeModule === 'payroll' && <PayrollHubUI />}
-                        {activeModule === 'logistics' && <LogisticsDashboardUI pendingDeliveries={mockData.pendingDeliveries} vehicles={mockData.vehicles} drivers={mockData.drivers} />}
+                        { activeModule === 'procurement' && <PurchasingHubUI /> }
+                        { activeModule === 'logistics' && <LogisticsDashboardUI pendingDeliveries={mockData.pendingDeliveries} vehicles={mockData.vehicles} drivers={mockData.drivers} /> }
                         {activeModule === 'driver' && <DriverAppUI activeRoute={{ orders: [] }} currentDriver={{ name: 'Juan Pérez' }} />}
-                        {activeModule === 'auth' && <PasswordRecoveryUI />}
+                        {activeModule === 'seguridad_acceso' && <SeguridadAccesoUI />}
                     </div>
 
                 </div>

@@ -1,0 +1,108 @@
+ESPECIFICACIONES DEL SISTEMA ERP R DE RICO
+GUIA DE INSTALACION PARA AGENTE DE ANTIGRAVITY
+
+================================================================================
+CONTEXTO DEL PROYECTO
+================================================================================
+Este sistema es el ERP de punto de venta de R de Rico. El sistema fue construido 
+con la asistencia de un agente de Antigravity.
+
+AVISO IMPORTANTE:
+El equipo ya tiene instalada una versión anterior del sistema. Esta es una 
+SUSTITUCION LIMPIA: se elimina todo rastro de la versión anterior (contenedores, 
+volúmenes, base de datos) y se instala desde cero. NO se necesita conservar 
+ningún dato previo.
+
+================================================================================
+ARQUITECTURA DE RED - 6 CPUs
+================================================================================
+- CPU 1 (Servidor): Servidor principal + Terminal T6 (Docker Host)
+- CPU 2: Cliente POS Terminal T5
+- CPU 3: Cliente POS Terminal T4
+- CPU 4: Cliente POS Terminal T3
+- CPU 5: Cliente POS Terminal T2
+- CPU 6: Cliente POS CAJA (con impresora térmica 80mm)
+
+NOTA: Solo el CPU 1 (Servidor) requiere Docker. Los demás acceden por navegador.
+
+================================================================================
+STACK TECNOLOGICO
+================================================================================
+- Base de datos: PostgreSQL 15 (Docker)
+- Backend API: Python 3.11 + FastAPI (Docker)
+- Frontend POS: React + Vite + Nginx (Docker)
+- Puerto POS: 3000
+- Puerto API: 3001
+
+================================================================================
+REPOSITORIO GITHUB
+================================================================================
+URL: https://github.com/manualesrderico-hash/ERP-R-DE-RICO
+Rama: main
+(El repositorio debe ser publico)
+
+================================================================================
+PARTE 1 - INSTALACION EN EL SERVIDOR (CPU 1)
+================================================================================
+
+PRE-REQUISITOS:
+1. Docker Desktop instalado y corriendo.
+2. Git instalado.
+3. Anote la IP LOCAL del servidor (ej. 192.168.1.100).
+
+NOTA COEXISTENCIA SAS:
+El servidor tiene un sistema SAS. El ERP corre aislado en Docker. NO detenga el SAS.
+Verifique que puertos 3000 y 3001 esten libres:
+Comando: netstat -ano | findstr ":3000 :3001"
+
+PASO 1: ELIMINAR VERSION ANTERIOR (Limpieza profunda)
+Comandos:
+docker stop rderico-pos rderico-api-edge rderico-db-edge
+docker rm rderico-pos rderico-api-edge rderico-db-edge
+docker volume rm erp-r-de-rico_pgdata
+
+PASO 2: CLONAR REPOSITORIO
+Comandos:
+git clone https://github.com/manualesrderico-hash/ERP-R-DE-RICO.git
+cd ERP-R-DE-RICO
+
+PASO 3: DESPLIEGUE
+Comando:
+docker-compose up -d --build
+
+PASO 4: CARGA DE DATOS (IMPORTAR PRODUCTOS)
+Comando:
+python import_data.py
+
+================================================================================
+PARTE 2 - CONFIGURACION DE CLIENTES (CPU 2-6)
+================================================================================
+URL de acceso: http://[IP_DEL_SERVIDOR]:3000
+
+ASIGNACION:
+- CPU 2 -> T5
+- CPU 3 -> T4
+- CPU 4 -> T3
+- CPU 5 -> T2
+- CPU 6 -> CAJA
+
+================================================================================
+PARTE 3 - IMPRESORA TERMICA (CAJA)
+================================================================================
+1. Instale los drivers en Windows y pongala como predeterminada.
+2. Configure Chrome/Edge para impresion silenciosa:
+   - Click derecho en acceso directo -> Propiedades.
+   - En Destino, agregue al final: --kiosk-printing
+
+================================================================================
+RESUMEN DE URLS
+================================================================================
+POS: http://[IP_SERVIDOR]:3000
+API Health: http://[IP_SERVIDOR]:3001/health
+
+================================================================================
+MANTENIMIENTO
+================================================================================
+- Iniciar: docker-compose up -d
+- Detener: docker-compose down
+- Actualizar: git pull y docker-compose up -d --build

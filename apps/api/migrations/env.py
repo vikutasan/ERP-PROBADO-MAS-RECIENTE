@@ -15,6 +15,8 @@ from core.config import settings
 # Import all the models here so that alembic detects them
 from modules.catalog.models import *
 from modules.pos.models import *
+from modules.security.models import *
+from modules.cash.models import *
 # ----------------- #
 
 config = context.config

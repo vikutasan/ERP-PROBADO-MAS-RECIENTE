@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guía de Instalación ERP R de Rico</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #c1d72e;
+            --bg: #0a0a0a;
+            --card: #141414;
+            --text: #ffffff;
+            --text-dim: #a0a0a0;
+            --border: rgba(255, 255, 255, 0.1);
+            --accent: #f97316;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+            padding: 40px 20px;
+        }
+
+        h1, h2, h3 {
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+        }
+
+        h1 { font-size: 3rem; color: var(--primary); margin-bottom: 0.5rem; italic; }
+        h2 { font-size: 1.5rem; color: var(--text-dim); border-bottom: 2px solid var(--border); padding-bottom: 10px; margin-top: 3rem; }
+        h3 { font-size: 1.2rem; color: var(--accent); margin-top: 2rem; }
+
+        hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+        p, li { font-size: 1.05rem; }
+
+        .alert {
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border-left: 4px solid;
+        }
+
+        .alert-important { background: rgba(193, 215, 46, 0.1); border-color: var(--primary); color: var(--primary); }
+        .alert-note { background: rgba(59, 130, 246, 0.1); border-color: #3b82f6; color: #93c5fd; }
+        .alert-caution { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #fca5a5; }
+        .alert-tip { background: rgba(34, 197, 94, 0.1); border-color: #22c55e; color: #86efac; }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: #000;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+        }
+
+        pre code {
+            background: transparent;
+            padding: 0;
+            color: #d1d1d1;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            background: var(--card);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--primary);
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+        }
+
+        .terminal-grid {
+            display: grid;
+            grid-template-cols: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 2rem 0;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 20px;
+            border-radius: 16px;
+        }
+
+        .tag {
+            background: var(--primary);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 800;
+            font-size: 0.7rem;
+            vertical-align: middle;
+        }
+
+        .btn-print {
+            display: inline-block;
+            background: var(--primary);
+            color: #000;
+            padding: 12px 24px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 800;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+
+        .btn-print:hover { transform: scale(1.05); }
+
+        @media print {
+            .btn-print { display: none; }
+            body { background: #fff; color: #000; }
+            .container { max-width: 100%; padding: 0; }
+            pre { border: 1px solid #ddd; word-wrap: break-word; }
+            h1, h2, h3 { color: #000; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ERP R DE RICO</h1>
+        <h2>Guía Maestra de Instalación</h2>
+
+        <div class="alert alert-important">
+            <strong>AVISO DE ACTUALIZACIÓN:</strong> El equipo tiene una versión previa. Esta instalación es una <strong>sustitución limpia</strong>. No se conservan datos anteriores. Se elimina todo rastro de contenedores y volúmenes antes de iniciar.
+        </div>
+
+        <section>
+            <h3>Contexto del Proyecto</h3>
+            <p>Este sistema es un ERP Punto de Venta diseñado para operación en red local con múltiples terminales (6 CPUs), optimizado para hardware de bajas especificaciones y estaciones de cobro centralizado.</p>
+        </section>
+
+        <section>
+            <h3>Arquitectura de Red (6 CPUs)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>CPU</th>
+                        <th>Rol</th>
+                        <th>Terminal</th>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>CPU 1 (Principal)</td><td>Servidor + T6</td><td><strong>T6</strong></td><td>Docker Host</td></tr>
+                    <tr><td>CPU 2</td><td>Cliente</td><td><strong>T5</strong></td><td>Solo navegador</td></tr>
+                    <tr><td>CPU 3</td><td>Cliente</td><td><strong>T4</strong></td><td>Solo navegador</td></tr>
+                    <tr><td>CPU 4</td><td>Cliente</td><td><strong>T3</strong></td><td>Solo navegador</td></tr>
+                    <tr><td>CPU 5</td><td>Cliente</td><td><strong>T2</strong></td><td>Solo navegador</td></tr>
+                    <tr><td>CPU 6</td><td>Venta Central</td><td><strong>CAJA</strong></td><td>Impresora térmica 80mm</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <hr>
+
+        <section>
+            <h2>PARTE 1: Instalación en el Servidor (CPU 1)</h2>
+            <div class="alert alert-note">
+                <strong>Coexistencia con SAS:</strong> El servidor convive con un sistema SAS. El ERP corre aislado en Docker. No toque el SAS. Verifique que los puertos 3000 y 3001 estén libres con <code>netstat -ano | findstr ":3000 :3001"</code>.
+            </div>
+
+            <h3>Paso 1: Parada y Limpieza Profunda</h3>
+            <div class="alert alert-caution">Borre todo el sistema anterior antes de clonar el nuevo.</div>
+            <pre><code>docker stop rderico-pos rderico-api-edge rderico-db-edge
+docker rm rderico-pos rderico-api-edge rderico-db-edge
+docker volume rm erp-r-de-rico_pgdata</code></pre>
+
+            <h3>Paso 2: Obtención del Código</h3>
+            <pre><code>git clone https://github.com/manualesrderico-hash/ERP-R-DE-RICO.git
+cd ERP-R-DE-RICO</code></pre>
+
+            <h3>Paso 3: Despliegue</h3>
+            <pre><code>docker-compose up -d --build</code></pre>
+
+            <h3>Paso 4: Carga de Datos</h3>
+            <pre><code># Verifique http://localhost:3001/health primero
+python import_data.py</code></pre>
+        </section>
+
+        <section>
+            <h2>PARTE 2: Configuración de Clientes (CPU 2-6)</h2>
+            <p>Acceda desde cualquier navegador en los otros equipos usando la dirección IP del servidor:</p>
+            <pre><code>http://[IP_DEL_SERVIDOR]:3000</code></pre>
+            <div class="terminal-grid">
+                <div class="card"><strong>T2 - T5:</strong> Navegador directo.</div>
+                <div class="card"><strong>CAJA:</strong> Navegador + Impresión Kiosk.</div>
+            </div>
+        </section>
+
+        <section>
+            <h2>PARTE 3: Impresora Térmica (CAJA)</h2>
+            <p>En el CPU 6, configure Chrome/Edge con impresión silenciosa:</p>
+            <pre><code>"chrome.exe" --kiosk-printing</code></pre>
+            <p>Esto permite que el ticket de 80mm salga instantáneamente al cobrar.</p>
+        </section>
+
+        <hr>
+        
+        <div style="text-align: center;">
+            <p class="text-dim">Diseñado para R de Rico | 2026</p>
+            <a href="javascript:window.print()" class="btn-print">IMPRIMIR ESTA GUÍA</a>
+        </div>
+    </div>
+</body>
+</html>

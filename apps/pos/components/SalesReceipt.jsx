@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount }) => {
+export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount, cashEnabled = false }) => {
     const [editMode, setEditMode] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [editInputValue, setEditInputValue] = useState('');
@@ -100,18 +100,34 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
 
             <div className="mt-4 pt-4 border-t-2 border-dashed border-gray-400 space-y-4">
                 <button 
-                    onClick={() => handleCheckout()}
-                    className="w-full bg-black group relative overflow-hidden p-4 rounded-[30px] border-2 border-black transition-all hover:scale-[1.02] active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.2)]"
+                    onClick={() => cashEnabled && handleCheckout()}
+                    disabled={!cashEnabled}
+                    title={!cashEnabled ? 'Presione "🏦 CAJA" para habilitar el cobro' : ''}
+                    className={`w-full group relative overflow-hidden p-4 rounded-[30px] border-2 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.2)] ${
+                        cashEnabled
+                            ? 'bg-black border-black hover:scale-[1.02] active:scale-95 cursor-pointer'
+                            : 'bg-gray-300 border-gray-400 cursor-not-allowed opacity-60'
+                    }`}
                 >
                     <div className="flex justify-between items-center relative z-10 px-1">
                         <div className="text-left">
-                            <span className="block text-[8px] font-black uppercase tracking-[0.3em] text-[#c1d72e] mb-0.5">Total a Pagar</span>
-                            <span className="block text-2xl font-black text-white italic tracking-tighter">COBRAR</span>
+                            <span className={`block text-[8px] font-black uppercase tracking-[0.3em] mb-0.5 ${
+                                cashEnabled ? 'text-[#c1d72e]' : 'text-gray-500'
+                            }`}>
+                                {cashEnabled ? 'Total a Pagar' : 'Caja no habilitada'}
+                            </span>
+                            <span className={`block text-2xl font-black italic tracking-tighter ${
+                                cashEnabled ? 'text-white' : 'text-gray-500'
+                            }`}>COBRAR</span>
                         </div>
-                        <span className="text-3xl font-black text-[#c1d72e] tracking-tighter">${total.toFixed(2)}</span>
+                        <span className={`text-3xl font-black tracking-tighter ${
+                            cashEnabled ? 'text-[#c1d72e]' : 'text-gray-500'
+                        }`}>${total.toFixed(2)}</span>
                     </div>
-                    {/* Glow effect */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                    {/* Glow effect — solo cuando está activo */}
+                    {cashEnabled && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                    )}
                 </button>
 
                 <div className="flex flex-col gap-3">
