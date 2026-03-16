@@ -79,6 +79,7 @@ export const RetailVisionPOS = ({ currentUser }) => {
     const [allOpenAccounts, setAllOpenAccounts] = useState([]);
     const [showCheckout, setShowCheckout] = useState(false);
     const [paymentsHistory, setPaymentsHistory] = useState([]);
+    const [printTicketData, setPrintTicketData] = useState(null);
     const printRef = React.useRef();
 
     // --- Estado del Gestor de Caja ---
@@ -180,38 +181,44 @@ export const RetailVisionPOS = ({ currentUser }) => {
     }, [PRODUCTS, addToCart]);
 
     // --- Lógica de Negocio (Tickets) ---
-    const handlePrintTicket = () => {
-        const printContent = printRef.current;
+    const handlePrintTicket = (ticketData = null) => {
+        // Si viene ticketData (del servidor), lo usamos. Si no, usamos el estado actual (fallback)
+        const activeTicket = ticketData || { account_num: currentAccountNum };
         
-        // Crear un iframe invisible
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
+        // Actualizamos los datos del template antes de imprimir
+        setPrintTicketData(activeTicket);
 
-        const doc = iframe.contentWindow.document;
-        doc.open();
-        doc.write('<html><head><title>Ticket R de Rico</title>');
-        doc.write('<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">');
-        doc.write('</head><body>');
-        doc.write(printContent.innerHTML);
-        doc.write('</body></html>');
-        doc.close();
-
-        // Esperar a que el CSS cargue y disparar impresión en el iframe
+        // Pequeño delay para asegurar que el re-render del template oculto ocurra
         setTimeout(() => {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-            
-            // Limpiar el iframe después de un tiempo prudencial
+            const printContent = printRef.current;
+            if (!printContent) return;
+
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+
+            const doc = iframe.contentWindow.document;
+            doc.open();
+            doc.write('<html><head><title>Ticket R de Rico</title>');
+            doc.write('<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">');
+            doc.write('</head><body>');
+            doc.write(printContent.innerHTML);
+            doc.write('</body></html>');
+            doc.close();
+
             setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 1000);
-        }, 250);
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 1000);
+            }, 250);
+        }, 50);
     };
 
     const handleTicketAction = async (status, paymentData = null, finalizeUI = true) => {
@@ -235,14 +242,19 @@ export const RetailVisionPOS = ({ currentUser }) => {
                 items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
                 status: status,
                 payment_details: paymentData,
-                cash_session_id: cashSessionId
+                cash_session_id: cashSessionId,
+                captured_by_id: currentUser?.id,
+                cashed_by_id: status === 'PAID' ? currentUser?.id : null
             };
 
-            await posService.createTicket(payload);
+            const savedTicket = await posService.createTicket(payload);
             
             if (finalizeUI) {
                 if (status === 'PAID') {
-                    handlePrintTicket();
+                    // Pasar el ticket completo con nombres de auditoría al template antes de imprimir
+                    // Usamos un pequeño delay o un estado para asegurar el render si fuera necesario, 
+                    // pero aquí inyectaremos los nombres en el objeto que recibe el template.
+                    handlePrintTicket(savedTicket);
                     alert(`Venta finalizada exitosamente. Ticket impreso.`);
                 }
                 clearCart();
@@ -253,7 +265,7 @@ export const RetailVisionPOS = ({ currentUser }) => {
         } catch (error) {
             console.error("Ticket action error:", error);
             alert(error.message);
-            throw error; // Propagar para que CheckoutScreen interrumpa el proceso visual.
+            throw error;
         }
     };
 
@@ -268,6 +280,7 @@ export const RetailVisionPOS = ({ currentUser }) => {
         }));
         setCart(recovered);
         setCurrentAccountNum(account.accountNum);
+        // Guardar también quién la capturó originalmente para que persista en el ticket final
         setShowCorkboard(false);
     };
 
@@ -282,7 +295,7 @@ export const RetailVisionPOS = ({ currentUser }) => {
                     items: t.items.length,
                     rawItems: t.items,
                     timestamp: t.created_at,
-                    cashierName: 'Operador',
+                    capturedByName: t.captured_by?.name || 'Desconocido',
                     clientName: 'Público General'
                 })));
             }).catch(console.error);
@@ -540,8 +553,8 @@ export const RetailVisionPOS = ({ currentUser }) => {
                     ref={printRef}
                     cart={cart}
                     total={total}
-                    payments={paymentsHistory} // Pasar el historial real para el ticket
-                    ticket={{ account_num: currentAccountNum }}
+                    payments={paymentsHistory}
+                    ticket={printTicketData}
                 />
             </div>
         </div>

@@ -25,9 +25,15 @@ class Ticket(Base):
     status = Column(String, default="OPEN") # OPEN, PAID, CANCELLED
     session_id = Column(Integer, ForeignKey("terminal_sessions.id"))
     cash_session_id = Column(Integer, ForeignKey("cash_sessions.id"), nullable=True)
+    
+    # Auditoría: Quién capturó y quién cobró
+    captured_by_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    cashed_by_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
 
     session = relationship("TerminalSession", back_populates="tickets")
     cash_session = relationship("CashSession", back_populates="tickets")
+    captured_by = relationship("Employee", foreign_keys=[captured_by_id])
+    cashed_by = relationship("Employee", foreign_keys=[cashed_by_id])
     items = relationship("TicketItem", back_populates="ticket")
 
 class TicketItem(Base):

@@ -51,17 +51,22 @@ class POSService:
         db_ticket = result.scalars().first()
 
         if db_ticket:
-            # El ticket ya existe - actualizamos directamente sin importar qué sesión mandó el request
+            # El ticket ya existe - actualizamos directamente
             db_ticket.total = total
             db_ticket.status = ticket.status
             db_ticket.payment_details = ticket.payment_details
             db_ticket.cash_session_id = ticket.cash_session_id
-            # Eliminamos items anteriores para reemplazarlos (simplifica la lógica de actualización)
+            
+            # Si se está cobrando ahora, registrar quién lo hizo
+            if ticket.status == "PAID" and ticket.cashed_by_id:
+                db_ticket.cashed_by_id = ticket.cashed_by_id
+            
+            # Eliminamos items anteriores para reemplazarlos
             await db.execute(
                 delete(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
             )
         else:
-            # Ticket nuevo - validar que la sesión del payload sea activa
+            # Ticket nuevo - registrar quién lo captura
             session = await db.get(models.TerminalSession, ticket.session_id)
             if not session or not session.is_active:
                 raise HTTPException(status_code=400, detail="Terminal session invalid or inactive")
@@ -70,12 +75,13 @@ class POSService:
                 account_num=ticket.account_num,
                 session_id=ticket.session_id,
                 total=total,
-                status=ticket.status or "PAID",
+                status=ticket.status or "OPEN",
                 payment_details=ticket.payment_details,
-                cash_session_id=ticket.cash_session_id
+                cash_session_id=ticket.cash_session_id,
+                captured_by_id=ticket.captured_by_id
             )
             db.add(db_ticket)
-            await db.flush() # Para obtener db_ticket.id
+            await db.flush()
         
         for db_item in db_items:
             db_item.ticket_id = db_ticket.id
@@ -90,7 +96,9 @@ class POSService:
                 selectinload(models.Ticket.items)
                 .selectinload(models.TicketItem.product)
                 .selectinload(Product.category),
-                selectinload(models.Ticket.session)
+                selectinload(models.Ticket.session),
+                selectinload(models.Ticket.captured_by),
+                selectinload(models.Ticket.cashed_by)
             )
             .where(models.Ticket.id == db_ticket.id)
         )
@@ -104,7 +112,9 @@ class POSService:
                 selectinload(models.Ticket.items)
                 .selectinload(models.TicketItem.product)
                 .selectinload(Product.category),
-                selectinload(models.Ticket.session)
+                selectinload(models.Ticket.session),
+                selectinload(models.Ticket.captured_by),
+                selectinload(models.Ticket.cashed_by)
             )
             .where(models.Ticket.status == "OPEN")
             .where(models.Ticket.total > 0)
@@ -120,7 +130,9 @@ class POSService:
             selectinload(models.Ticket.items)
             .selectinload(models.TicketItem.product)
             .selectinload(Product.category),
-            selectinload(models.Ticket.session)
+            selectinload(models.Ticket.session),
+            selectinload(models.Ticket.captured_by),
+            selectinload(models.Ticket.cashed_by)
         )
         
         if terminal_id:

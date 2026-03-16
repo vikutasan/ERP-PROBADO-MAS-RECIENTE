@@ -95,6 +95,8 @@ export const AuditoriaUI = () => {
                                             <th className="px-6 py-4">Folio</th>
                                             <th className="px-6 py-4">Terminal</th>
                                             <th className="px-6 py-4">Fecha</th>
+                                            <th className="px-6 py-4">Capturó</th>
+                                            <th className="px-6 py-4">Cobró</th>
                                             <th className="px-6 py-4">Estado</th>
                                             <th className="px-6 py-4 text-right">Total</th>
                                             <th className="px-6 py-4"></th>
@@ -106,6 +108,12 @@ export const AuditoriaUI = () => {
                                                 <td className="px-6 py-4 font-black">{t.account_num}</td>
                                                 <td className="px-6 py-4 font-bold text-gray-500">{t.terminal_id}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-gray-400">{new Date(t.created_at).toLocaleString()}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-[10px] font-black uppercase text-gray-600 truncate max-w-[80px] block">{t.captured_by?.name || '---'}</span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-[10px] font-black uppercase text-gray-600 truncate max-w-[80px] block">{t.cashed_by?.name || '---'}</span>
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${t.status === 'PAID' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-orange-50 text-orange-600 border-orange-100'}`}>
                                                         {t.status === 'PAID' ? 'Pagado' : 'Abierto'}
@@ -185,6 +193,29 @@ export const AuditoriaUI = () => {
                                     </div>
                                 </div>
 
+                                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] border-b border-gray-50 pb-2 mb-4">Trazabilidad de la Cuenta</h3>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-xl">👤</div>
+                                            <div>
+                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Capturado por</p>
+                                                <p className="text-xs font-black uppercase">{selectedTicket.captured_by?.name || 'SISTEMA'}</p>
+                                                <p className="text-[9px] font-bold text-gray-400">Rol: {selectedTicket.captured_by?.role || '---'}</p>
+                                            </div>
+                                        </div>
+                                        {selectedTicket.status === 'PAID' && (
+                                            <div className="flex items-center gap-4 border-t border-gray-50 pt-4">
+                                                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-xl text-orange-600">💰</div>
+                                                <div>
+                                                    <p className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Cobrado por</p>
+                                                    <p className="text-xs font-black uppercase">{selectedTicket.cashed_by?.name || 'ADMIN'}</p>
+                                                    <p className="text-[9px] font-bold text-gray-400">Rol: {selectedTicket.cashed_by?.role || '---'}</p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                                 <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
                                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] border-b border-gray-50 pb-2 mb-4">Historial de Pago</h3>
                                     {selectedTicket.payment_details?.map((p, idx) => (

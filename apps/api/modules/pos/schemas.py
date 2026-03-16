@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from modules.catalog.schemas import ProductResponse
+from modules.security.schemas import EmployeeResponse
 
 # --- Ticket Item ---
 class TicketItemBase(BaseModel):
@@ -28,6 +29,8 @@ class TicketCreate(TicketBase):
     status: Optional[str] = "OPEN"
     payment_details: Optional[List] = None
     cash_session_id: Optional[int] = None
+    captured_by_id: Optional[int] = None
+    cashed_by_id: Optional[int] = None
 
 class TicketResponse(TicketBase):
     id: int
@@ -35,6 +38,10 @@ class TicketResponse(TicketBase):
     status: str
     payment_details: Optional[List] = None
     cash_session_id: Optional[int] = None
+    captured_by_id: Optional[int] = None
+    cashed_by_id: Optional[int] = None
+    captured_by: Optional[EmployeeResponse] = None
+    cashed_by: Optional[EmployeeResponse] = None
     terminal_id: Optional[str] = None
     created_at: datetime
     items: List[TicketItemResponse] = []
