@@ -90,6 +90,7 @@ export const GestorDeCaja = ({ terminalId, onCajaHabilitada, onCajaDeshabilitada
     // Estado Sección D - Cierre
     const [turnoVisible, setTurnoVisible] = useState(true);
     const [turnoFinalizado, setTurnoFinalizado] = useState(false);
+    const [capturandoFisico, setCapturandoFisico] = useState(false);
     const [confirmandoCierre, setConfirmandoCierre] = useState(false);
     const [fisicoCash, setFisicoCash] = useState('');
     const [fisicoCredito, setFisicoCredito] = useState('');
@@ -315,9 +316,14 @@ export const GestorDeCaja = ({ terminalId, onCajaHabilitada, onCajaDeshabilitada
     };
 
     // ── Sección D: Cerrar turno ───────────────────────────────────────────────
-    const handleCerrarTurno = async () => {
+    const handleIniciarCierre = async () => {
         if (!sesion) return;
         await actualizarResumen();
+        setCapturandoFisico(true);
+        setFocusedField('cash');
+    };
+
+    const handleConfirmarCantidades = () => {
         setConfirmandoCierre(true);
     };
 
@@ -353,6 +359,8 @@ export const GestorDeCaja = ({ terminalId, onCajaHabilitada, onCajaDeshabilitada
         setFondoConfirmado(false);
         setMovimientos([]);
         setTurnoFinalizado(false);
+        setCapturandoFisico(false);
+        setConfirmandoCierre(false);
         setFisicoCash('');
         setFisicoCredito('');
         setFisicoDebito('');
@@ -586,46 +594,80 @@ export const GestorDeCaja = ({ terminalId, onCajaHabilitada, onCajaDeshabilitada
 
                             {!turnoFinalizado ? (
                                 <>
-                                    {/* Confirmación de cierre */}
-                                    {confirmandoCierre && (
-                                        <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4 mb-4">
-                                            <p className="text-red-300 text-sm font-bold mb-1">⚠ ¿Confirmar cierre del turno?</p>
-                                            <p className="text-red-500/70 text-xs mb-3">Esta acción deshabilita la caja y no puede deshacerse.</p>
-                                            <div className="flex gap-2">
-                                                <button onClick={handleConfirmarCierre} disabled={cargando} className="flex-1 bg-red-600 text-white font-black py-2 rounded-xl hover:opacity-90 disabled:opacity-50">
-                                                    Sí, cerrar turno
-                                                </button>
-                                                <button onClick={() => setConfirmandoCierre(false)} className="flex-1 bg-white/10 text-white font-bold py-2 rounded-xl hover:bg-white/20">
-                                                    Cancelar
-                                                </button>
+                                    {!capturandoFisico ? (
+                                        <button
+                                            onClick={handleIniciarCierre}
+                                            disabled={!fondoConfirmado || cargando}
+                                            className="w-full bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 font-black py-3 rounded-xl uppercase tracking-widest text-xs transition disabled:opacity-30"
+                                        >
+                                            🔒 Cerrar Turno
+                                        </button>
+                                    ) : (
+                                        <>
+                                            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-xl px-4 py-3 mb-4">
+                                                <p className="text-yellow-400 text-xs font-black uppercase tracking-wider">Paso 1: Declare el dinero físico</p>
                                             </div>
-                                        </div>
-                                    )}
 
-                                    <button
-                                        onClick={handleCerrarTurno}
-                                        disabled={!fondoConfirmado || cargando || confirmandoCierre}
-                                        className="w-full bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 font-black py-3 rounded-xl uppercase tracking-widest text-xs transition disabled:opacity-30"
-                                    >
-                                        🔒 Cerrar Turno
-                                    </button>
+                                            {/* Campos de captura física (siempre visibles en este paso) */}
+                                            <div className="space-y-1 mb-4">
+                                                <div className="grid grid-cols-3 gap-2 mb-2">
+                                                    <span className="text-[10px] text-white/30 uppercase font-bold">Rubro</span>
+                                                    <span className="text-[10px] text-white/30 uppercase font-bold">Sistema</span>
+                                                    <span className="text-[10px] text-white/30 uppercase font-bold">En Caja / Dif.</span>
+                                                </div>
+                                                <FilaDiferencia label="Efectivo" esperado={resumen?.efectivo_esperado} capturado={fisicoCash} onFocus={() => setFocusedField('cash')} active={focusedField === 'cash'} />
+                                                <FilaDiferencia label="Crédito" esperado={resumen?.total_credito} capturado={fisicoCredito} onFocus={() => setFocusedField('credit')} active={focusedField === 'credit'} />
+                                                <FilaDiferencia label="Débito" esperado={resumen?.total_debito} capturado={fisicoDebito} onFocus={() => setFocusedField('debit')} active={focusedField === 'debit'} />
+                                            </div>
+
+                                            {!confirmandoCierre ? (
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={handleConfirmarCantidades}
+                                                        className="flex-1 bg-[#c1d72e] text-black font-black py-3 rounded-xl uppercase tracking-widest text-xs transition shadow-lg shadow-[#c1d72e]/20"
+                                                    >
+                                                        Confirmar Cantidades
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setCapturandoFisico(false); setFocusedField(null); }}
+                                                        className="w-12 bg-white/10 hover:bg-white/20 text-white font-black py-3 rounded-xl uppercase transition flex items-center justify-center"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4 mt-2">
+                                                    <p className="text-red-300 text-sm font-bold mb-1">⚠ ¿Cerrar definitivamente?</p>
+                                                    <p className="text-red-500/70 text-[10px] mb-3 leading-tight">Efectivo declarado: ${fisicoCash || '0.00'} <br/> Esta acción deshabilita la caja en automático.</p>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={handleConfirmarCierre} disabled={cargando} className="flex-1 bg-red-600 text-white font-black py-2.5 rounded-xl uppercase tracking-wider text-[10px] hover:opacity-90 disabled:opacity-50">
+                                                            Sí, cerrar turno
+                                                        </button>
+                                                        <button onClick={() => { setConfirmandoCierre(false); setFocusedField('cash'); }} className="flex-1 bg-white/10 hover:bg-white/20 text-white font-bold py-2.5 rounded-xl uppercase tracking-wider text-[10px]">
+                                                            Regresar
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
                                 </>
                             ) : (
                                 <>
                                     <div className="bg-green-900/20 border border-green-500/30 rounded-xl px-4 py-3 mb-4">
-                                        <p className="text-green-400 text-xs font-black uppercase tracking-wider">✓ Turno Cerrado · Caja Deshabilitada</p>
+                                        <p className="text-green-400 text-xs font-black uppercase tracking-wider">✓ Turno Cerrado · Resumen Final</p>
                                     </div>
 
-                                    {/* Campos de captura física con diferencias */}
-                                    <div className="space-y-1 mb-4">
+                                    {/* Campos de captura física (sólo lectura tras el cierre) */}
+                                    <div className="space-y-1 mb-4 opacity-70 pointer-events-none">
                                         <div className="grid grid-cols-3 gap-2 mb-2">
                                             <span className="text-[10px] text-white/30 uppercase font-bold">Rubro</span>
                                             <span className="text-[10px] text-white/30 uppercase font-bold">Sistema</span>
                                             <span className="text-[10px] text-white/30 uppercase font-bold">En Caja / Dif.</span>
                                         </div>
-                                        <FilaDiferencia label="Efectivo" esperado={resumen?.efectivo_esperado} capturado={fisicoCash} onFocus={() => setFocusedField('cash')} active={focusedField === 'cash'} />
-                                        <FilaDiferencia label="Crédito" esperado={resumen?.total_credito} capturado={fisicoCredito} onFocus={() => setFocusedField('credit')} active={focusedField === 'credit'} />
-                                        <FilaDiferencia label="Débito" esperado={resumen?.total_debito} capturado={fisicoDebito} onFocus={() => setFocusedField('debit')} active={focusedField === 'debit'} />
+                                        <FilaDiferencia label="Efectivo" esperado={resumen?.efectivo_esperado} capturado={fisicoCash} active={false} />
+                                        <FilaDiferencia label="Crédito" esperado={resumen?.total_credito} capturado={fisicoCredito} active={false} />
+                                        <FilaDiferencia label="Débito" esperado={resumen?.total_debito} capturado={fisicoDebito} active={false} />
                                     </div>
 
                                     <div className="flex gap-2">
@@ -633,7 +675,7 @@ export const GestorDeCaja = ({ terminalId, onCajaHabilitada, onCajaDeshabilitada
                                             onClick={handlePrintCorte}
                                             className="flex-1 bg-white/10 hover:bg-white/20 text-white font-black py-3 rounded-xl uppercase tracking-widest text-[10px] transition"
                                         >
-                                            📄 Re-imprimir Reporte
+                                            📄 Imprimir Reporte
                                         </button>
                                         <button
                                             onClick={handleNuevoTurno}
