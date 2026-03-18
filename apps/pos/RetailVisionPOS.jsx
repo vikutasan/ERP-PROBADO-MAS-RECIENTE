@@ -83,6 +83,10 @@ export const RetailVisionPOS = ({ currentUser }) => {
     const [originalCapturer, setOriginalCapturer] = useState(null);
     const printRef = React.useRef();
 
+    // --- Estado de Ocupación de Terminales ---
+    const [terminalStatuses, setTerminalStatuses] = useState({});
+    const [unlockingTerminal, setUnlockingTerminal] = useState(null);
+
     // --- Estado del Gestor de Caja ---
     const [isCashEnabled, setIsCashEnabled] = useState(false);
     const [showGestorCaja, setShowGestorCaja] = useState(false);
@@ -98,6 +102,24 @@ export const RetailVisionPOS = ({ currentUser }) => {
 
     const { cart, setCart, total, addToCart, updateQuantity, removeFromCart, clearCart } = useCart(PRODUCTS);
     const { isScanning, setIsScanning } = useVision();
+
+    // --- Efectos de Ocupación ---
+    useEffect(() => {
+        let interval;
+        const fetchStatuses = async () => {
+            if (!selectedTerminal) {
+                try {
+                    const data = await posService.getTerminalsStatus();
+                    setTerminalStatuses(data);
+                } catch (e) {
+                    console.error("Error fetching terminal status", e);
+                }
+            }
+        };
+        fetchStatuses();
+        interval = setInterval(fetchStatuses, 3000); // Polling cada 3 segs
+        return () => clearInterval(interval);
+    }, [selectedTerminal]);
 
     // --- Efectos de Carga ---
     useEffect(() => {
@@ -462,18 +484,86 @@ export const RetailVisionPOS = ({ currentUser }) => {
                     <h2 className="text-6xl font-black uppercase tracking-tighter italic">Selecciona tu <span className="text-white/20">Terminal</span></h2>
                 </div>
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-8 max-w-7xl w-full">
-                    {terminals.map(t => (
-                        <button key={t.id} onClick={() => setSelectedTerminal(t.id)} className="group relative bg-black/20 hover:bg-orange-600 transition-all duration-500 p-10 rounded-[40px] border border-white/5 hover:border-orange-400 flex flex-col items-center gap-6 shadow-2xl hover:scale-110">
-                            <div className="w-24 h-24 flex items-center justify-center bg-white/5 group-hover:bg-white/20 rounded-3xl transition-colors">
-                                {t.icon.endsWith('.png') ? <img src={t.icon} alt={t.name} className="w-16 h-16 object-contain" /> : <span className="text-4xl">{t.icon}</span>}
+                    {terminals.map(t => {
+                        const isOccupied = terminalStatuses[t.id];
+                        const isMine = isOccupied && isOccupied.occupier_id === currentUser?.id;
+                        const lockedByOther = isOccupied && !isMine;
+
+                        return (
+                        <button 
+                            key={t.id} 
+                            onClick={async () => {
+                                if (lockedByOther) {
+                                    if (currentUser?.role === 'ADMIN' || currentUser?.role === 'GERENTE') {
+                                        setUnlockingTerminal({ id: t.id, occupier: isOccupied.occupier_name });
+                                    } else {
+                                        alert(`Terminal ocupada por ${isOccupied.occupier_name}`);
+                                    }
+                                    return;
+                                }
+                                
+                                try {
+                                    await posService.lockTerminal(t.id, currentUser.id, currentUser.name);
+                                    setSelectedTerminal(t.id);
+                                } catch (e) {
+                                    alert(e.message);
+                                }
+                            }} 
+                            className={`group relative transition-all duration-500 p-10 rounded-[40px] border flex flex-col items-center gap-6 shadow-2xl 
+                            ${lockedByOther ? 'bg-red-900/40 border-red-500/50 cursor-not-allowed opacity-80' : 'bg-black/20 hover:bg-orange-600 border-white/5 hover:border-orange-400 hover:scale-110'}`}>
+                            
+                            <div className={`w-24 h-24 flex items-center justify-center rounded-3xl transition-colors ${lockedByOther ? 'bg-red-500/10' : 'bg-white/5 group-hover:bg-white/20'}`}>
+                                {lockedByOther ? <span className="text-4xl">🔒</span> : (t.icon.endsWith('.png') ? <img src={t.icon} alt={t.name} className="w-16 h-16 object-contain" /> : <span className="text-4xl">{t.icon}</span>)}
                             </div>
                             <div className="text-center">
-                                <span className="block text-2xl font-black italic uppercase group-hover:text-white transition-colors">{t.name === 'CAJA' ? 'CAJA' : t.name.split(' ')[1]}</span>
-                                <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-orange-200">{t.name === 'CAJA' ? 'Cajero Central' : 'Punto de Venta'}</span>
+                                <span className={`block text-2xl font-black italic uppercase transition-colors ${lockedByOther ? 'text-red-400' : 'group-hover:text-white'}`}>
+                                    {t.name === 'CAJA' ? 'CAJA' : t.name.split(' ')[1]}
+                                </span>
+                                <span className={`text-[8px] font-bold uppercase tracking-widest ${lockedByOther ? 'text-red-300' : 'text-gray-500 group-hover:text-orange-200'}`}>
+                                    {lockedByOther ? `Ocupada: ${isOccupied.occupier_name.split(' ')[0]}` : (t.name === 'CAJA' ? 'Cajero Central' : 'Punto de Venta')}
+                                </span>
+                                {lockedByOther && isOccupied.is_cash_register && <span className="block text-[7px] text-yellow-300 font-bold mt-1">SESIÓN DE CAJA</span>}
                             </div>
                         </button>
-                    ))}
+                    )})}
                 </div>
+                
+                {/* Modal de Forzar Liberación */}
+                {unlockingTerminal && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
+                        <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,100,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
+                            <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
+                            <div className="text-6xl mb-4 relative z-10">⚠️</div>
+                            <h2 className="text-xl font-black uppercase text-white mb-2 relative z-10">FORZAR LIBERACION</h2>
+                            <p className="text-sm font-bold text-gray-400 mb-6 relative z-10">
+                                La terminal está actualmente ocupada por <span className="text-orange-400">{unlockingTerminal.occupier}</span>.<br/><br/>¿Estás seguro que deseas romper su sesión y liberarla para el equipo?
+                            </p>
+                            <div className="flex gap-4 relative z-10">
+                                <button 
+                                    onClick={() => setUnlockingTerminal(null)}
+                                    className="flex-1 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 font-bold uppercase text-[10px] tracking-widest transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={async () => {
+                                        try {
+                                            await posService.forceUnlockTerminal(unlockingTerminal.id);
+                                            const data = await posService.getTerminalsStatus();
+                                            setTerminalStatuses(data);
+                                            setUnlockingTerminal(null);
+                                        } catch(e) {
+                                            console.error(e);
+                                        }
+                                    }}
+                                    className="flex-1 py-3 rounded-2xl bg-red-600/80 hover:bg-red-500 border border-red-500/50 font-black uppercase text-[10px] tracking-widest text-white shadow-lg transition-all shadow-red-500/20"
+                                >
+                                    SÍ, FORZAR
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -557,11 +647,16 @@ export const RetailVisionPOS = ({ currentUser }) => {
             <div className="p-4 pb-2 z-20">
                 <div className="flex justify-between items-center mb-3">
                     <div className="w-1/3 flex justify-start">
-                        <button onClick={() => setSelectedTerminal(null)} className="bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 rounded-xl flex items-center gap-3 hover:bg-white/10 transition-all group shadow-xl">
+                        <button onClick={async () => {
+                            try {
+                                await posService.unlockTerminal(selectedTerminal, currentUser?.id);
+                            } catch(e) { console.error("Could not unlock terminal", e); }
+                            setSelectedTerminal(null);
+                        }} className="bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 rounded-xl flex items-center gap-3 hover:bg-white/10 transition-all group shadow-xl">
                             <div className="w-8 h-8 bg-orange-600/20 rounded-lg flex items-center justify-center text-orange-500 border border-orange-500/20">🖥️</div>
                             <div className="text-left">
                                 <p className="text-[9px] font-black text-white/90 uppercase tracking-tighter">Terminal {selectedTerminal}</p>
-                                <p className="text-[7px] font-bold text-orange-400 uppercase tracking-widest group-hover:underline">Cambiar Estacion</p>
+                                <p className="text-[7px] font-bold text-orange-400 uppercase tracking-widest group-hover:underline">Cambiar Estacion (Liberar)</p>
                             </div>
                         </button>
                     </div>
@@ -697,7 +792,7 @@ export const RetailVisionPOS = ({ currentUser }) => {
             )}
 
 
-            {/* Impresora Oculta (Eliminada para evitar interferencias) */}
+            {/* Contenedor Principal (Fin) */}
         </div>
     );
 };

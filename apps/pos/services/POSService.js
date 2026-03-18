@@ -57,6 +57,43 @@ class POSService {
         if (!res.ok) throw new Error("Error cargando pizarron");
         return res.json();
     }
+
+    async getTerminalsStatus() {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/status`);
+        if (!res.ok) throw new Error("Error cargando estado de terminales");
+        return res.json();
+    }
+
+    async lockTerminal(terminalId, occupierId, occupierName) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/${terminalId}/lock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ occupier_id: occupierId, occupier_name: occupierName })
+        });
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || "Error bloqueando terminal");
+        }
+        return res.json();
+    }
+
+    async unlockTerminal(terminalId, occupierId) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/${terminalId}/unlock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ occupier_id: occupierId, occupier_name: "release" })
+        });
+        if (!res.ok) throw new Error("Error liberando terminal");
+        return res.json();
+    }
+
+    async forceUnlockTerminal(terminalId) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/${terminalId}/force_unlock`, {
+            method: 'POST'
+        });
+        if (!res.ok) throw new Error("Error forzando liberación");
+        return res.json();
+    }
 }
 
 export const posService = new POSService();
