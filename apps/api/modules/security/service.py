@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
@@ -58,13 +58,25 @@ async def eliminar_perfil(db: AsyncSession, perfil_id: int) -> dict:
     if perfil.is_system:
         raise HTTPException(status_code=400, detail="No se pueden eliminar perfiles del sistema")
         
-    # Verificar si hay empleados vinculados
-    res_emp = await db.execute(select(models.Employee).where(models.Employee.profile_id == perfil_id))
-    if res_emp.scalar_one_or_none():
+    # Verificar si hay empleados ACTIVOS vinculados
+    res_emp_activos = await db.execute(
+        select(models.Employee).where(
+            models.Employee.profile_id == perfil_id,
+            models.Employee.is_active == True
+        )
+    )
+    if res_emp_activos.scalar_one_or_none():
         raise HTTPException(
             status_code=400, 
-            detail="No se puede eliminar el perfil porque tiene empleados vinculados. Reasigne a los empleados primero."
+            detail="No se puede eliminar el perfil porque tiene empleados activos vinculados. Desactívelos o reasígnelos primero."
         )
+
+    # Desvincular empleados inactivos antes de borrar el perfil
+    await db.execute(
+        update(models.Employee)
+        .where(models.Employee.profile_id == perfil_id)
+        .values(profile_id=None)
+    )
 
     await db.delete(perfil)
     await db.commit()

@@ -42,6 +42,8 @@ class TicketResponse(TicketBase):
     cashed_by_id: Optional[int] = None
     captured_by: Optional[EmployeeResponse] = None
     cashed_by: Optional[EmployeeResponse] = None
+    captured_by_name: Optional[str] = None
+    cashed_by_name: Optional[str] = None
     terminal_id: Optional[str] = None
     created_at: datetime
     items: List[TicketItemResponse] = []

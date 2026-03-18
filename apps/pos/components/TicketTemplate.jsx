@@ -24,8 +24,12 @@ export const TicketTemplate = forwardRef(({ ticket, cart, total, payments }, ref
                 `}
             </style>
             
-            {/* Header Ultra Compacto */}
-            <div className="text-center font-bold text-[11px] uppercase">R de Rico</div>
+            {/* Header Ultra Compacto con Logo */}
+            <div className="flex flex-col items-center mb-1">
+                <img src="/assets/logo.png" alt="Logo" className="w-12 h-12 grayscale object-contain mb-1" />
+                <div className="text-center font-bold text-[11px] uppercase tracking-widest">R de Rico</div>
+            </div>
+            
             <div className="text-center text-[7.5px] mb-0.5">
                 {today} | CTA: {ticket?.account_num || '---'}
             </div>
@@ -35,13 +39,21 @@ export const TicketTemplate = forwardRef(({ ticket, cart, total, payments }, ref
             {/* Items Table - Espaciado Mínimo */}
             <table className="w-full mb-0.5">
                 <tbody>
-                    {cart.map((item, idx) => (
-                        <tr key={idx} className="align-top">
-                            <td className="w-5">{item.quantity}x</td>
-                            <td className="truncate max-w-[45mm]">{item.name}</td>
-                            <td className="text-right font-bold pl-1">${(item.price * item.quantity).toFixed(2)}</td>
-                        </tr>
-                    ))}
+                    {(ticket?.items || cart || []).map((item, idx) => {
+                        const name = item.product?.name || item.name || 'Articulo';
+                        const qty = item.quantity || 1;
+                        const price = item.unit_price || item.price || 0;
+                        return (
+                            <tr key={idx} className="align-top">
+                                <td className="w-5">{qty}x</td>
+                                <td className="max-w-[45mm]">
+                                    <div className="font-bold truncate">{name}</div>
+                                    <div className="text-[7.5px] italic text-gray-600">${price.toFixed(2)} c/u</div>
+                                </td>
+                                <td className="text-right font-bold pl-1 align-bottom">${(price * qty).toFixed(2)}</td>
+                            </tr>
+                        );
+                    })}
                 </tbody>
             </table>
  
@@ -50,26 +62,32 @@ export const TicketTemplate = forwardRef(({ ticket, cart, total, payments }, ref
             {/* Totals */}
             <div className="flex justify-between font-bold text-[10px] my-0.5">
                 <span>TOTAL</span>
-                <span>${total.toFixed(2)}</span>
+                <span>${(ticket?.total || total || 0).toFixed(2)}</span>
             </div>
  
             {/* Payment Details */}
             <div className="text-[7px]">
-                {payments?.length > 0 && payments.map((p, idx) => (
+                {(ticket?.payment_details || payments || []).length > 0 && (ticket?.payment_details || payments).map((p, idx) => (
                     <div key={idx} className="flex justify-between italic">
                         <span>{p.method}</span>
-                        <span>${p.amount.toFixed(2)}</span>
+                        <span>${(p.amount || 0).toFixed(2)}</span>
                     </div>
                 ))}
             </div>
  
-            {/* Auditoría de Responsables - Ultra Slim */}
-            <div className="mt-1 pt-0.5 border-t border-dotted border-black text-[6.5px] uppercase font-bold">
+            {/* Auditoría de Responsables */}
+            <div className="mt-2 pt-1 border-t border-dotted border-black text-[7px] space-y-0.5 uppercase">
                 <div className="flex justify-between">
-                    <span>CAP/COB:</span>
-                    <span className="truncate ml-1">
-                        {ticket?.captured_by?.name?.split(' ')[0] || 'SIS'} / {ticket?.cashed_by?.name?.split(' ')[0] || 'ADM'}
-                    </span>
+                    <span className="font-bold">CAPTURÓ:</span>
+                    <span className="truncate ml-2">{ticket?.captured_by?.name || 'SISTEMA'}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="font-bold">COBRÓ:</span>
+                    <span className="truncate ml-2">{ticket?.cashed_by?.name || 'SISTEMA/AUTO'}</span>
+                </div>
+                <div className="flex justify-between text-[6px] italic">
+                    <span>Terminal:</span>
+                    <span>{ticket?.terminal_id || 'T1'}</span>
                 </div>
             </div>
  

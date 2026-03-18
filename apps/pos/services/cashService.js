@@ -1,4 +1,5 @@
-const API_BASE = 'http://localhost:3001/api/v1';
+import { CONFIG } from '../config';
+const API_BASE = CONFIG.API_BASE_URL;
 
 /**
  * Servicio de gestión de caja del turno.

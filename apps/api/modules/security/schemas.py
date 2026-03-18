@@ -20,7 +20,7 @@ class ProfileUpdate(BaseModel):
 class ProfileResponse(BaseModel):
     id: int
     name: str
-    description: Optional[str]
+    description: Optional[str] = None
     permissions: Dict[str, Any]
     is_system: bool
     model_config = ConfigDict(from_attributes=True)

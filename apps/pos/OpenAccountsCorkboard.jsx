@@ -81,16 +81,16 @@ export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose }
                             <div className="text-[#3d2b1f]">
                                 <div className="flex justify-between items-start mb-4">
                                     <span className="text-5xl font-black font-mono">#{acc.id.slice(-2)}</span>
-                                    <span className="text-xs font-black bg-black/5 px-2 py-1 rounded-md uppercase tracking-widest opacity-40">{acc.terminal}</span>
+                                    <span className="text-sm font-black bg-black/5 px-2 py-1 rounded-md uppercase tracking-widest opacity-60">{acc.terminal}</span>
                                 </div>
                                 <h4 className="text-lg font-black uppercase tracking-tight leading-tight mb-2 opacity-35">
                                     {acc.clientName || 'Cliente General'}
                                 </h4>
-                                <div className="space-y-1 opacity-35">
-                                    <p className="text-[10px] font-bold italic uppercase flex items-center gap-2">
-                                        👤 {acc.cashierName}
+                                <div className="space-y-1 opacity-50">
+                                    <p className="text-sm font-black uppercase flex items-center gap-2" title="Colaborador que capturó los productos">
+                                        📝 {acc.capturedByName}
                                     </p>
-                                    <p className="text-[10px] font-bold italic uppercase flex items-center gap-2">
+                                    <p className="text-sm font-bold italic uppercase flex items-center gap-2">
                                         🕒 {new Date(acc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </p>
                                 </div>

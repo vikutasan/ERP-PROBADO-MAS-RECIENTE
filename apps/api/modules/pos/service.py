@@ -5,6 +5,7 @@ from sqlalchemy import delete
 from fastapi import HTTPException
 from . import models, schemas
 from modules.catalog.models import Product
+from modules.security.models import Employee, SecurityProfile
 
 class POSService:
     async def create_session(self, db: AsyncSession, session: schemas.TerminalSessionCreate):
@@ -57,9 +58,21 @@ class POSService:
             db_ticket.payment_details = ticket.payment_details
             db_ticket.cash_session_id = ticket.cash_session_id
             
+            print(f"DEBUG START: Ticket {ticket.account_num}")
+            print(f"DEBUG Payload: capturer_id={ticket.captured_by_id}, casher_id={ticket.cashed_by_id}")
+            print(f"DEBUG DB Before: capturer_id={db_ticket.captured_by_id}, casher_id={db_ticket.cashed_by_id}")
+
             # Si se está cobrando ahora, registrar quién lo hizo
             if ticket.status == "PAID" and ticket.cashed_by_id:
                 db_ticket.cashed_by_id = ticket.cashed_by_id
+                print(f"DEBUG: Setting cashed_by_id to {ticket.cashed_by_id}")
+            
+            # Registrar quién lo captura.
+            if ticket.captured_by_id:
+                db_ticket.captured_by_id = ticket.captured_by_id
+                print(f"DEBUG: Respecting payload captured_by_id={ticket.captured_by_id}")
+            
+            print(f"DEBUG DB After Update: capturer_id={db_ticket.captured_by_id}, casher_id={db_ticket.cashed_by_id}")
             
             # Eliminamos items anteriores para reemplazarlos
             await db.execute(
@@ -89,21 +102,28 @@ class POSService:
             
         await db.commit()
         
-        # Recuperar el ticket con todas las relaciones cargadas para la respuesta
+        # Respuesta final con relaciones cargadas SIN lazy loading
         result = await db.execute(
             select(models.Ticket)
             .options(
-                selectinload(models.Ticket.items)
-                .selectinload(models.TicketItem.product)
-                .selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
                 selectinload(models.Ticket.session),
-                selectinload(models.Ticket.captured_by),
-                selectinload(models.Ticket.cashed_by)
+                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
             )
             .where(models.Ticket.id == db_ticket.id)
         )
         ticket_obj = result.scalar_one()
         ticket_obj.terminal_id = ticket_obj.session.terminal_id
+        
+        # Poblar nombres planos para el frontend
+        ticket_obj.captured_by_name = ticket_obj.captured_by.name if ticket_obj.captured_by else "SISTEMA"
+        ticket_obj.cashed_by_name = ticket_obj.cashed_by.name if ticket_obj.cashed_by else "SISTEMA/AUTO"
+        
+        print(f"!!! RETURNING TICKET: {ticket_obj.account_num}")
+        print(f"!!! Capturer: {ticket_obj.captured_by_name} (ID: {ticket_obj.captured_by_id})")
+        print(f"!!! Casher: {ticket_obj.cashed_by_name} (ID: {ticket_obj.cashed_by_id})")
+        
         return ticket_obj
     async def get_open_tickets(self, db: AsyncSession):
         result = await db.execute(
@@ -113,8 +133,8 @@ class POSService:
                 .selectinload(models.TicketItem.product)
                 .selectinload(Product.category),
                 selectinload(models.Ticket.session),
-                selectinload(models.Ticket.captured_by),
-                selectinload(models.Ticket.cashed_by)
+                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
             )
             .where(models.Ticket.status == "OPEN")
             .where(models.Ticket.total > 0)
@@ -123,6 +143,8 @@ class POSService:
         tickets = result.scalars().all()
         for t in tickets:
             t.terminal_id = t.session.terminal_id
+            t.captured_by_name = t.captured_by.name if t.captured_by else "SISTEMA"
+            t.cashed_by_name = t.cashed_by.name if t.cashed_by else "SISTEMA/AUTO"
         return tickets
 
     async def get_tickets(self, db: AsyncSession, terminal_id: str = None, status: str = None, search: str = None, limit: int = 100):
@@ -131,8 +153,8 @@ class POSService:
             .selectinload(models.TicketItem.product)
             .selectinload(Product.category),
             selectinload(models.Ticket.session),
-            selectinload(models.Ticket.captured_by),
-            selectinload(models.Ticket.cashed_by)
+            selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+            selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
         )
         
         if terminal_id:
@@ -149,6 +171,8 @@ class POSService:
         tickets = result.scalars().all()
         for t in tickets:
             t.terminal_id = t.session.terminal_id
+            t.captured_by_name = t.captured_by.name if t.captured_by else "SISTEMA"
+            t.cashed_by_name = t.cashed_by.name if t.cashed_by else "SISTEMA/AUTO"
         return tickets
 
     async def reserve_ticket(self, db: AsyncSession, terminal_id: str):
@@ -161,10 +185,9 @@ class POSService:
         result = await db.execute(
             select(models.Ticket)
             .options(
-                selectinload(models.Ticket.items)
-                .selectinload(models.TicketItem.product)
-                .selectinload(Product.category),
-                selectinload(models.Ticket.session)
+                selectinload(models.Ticket.session),
+                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
             )
             .where(models.Ticket.session_id == session.id)
             .where(models.Ticket.status == "OPEN")
@@ -173,11 +196,16 @@ class POSService:
         tickets = result.scalars().all()
         for t in tickets:
             if len(t.items) == 0:
+                # Limpiar rastro de auditoría previo por seguridad
+                t.captured_by_id = None
+                t.cashed_by_id = None
+                t.payment_details = None
                 t.terminal_id = session.terminal_id
+                await db.commit()
                 return t
 
         # 2. Reclamar nuevo ID consecutivo
-        temp_num = f"TEMP_{uuid.uuid4().hex[:8]}"
+        temp_num = f"TEMP_{uuid.uuid4().hex[:4]}"
         db_ticket = models.Ticket(
             account_num=temp_num,
             session_id=session.id,
@@ -188,18 +216,18 @@ class POSService:
         await db.flush()
         
         db_ticket.account_num = f"V{db_ticket.id:04d}"
+        ticket_id = db_ticket.id
         await db.commit()
         
         # Recuperar completo para la serialización Pydantic
         result = await db.execute(
             select(models.Ticket)
             .options(
-                selectinload(models.Ticket.items)
-                .selectinload(models.TicketItem.product)
-                .selectinload(Product.category),
-                selectinload(models.Ticket.session)
+                selectinload(models.Ticket.session),
+                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
             )
-            .where(models.Ticket.id == db_ticket.id)
+            .where(models.Ticket.id == ticket_id)
         )
         ticket_obj = result.scalar_one()
         ticket_obj.terminal_id = session.terminal_id

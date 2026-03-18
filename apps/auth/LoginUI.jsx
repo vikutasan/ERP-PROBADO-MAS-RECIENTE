@@ -25,7 +25,8 @@ export const LoginUI = ({ onLogin }) => {
             onLogin({ 
                 id: userData.id,
                 role: userData.role,
-                name: userData.name
+                name: userData.name,
+                permissions: userData.profile?.permissions || {}
             });
         } catch (err) {
             setError("Clave de acceso incorrecta");

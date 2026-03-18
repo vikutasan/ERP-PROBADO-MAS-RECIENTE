@@ -57,12 +57,14 @@ export const ExperimentCenterUI = () => {
     const [userName, setUserName] = useState('');
     const [userId, setUserId] = useState(null);
     const [activeModule, setActiveModule] = useState('overview');
+    const [userPermissions, setUserPermissions] = useState({});
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     const handleLogin = (user) => {
         setUserRole(user.role);
         setUserName(user.name || '');
         setUserId(user.id);
+        setUserPermissions(user.permissions || {});
         setIsAuthenticated(true);
     };
 
@@ -87,8 +89,19 @@ export const ExperimentCenterUI = () => {
     ];
 
 
-    // Filtrado inteligente por rol
-    const visibleModules = allModules.filter(mod => mod.access.includes(userRole));
+    // Filtrado inteligente por rol y permisos granulares
+    const visibleModules = allModules.filter(mod => {
+        if (userRole === 'ADMIN') return true;
+        
+        // Si el usuario tiene una configuración de permisos granulares (objeto no vacío),
+        // esa es la fuente de verdad absoluta para este usuario.
+        if (userPermissions && Object.keys(userPermissions).length > 0) {
+            return userPermissions[mod.id] === 'full';
+        }
+        
+        // Solo si no hay permisos granulares cargados, usamos la lógica de roles legacy.
+        return mod.access.includes(userRole);
+    });
 
 
     const mockData = {
