@@ -6,6 +6,8 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
     const [paymentMethod, setPaymentMethod] = useState('EFECTIVO');
     const [cardType, setCardType] = useState('DEBITO'); // DEBITO, CREDITO, QR
     const [isLiquidado, setIsLiquidado] = useState(false);
+    const [editingPaymentId, setEditingPaymentId] = useState(null);
+    const [tempEditValue, setTempEditValue] = useState('');
     
     const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
     const pendingAmount = Math.max(0, total - totalPaid);
@@ -25,7 +27,7 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
         const newPayment = {
             method: paymentMethod,
-            amount: Math.min(amount, pendingAmount + change), // No abonar más del total si es efectivo, el resto es cambio
+            amount: Math.min(amount, pendingAmount + change), 
             displayAmount: amount,
             type: paymentMethod === 'TARJETA' ? cardType : null,
             id: Date.now()
@@ -50,21 +52,46 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
     const handleDeletePayment = (id) => {
         if (isLiquidado) return;
         setPayments(payments.filter(p => p.id !== id));
+        if (editingPaymentId === id) setEditingPaymentId(null);
+    };
+
+    const handleStartEdit = (p) => {
+        if (isLiquidado) return;
+        setEditingPaymentId(p.id);
+        setTempEditValue(p.amount.toString());
+    };
+
+    const handleSaveEdit = (id) => {
+        const newVal = parseFloat(tempEditValue);
+        if (isNaN(newVal) || newVal < 0) {
+            setEditingPaymentId(null);
+            return;
+        }
+
+        setPayments(payments.map(p => {
+            if (p.id === id) {
+                const realReceived = p.received || p.amount;
+                const newAbono = Math.min(newVal, realReceived);
+                return {
+                    ...p,
+                    amount: newAbono,
+                    cambio: Math.max(0, realReceived - newAbono)
+                };
+            }
+            return p;
+        }));
+        setEditingPaymentId(null);
     };
 
     const handleFinalize = async () => {
         if (isLiquidado) return;
         
-        // Calcular pagos finales localmente (sin depender del state de React)
         let finalPayments = [...payments];
         const entered = parseFloat(receivedAmount) || 0;
         const currentPending = Math.max(0, total - finalPayments.reduce((s, p) => s + p.amount, 0));
         
-        // Si hay monto ingresado y saldo pendiente, agregarlo a los pagos
         if (currentPending > 0 && entered > 0) {
-            const realAbono = paymentMethod === 'EFECTIVO' 
-                ? Math.min(entered, currentPending) 
-                : Math.min(entered, currentPending);
+            const realAbono = Math.min(entered, currentPending);
             finalPayments = [...finalPayments, {
                 method: paymentMethod,
                 amount: realAbono,
@@ -90,7 +117,6 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
             alert('Aún queda saldo pendiente por cubrir.');
         }
     };
-
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
@@ -153,8 +179,8 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
                         {/* Input Area */}
                         <div className="space-y-4">
-                            <div className="bg-white text-black p-4 rounded-2xl text-4xl font-black text-right shadow-inner min-h-[70px] flex flex-col justify-center">
-                                <span className="text-[8px] absolute top-[-2px] left-3 font-black uppercase text-gray-400">Importe a Recibir</span>
+                            <div className="bg-white text-black p-4 rounded-2xl text-4xl font-black text-right shadow-inner min-h-[70px] flex flex-col justify-center relative">
+                                <span className="text-[8px] absolute top-2 left-3 font-black uppercase text-gray-400">Importe a Recibir</span>
                                 {receivedAmount ? `$${receivedAmount}` : '$0.00'}
                             </div>
 
@@ -221,9 +247,32 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                                                     <span className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Recibo</span>
                                                     <span className="text-[14px] font-black text-white/80 font-mono">${p.received.toFixed(2)}</span>
                                                 </div>
-                                                <div className="flex items-center gap-2 justify-end w-full mt-2">
+                                                <div className="flex items-center gap-2 justify-end w-full mt-2 group/edit">
                                                     <span className="text-[11px] font-black text-[#c1d72e] uppercase tracking-tighter">Abona</span>
-                                                    <span className="text-3xl font-black text-[#c1d72e] font-mono tracking-tight">${p.amount.toFixed(2)}</span>
+                                                    {editingPaymentId === p.id ? (
+                                                        <input 
+                                                            type="number"
+                                                            autoFocus
+                                                            className="w-28 bg-white/10 border border-[#c1d72e] text-2xl font-black text-[#c1d72e] font-mono rounded px-2 outline-none"
+                                                            value={tempEditValue}
+                                                            onChange={(e) => setTempEditValue(e.target.value)}
+                                                            onBlur={() => handleSaveEdit(p.id)}
+                                                            onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(p.id)}
+                                                        />
+                                                    ) : (
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-3xl font-black text-[#c1d72e] font-mono tracking-tight">${p.amount.toFixed(2)}</span>
+                                                            {!isLiquidado && (
+                                                                <button 
+                                                                    onClick={() => handleStartEdit(p)}
+                                                                    className="p-1.5 opacity-0 group-hover/edit:opacity-100 text-white/40 hover:text-[#c1d72e] transition-all"
+                                                                    title="Editar abono"
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-2 justify-end w-full mt-2">
                                                     <span className="text-[10px] font-black text-orange-500 uppercase tracking-tighter">Cambio</span>
