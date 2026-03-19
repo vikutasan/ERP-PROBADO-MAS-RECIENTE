@@ -239,7 +239,7 @@ export const ExperimentCenterUI = () => {
                                 <RetailVisionPOS 
                                     initialCategories={categories} 
                                     initialProducts={REAL_PRODUCTS}
-                                    currentUser={{ id: userId, name: userName, role: userRole }}
+                                    currentUser={{ id: userId, name: userName, role: userRole, permissions: userPermissions }}
                                     onForceLogout={() => setIsAuthenticated(false)}
                                 />
                             </div>

@@ -38,25 +38,34 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                                         isCashRegister: isOccupied.is_cash_register
                                     });
 
-                                    // 1. Caso: Terminal de CAJA (Solo ADMIN puede liberar si es la caja principal o tiene sesión)
+                                    // 1. Caso: Terminal de CAJA (Granular: Solo con permiso especial)
                                     const isCashTerminal = t.id === 'CAJA' || isOccupied.is_cash_register === true;
+                                    const hasCashForcePermission = currentUser?.permissions?.pos_force_cash_unlock === 'full';
 
-                                    if (isCashTerminal && !isAdmin) {
+                                    if (isCashTerminal && !hasCashForcePermission) {
                                         setDeniedModal({
-                                            title: "SEGURIDAD FINANCIERA",
-                                            message: "Esta terminal es una CAJA o tiene un turno activo.\n\nPor seguridad, SOLO UN ADMINISTRADOR puede forzar su liberación."
+                                            title: "SISTEMA DE SEGURIDAD FINANCIERA",
+                                            message: "Esta terminal es una CAJA activa.\n\nPor seguridad extrema, el desbloqueo forzado de cajas está RESTRINGIDO en tu perfil actual."
                                         });
                                         return;
                                     }
 
-                                    // 2. Caso: Terminal de venta normal o Usuario con permisos
-                                    if (isAdmin || hasUnlockPermission) {
+                                    // 2. Caso: Terminal de venta normal o Usuario con permisos (Normal o Especial si es Caja)
+                                    if (isAdmin || hasUnlockPermission || (isCashTerminal && hasCashForcePermission)) {
                                         setUnlockingTerminal({ 
                                             id: t.id, 
                                             occupier: isOccupied.occupier_name, 
                                             is_cash: isOccupied.is_cash_register 
                                         });
                                     } else {
+                                        // DEBUG: Mostrar por qué se deniega acceso
+                                        console.warn("Access Denied Details:", {
+                                            role: userRole,
+                                            permissions: currentUser?.permissions,
+                                            hasKey: !!currentUser?.permissions?.pos_force_unlock,
+                                            keyValue: currentUser?.permissions?.pos_force_unlock
+                                        });
+
                                         setDeniedModal({
                                             title: "PERMISOS INSUFICIENTES",
                                             message: `Esta terminal está ocupada por ${isOccupied.occupier_name}.\n\nPara liberarla, solicita el apoyo de tu Gerente o Administrador.`
@@ -159,9 +168,20 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                         <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
                         <div className="text-6xl mb-4 relative z-10">❌</div>
                         <h2 className="text-xl font-black uppercase text-red-500 mb-3 relative z-10">{deniedModal.title}</h2>
-                        <p className="text-xs font-bold text-gray-400 mb-8 relative z-10 whitespace-pre-wrap leading-relaxed">
+                        <p className="text-xs font-bold text-gray-400 mb-4 relative z-10 whitespace-pre-wrap leading-relaxed">
                             {deniedModal.message}
                         </p>
+
+                        {/* Debug Info para Soporte Técnico (Solo visible si no es admin y falla) */}
+                        {currentUser?.role !== 'ADMIN' && (
+                            <div className="bg-black/40 p-4 rounded-2xl mb-6 text-[8px] font-mono text-gray-600 text-left border border-white/5 relative z-10">
+                                <p className="mb-1 text-orange-500/50 uppercase font-black tracking-widest">Diagnostic Info:</p>
+                                <p>Role: {currentUser?.role}</p>
+                                <p>Unlock Perm: {String(currentUser?.permissions?.pos_force_unlock)}</p>
+                                <p>Permissions Keys: {Object.keys(currentUser?.permissions || {}).join(', ')}</p>
+                            </div>
+                        )}
+
                         <div className="flex justify-center relative z-10">
                             <button 
                                 onClick={() => setDeniedModal(null)}

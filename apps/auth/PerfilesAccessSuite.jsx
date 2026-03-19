@@ -5,6 +5,7 @@ const API_BASE = `http://${window.location.hostname}:3001/api/v1`;
 // Módulos del sistema para la matriz de permisos
 const SYSTEM_MODULES = [
     { id: 'pos_force_unlock', name: 'Desbloqueo de Terminales', icon: '🔓' },
+    { id: 'pos_force_cash_unlock', name: 'Forzar Desbloqueo de Caja', icon: '💰🔐' },
     { id: 'pos_retail', name: 'Punto de Venta IA', icon: '🛒' },
     { id: 'inventory', name: 'Gestión de Productos', icon: '📦' },
     { id: 'warehouse', name: 'Gestión de Almacenes', icon: '🏬' },

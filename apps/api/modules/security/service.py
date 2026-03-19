@@ -178,11 +178,23 @@ async def validar_pin(db: AsyncSession, pin: str) -> schemas.PINValidateResponse
     if not empleado:
         raise HTTPException(status_code=401, detail="PIN incorrecto o empleado inactivo")
 
+    # Serialización manual para evitar errores de lazy loading (MissingGreenlet)
+    perfil_data = None
+    if empleado.profile:
+        perfil_data = {
+            "id": empleado.profile.id,
+            "name": empleado.profile.name,
+            "description": empleado.profile.description,
+            "permissions": empleado.profile.permissions,
+            "is_system": empleado.profile.is_system,
+            "employee_count": 0 # No es necesario el conteo para el login
+        }
+
     return schemas.PINValidateResponse(
         id=empleado.id,
         name=empleado.name,
         role=empleado.profile.name if empleado.profile else empleado.role,
-        profile=empleado.profile
+        profile=perfil_data
     )
 
 
