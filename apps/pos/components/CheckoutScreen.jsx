@@ -32,11 +32,15 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
         };
 
         if (paymentMethod === 'EFECTIVO') {
-            // El efectivo siempre liquida o abona. Si hay cambio, el abono físico es el total pendiente.
             const realAbono = Math.min(amount, pendingAmount);
-            setPayments([...payments, { ...newPayment, amount: realAbono }]);
+            const cambioEntregado = Math.max(0, amount - realAbono);
+            setPayments([...payments, { 
+                ...newPayment, 
+                amount: realAbono,
+                received: amount,
+                cambio: cambioEntregado
+            }]);
         } else {
-            // Tarjeta no suele tener cambio en el ERP
             setPayments([...payments, { ...newPayment, amount: Math.min(amount, pendingAmount) }]);
         }
         
@@ -206,7 +210,24 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                                                 ✕
                                             </button>
                                         )}
-                                        <span className="text-sm font-black text-[#c1d72e] font-mono leading-none">+${p.amount.toFixed(2)}</span>
+                                        {p.method === 'EFECTIVO' ? (
+                                            <div className="flex flex-col items-end leading-[1.1]">
+                                                <div className="flex items-center gap-1.5 justify-end w-full">
+                                                    <span className="text-[7.5px] font-black text-gray-500 uppercase tracking-tighter">Recibo</span>
+                                                    <span className="text-[10px] font-black text-white/60 font-mono">${p.received.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 justify-end w-full mt-0.5">
+                                                    <span className="text-[8px] font-black text-[#c1d72e] uppercase tracking-tighter">Se Abona</span>
+                                                    <span className="text-sm font-black text-[#c1d72e] font-mono">${p.amount.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 justify-end w-full mt-0.5">
+                                                    <span className="text-[7.5px] font-black text-orange-500 uppercase tracking-tighter">Cambio</span>
+                                                    <span className="text-[10px] font-black text-orange-400 font-mono">${p.cambio.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="text-sm font-black text-[#c1d72e] font-mono leading-none">+${p.amount.toFixed(2)}</span>
+                                        )}
                                     </div>
                                 </div>
                             ))}
