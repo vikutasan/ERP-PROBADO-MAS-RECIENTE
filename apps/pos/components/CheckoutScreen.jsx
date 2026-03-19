@@ -191,19 +191,23 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
                         <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
                             {payments.map(p => (
-                                <div key={p.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center group relative overflow-hidden">
-                                    <button 
-                                        onClick={() => handleDeletePayment(p.id)}
-                                        className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-[12px] text-white hover:text-red-500 active:text-red-500 active:scale-95 transition-all"
-                                        title="Eliminar abono"
-                                    >
-                                        ✕
-                                    </button>
+                                <div key={p.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center group relative overflow-hidden animate-in slide-in-from-right-4 duration-300">
                                     <div>
                                         <p className="text-[9px] font-black uppercase text-white/90 tracking-tighter">{p.method} {p.type && `(${p.type})`}</p>
                                         <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Procesado</p>
                                     </div>
-                                    <span className="text-sm font-black text-[#c1d72e] font-mono">+${p.amount.toFixed(2)}</span>
+                                    <div className="flex flex-col items-end gap-1">
+                                        {!isLiquidado && (
+                                            <button 
+                                                onClick={() => handleDeletePayment(p.id)}
+                                                className="w-5 h-5 flex items-center justify-center text-[10px] text-white/40 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                                                title="Eliminar abono"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                        <span className="text-sm font-black text-[#c1d72e] font-mono leading-none">+${p.amount.toFixed(2)}</span>
+                                    </div>
                                 </div>
                             ))}
                             {payments.length === 0 && (
