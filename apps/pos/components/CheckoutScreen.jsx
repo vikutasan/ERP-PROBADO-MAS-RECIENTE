@@ -165,10 +165,13 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                                 <button 
                                     disabled={!receivedAmount || pendingAmount <= 0 || isLiquidado}
                                     onClick={handleAddPayment}
-                                    className={`w-24 rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-xl active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-50' : 'bg-[#c1d72e] text-black hover:bg-[#d4e157]'}`}
+                                    className={`w-24 rounded-xl flex flex-col items-center justify-center gap-1 transition-all shadow-xl active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-50' : 'bg-[#c1d72e] text-black hover:bg-[#d4e157]'}`}
                                 >
                                     <span className="text-xl">➕</span>
-                                    <span className="[writing-mode:vertical-lr] text-[10px] font-black uppercase tracking-widest leading-none">Abonar Pago</span>
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-[10px] font-black uppercase tracking-tighter leading-none">Abonar</span>
+                                        <span className="text-[10px] font-black uppercase tracking-tighter leading-none">Pago</span>
+                                    </div>
                                 </button>
                             </div>
                         </div>
