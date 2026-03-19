@@ -3,6 +3,7 @@ import { OpenAccountsCorkboard } from './OpenAccountsCorkboard';
 import { posService } from './services/POSService';
 import { useCart } from './hooks/useCart';
 import { useVision } from './hooks/useVision';
+import { useTerminalLocking } from './hooks/useTerminalLocking';
 import { CONFIG } from './config';
 
 // Sub-componentes
@@ -35,10 +36,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const [originalCapturer, setOriginalCapturer] = useState(null);
     const printRef = React.useRef();
 
-    // --- Estado de OcupaciÃ³n de Terminales ---
-    const [terminalStatuses, setTerminalStatuses] = useState({});
-
-    const [forceLogoutModal, setForceLogoutModal] = useState(false);
+    // --- Estado de Ocupación de Terminales (Custom Hook) ---
+    const { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal } = useTerminalLocking(selectedTerminal, currentUser);
 
     // --- Estado del Gestor de Caja ---
     const [isCashEnabled, setIsCashEnabled] = useState(false);
@@ -58,55 +57,6 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const { cart, setCart, total, addToCart, updateQuantity, removeFromCart, clearCart } = useCart(PRODUCTS);
     const { isScanning, setIsScanning } = useVision();
 
-    // --- Efectos de OcupaciÃ³n ---
-    // Polling en pantalla principal para ver quiÃ©n ocupa las terminales
-    useEffect(() => {
-        let interval;
-        const fetchStatuses = async () => {
-            if (!selectedTerminal) {
-                try {
-                    const data = await posService.getTerminalsStatus();
-                    setTerminalStatuses(data);
-                } catch (e) {
-                    console.error("Error fetching terminal status", e);
-                }
-            }
-        };
-        fetchStatuses();
-        interval = setInterval(fetchStatuses, 3000); // Polling cada 3 segs
-        return () => clearInterval(interval);
-    }, [selectedTerminal]);
-
-    // Polling de Auto-ExpulsiÃ³n: verifica si un Admin rompiÃ³ nuestro bloqueo
-    useEffect(() => {
-        if (!selectedTerminal || forceLogoutModal) return;
-        
-        const checkMyLock = async () => {
-            try {
-                const data = await posService.getTerminalsStatus();
-                // Si la terminal no aparece en la vida del candado, o el dueÃ±o no soy yo...
-                const myStatus = data[selectedTerminal];
-                if (!myStatus || myStatus.occupier_id !== currentUser?.id) {
-                    setForceLogoutModal(true);
-                }
-            } catch (e) {
-                console.error("Polling lock error", e);
-            }
-        };
-        
-        const intervalId = setInterval(checkMyLock, 10000); // Checa cada 10 segs
-        return () => clearInterval(intervalId);
-    }, [selectedTerminal, currentUser, forceLogoutModal]);
-
-    // Limpieza al desmontar: liberar terminal si el usuario cierra sesiÃ³n o cierra la pestaÃ±a
-    useEffect(() => {
-        return () => {
-            if (selectedTerminal && currentUser?.id) {
-                // Al desmontarse el componente (o cambiar modal), intentamos liberar la terminal
-                posService.unlockTerminal(selectedTerminal, currentUser.id).catch(e => console.warn("Auto-unlock en limpieza fallÃ³", e));
-            }
-        };
-    }, [selectedTerminal, currentUser]);
 
     // --- Efectos de Carga ---
     useEffect(() => {
