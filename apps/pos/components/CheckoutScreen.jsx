@@ -219,7 +219,7 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                                                     <span className="text-[10px] font-black text-white/60 font-mono">${p.received.toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 justify-end w-full mt-0.5">
-                                                    <span className="text-[8px] font-black text-[#c1d72e] uppercase tracking-tighter">Se Abona</span>
+                                                    <span className="text-[8px] font-black text-[#c1d72e] uppercase tracking-tighter">Abona</span>
                                                     <span className="text-sm font-black text-[#c1d72e] font-mono">${p.amount.toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 justify-end w-full mt-0.5">
