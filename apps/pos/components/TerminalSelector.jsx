@@ -23,22 +23,29 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                             key={t.id} 
                             onClick={async () => {
                                 if (lockedByOther) {
-                                    // Comprobación de roles: permitimos ADMIN y MANAGER
-                                    const canForce = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER' || currentUser?.role === 'GERENTE';
+                                    const isAdmin = currentUser?.role === 'ADMIN';
+                                    const isManager = currentUser?.role === 'MANAGER' || currentUser?.role === 'GERENTE';
                                     
-                                    if (isOccupied.is_cash_register && !canForce) {
+                                    // 1. Caso: Terminal con CAJA abierta (Solo ADMIN puede liberar)
+                                    if (isOccupied.is_cash_register && !isAdmin) {
                                         setDeniedModal({
-                                            title: "ACCESO DENEGADO",
-                                            message: `La terminal '${t.name}' tiene un turno de CAJA abierto.\nDebido a la responsabilidad del dinero, NO SE PUEDE forzar la liberación hasta que el cajero haga el Corte de Caja.`
+                                            title: "SEGURIDAD FINANCIERA",
+                                            message: "Esta terminal tiene un turno de CAJA activo.\n\nPor seguridad, SOLO UN ADMINISTRADOR puede forzar la liberación de una caja. Solicite ayuda al dueño o administrador central."
                                         });
                                         return;
                                     }
-                                    if (canForce) {
-                                        setUnlockingTerminal({ id: t.id, occupier: isOccupied.occupier_name, is_cash: isOccupied.is_cash_register });
+
+                                    // 2. Caso: Terminal de venta normal o Usuario con permisos (Admin o Manager)
+                                    if (isAdmin || isManager) {
+                                        setUnlockingTerminal({ 
+                                            id: t.id, 
+                                            occupier: isOccupied.occupier_name, 
+                                            is_cash: isOccupied.is_cash_register 
+                                        });
                                     } else {
                                         setDeniedModal({
-                                            title: "TERMINAL OCUPADA",
-                                            message: `Esta terminal está siendo ocupada por ${isOccupied.occupier_name}. Solicita a un Administrador que libere la estación si quedó atascada.`
+                                            title: "PERMISOS INSUFICIENTES",
+                                            message: `Esta terminal está ocupada por ${isOccupied.occupier_name}.\n\nPara liberarla, solicita el apoyo de tu Gerente o Administrador.`
                                         });
                                     }
                                     return;
