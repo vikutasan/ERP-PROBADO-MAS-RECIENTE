@@ -165,12 +165,12 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                                 <button 
                                     disabled={!receivedAmount || pendingAmount <= 0 || isLiquidado}
                                     onClick={handleAddPayment}
-                                    className={`w-24 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all shadow-2xl active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-zinc-800/50 text-zinc-400 border border-white/5 cursor-not-allowed' : 'bg-[#c1d72e] text-black hover:bg-white font-black shadow-[0_0_30px_rgba(193,215,46,0.3)]'}`}
+                                    className={`w-24 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 shadow-2xl active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-white/5 border-white/10 text-white/20 cursor-not-allowed' : 'bg-[#c1d72e]/20 border-[#c1d72e] text-[#c1d72e] hover:bg-[#c1d72e]/30 shadow-[#c1d72e]/20'}`}
                                 >
-                                    <span className={`text-2xl mb-1 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'opacity-20' : 'opacity-100'}`}>➕</span>
-                                    <div className="flex flex-col items-center">
-                                        <span className={`text-[11px] font-[1000] uppercase tracking-tighter leading-none ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'text-zinc-600' : 'text-black'}`}>Abonar</span>
-                                        <span className={`text-[11px] font-[1000] uppercase tracking-tighter leading-none ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'text-zinc-600' : 'text-black'}`}>Pago</span>
+                                    <span className={`text-2xl mb-0.5 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'opacity-10' : 'opacity-100'}`}>➕</span>
+                                    <div className="flex flex-col items-center leading-none">
+                                        <span className="text-[12px] font-black uppercase tracking-tighter">Abonar</span>
+                                        <span className="text-[12px] font-black uppercase tracking-tighter">Pago</span>
                                     </div>
                                 </button>
                             </div>
