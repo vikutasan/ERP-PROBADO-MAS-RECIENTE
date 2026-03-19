@@ -68,7 +68,8 @@ class POSService {
         const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/${terminalId}/lock`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ occupier_id: occupierId, occupier_name: occupierName })
+            body: JSON.stringify({ occupier_id: occupierId, occupier_name: occupierName }),
+            keepalive: true
         });
         if (!res.ok) {
             const error = await res.json();
@@ -81,7 +82,8 @@ class POSService {
         const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/${terminalId}/unlock`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ occupier_id: occupierId, occupier_name: "release" })
+            body: JSON.stringify({ occupier_id: occupierId, occupier_name: "release" }),
+            keepalive: true
         });
         if (!res.ok) throw new Error("Error liberando terminal");
         return res.json();
