@@ -4,6 +4,7 @@ const API_BASE = `http://${window.location.hostname}:3001/api/v1`;
 
 // Módulos del sistema para la matriz de permisos
 const SYSTEM_MODULES = [
+    { id: 'pos_force_unlock', name: 'Desbloqueo de Terminales', icon: '🔓' },
     { id: 'pos_retail', name: 'Punto de Venta IA', icon: '🛒' },
     { id: 'inventory', name: 'Gestión de Productos', icon: '📦' },
     { id: 'warehouse', name: 'Gestión de Almacenes', icon: '🏬' },
@@ -25,6 +26,7 @@ export const PerfilesAccessSuite = ({ onClose }) => {
     const [selectedProfile, setSelectedProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [statusModal, setStatusModal] = useState(null); // { type: 'success' | 'error' | 'confirm', title, message, onConfirm? }
     
     // Estado de edición
     const [editData, setEditData] = useState({
@@ -95,14 +97,26 @@ export const PerfilesAccessSuite = ({ onClose }) => {
                 const updatedProfile = await resp.json();
                 await fetchProfiles();
                 setSelectedProfile(updatedProfile); // Actualizar referencia local
-                alert("Cambios guardados con éxito");
+                setStatusModal({
+                    type: 'success',
+                    title: 'Sincronización Exitosa',
+                    message: 'Los privilegios del perfil han sido actualizados en la colmena central.'
+                });
             } else {
                 const errorData = await resp.json();
-                alert(`Error: ${errorData.detail || "No se pudo guardar el perfil"}`);
+                setStatusModal({
+                    type: 'error',
+                    title: 'Fallo de Seguridad',
+                    message: errorData.detail || "No se pudo guardar el perfil"
+                });
             }
         } catch (error) {
             console.error("Save error:", error);
-            alert("Error de conexión al guardar cambios");
+            setStatusModal({
+                type: 'error',
+                title: 'Error de Red',
+                message: 'No se pudo establecer conexión con el núcleo de seguridad.'
+            });
         } finally {
             setSaving(false);
         }
@@ -129,31 +143,63 @@ export const PerfilesAccessSuite = ({ onClose }) => {
             }
         } catch (error) {
             console.error("Create error:", error);
-            alert("Error al crear perfil");
+            setStatusModal({
+                type: 'error',
+                title: 'Error de Creación',
+                message: 'No se pudo generar el nuevo perfil de seguridad.'
+            });
         }
     };
 
-    const handleDeleteProfile = async (id) => {
-        if (!window.confirm("¿Está seguro de que desea eliminar este perfil? Esta acción no se puede deshacer.")) return;
-        
-        try {
-            const resp = await fetch(`${API_BASE}/security/profiles/${id}`, {
-                method: 'DELETE'
+    const handleDeleteProfile = async (profile) => {
+        // Bloqueo preventivo: Si hay empleados, no mostrar confirmación
+        if (profile.employee_count > 0) {
+            setStatusModal({
+                type: 'error',
+                title: 'Acción Restringida',
+                message: `Este perfil tiene ${profile.employee_count} colaborador(es) activo(s). Debe reasignarlos o desactivarlos antes de eliminar el perfil.`
             });
-
-            if (resp.ok) {
-                await fetchProfiles();
-                if (selectedProfile?.id === id) {
-                    setSelectedProfile(null);
-                }
-            } else {
-                const errorData = await resp.json();
-                alert(`Error: ${errorData.detail || "No se pudo eliminar el perfil"}`);
-            }
-        } catch (error) {
-            console.error("Delete error:", error);
-            alert("Error de conexión al eliminar perfil");
+            return;
         }
+
+        setStatusModal({
+            type: 'confirm',
+            title: 'Protocolo de Eliminación',
+            message: `¿Está seguro de que desea eliminar el perfil "${profile.name}"? Esta acción es irreversible.`,
+            onConfirm: async () => {
+                try {
+                    const resp = await fetch(`${API_BASE}/security/profiles/${profile.id}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (resp.ok) {
+                        await fetchProfiles();
+                        if (selectedProfile?.id === profile.id) {
+                            setSelectedProfile(null);
+                        }
+                        setStatusModal({
+                            type: 'success',
+                            title: 'Perfil Eliminado',
+                            message: 'El perfil ha sido purgado del sistema correctamente.'
+                        });
+                    } else {
+                        const errorData = await resp.json();
+                        setStatusModal({
+                            type: 'error',
+                            title: 'Acceso Denegado',
+                            message: errorData.detail || "No se pudo eliminar el perfil"
+                        });
+                    }
+                } catch (error) {
+                    console.error("Delete error:", error);
+                    setStatusModal({
+                        type: 'error',
+                        title: 'Error de Sistema',
+                        message: 'Fallo crítico al intentar eliminar el perfil.'
+                    });
+                }
+            }
+        });
     };
 
     return (
@@ -214,7 +260,7 @@ export const PerfilesAccessSuite = ({ onClose }) => {
                                         <button 
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                handleDeleteProfile(p.id);
+                                                handleDeleteProfile(p);
                                             }}
                                             className="opacity-0 group-hover:opacity-100 p-2 hover:bg-black/20 rounded-full transition-all text-white/40 hover:text-red-500"
                                             title="Eliminar Perfil"
@@ -305,6 +351,53 @@ export const PerfilesAccessSuite = ({ onClose }) => {
                     </footer>
                 </main>
             </div>
+
+            {/* Status Modal Premium */}
+            {statusModal && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setStatusModal(null)}></div>
+                    <div className="relative bg-[#0a0a0a] border border-white/10 p-8 rounded-[30px] shadow-2xl max-w-sm w-full text-center animate-in zoom-in-95 duration-500">
+                        <div className={`w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center text-3xl border ${
+                            statusModal.type === 'success' ? 'bg-[#c1d72e]/20 border-[#c1d72e] text-[#c1d72e]' :
+                            statusModal.type === 'error' ? 'bg-red-500/20 border-red-500 text-red-500' :
+                            'bg-orange-500/20 border-orange-500 text-orange-500'
+                        }`}>
+                            {statusModal.type === 'success' ? '✓' : statusModal.type === 'error' ? '✕' : '⚠'}
+                        </div>
+                        <h2 className="text-xl font-black uppercase italic tracking-tighter text-white mb-2">{statusModal.title}</h2>
+                        <p className="text-xs text-white/60 font-medium leading-relaxed mb-8">{statusModal.message}</p>
+                        
+                        <div className="flex gap-3 justify-center">
+                            {statusModal.type === 'confirm' ? (
+                                <>
+                                    <button 
+                                        onClick={() => setStatusModal(null)}
+                                        className="px-6 py-2 rounded-full border border-white/10 text-white/40 font-black uppercase tracking-widest text-[9px] hover:bg-white/5 transition-all"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            statusModal.onConfirm();
+                                            // El modal se cierra tras la acción o se actualiza
+                                        }}
+                                        className="px-8 py-2 rounded-full bg-red-500 text-white font-black uppercase tracking-widest text-[9px] hover:scale-105 transition-all shadow-lg shadow-red-500/20"
+                                    >
+                                        Confirmar
+                                    </button>
+                                </>
+                            ) : (
+                                <button 
+                                    onClick={() => setStatusModal(null)}
+                                    className="px-10 py-2 rounded-full bg-[#c1d72e] text-black font-black uppercase tracking-widest text-[9px] hover:scale-105 transition-all shadow-lg shadow-[#c1d72e]/20"
+                                >
+                                    Entendido
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 4px; }

@@ -23,6 +23,7 @@ class ProfileResponse(BaseModel):
     description: Optional[str] = None
     permissions: Dict[str, Any]
     is_system: bool
+    employee_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 

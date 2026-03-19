@@ -9,9 +9,23 @@ from . import models, schemas
 # --- Gestión de Perfiles ---
 
 async def listar_perfiles(db: AsyncSession) -> list[models.SecurityProfile]:
-    """Obtiene todos los perfiles registrados."""
+    """Obtiene todos los perfiles registrados con su conteo de empleados activos."""
     resultado = await db.execute(select(models.SecurityProfile))
-    return resultado.scalars().all()
+    perfiles = resultado.scalars().all()
+    
+    # Calcular conteo de empleados para cada perfil
+    for p in perfiles:
+        res_count = await db.execute(
+            select(models.Employee).where(
+                models.Employee.profile_id == p.id,
+                models.Employee.is_active == True
+            )
+        )
+        # Nota: scalars().all() + len() es ineficiente pero simple para este volumen. 
+        # En prod real usaríamos func.count()
+        p.employee_count = len(res_count.scalars().all())
+        
+    return perfiles
 
 
 async def crear_perfil(db: AsyncSession, datos: schemas.ProfileCreate) -> models.SecurityProfile:
@@ -20,6 +34,7 @@ async def crear_perfil(db: AsyncSession, datos: schemas.ProfileCreate) -> models
     db.add(perfil)
     await db.commit()
     await db.refresh(perfil)
+    perfil.employee_count = 0
     return perfil
 
 
@@ -45,6 +60,16 @@ async def actualizar_perfil(
         
     await db.commit()
     await db.refresh(perfil)
+    
+    # Re-calcular conteo para la respuesta
+    res_count = await db.execute(
+        select(models.Employee).where(
+            models.Employee.profile_id == perfil.id,
+            models.Employee.is_active == True
+        )
+    )
+    perfil.employee_count = len(res_count.scalars().all())
+    
     return perfil
 
 

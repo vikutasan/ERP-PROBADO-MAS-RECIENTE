@@ -25,14 +25,16 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                                 if (lockedByOther) {
                                     const userRole = (currentUser?.role || '').toString().trim().toUpperCase();
                                     const isAdmin = userRole === 'ADMIN';
-                                    const isManager = userRole === 'MANAGER' || userRole === 'GERENTE';
+                                    
+                                    // Nuevo: Verificar permiso dinámico desde el perfil
+                                    const hasUnlockPermission = currentUser?.permissions?.pos_force_unlock === 'full';
                                     
                                     console.log("Terminal Unlock Attempt:", {
                                         terminal: t.id,
                                         user: currentUser?.name,
                                         role: userRole,
                                         isAdmin,
-                                        isManager,
+                                        hasUnlockPermission,
                                         isCashRegister: isOccupied.is_cash_register
                                     });
 
@@ -42,13 +44,13 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                                     if (isCashTerminal && !isAdmin) {
                                         setDeniedModal({
                                             title: "SEGURIDAD FINANCIERA",
-                                            message: "Esta terminal es una CAJA o tiene un turno activo.\n\nPor seguridad, SOLO UN ADMINISTRADOR puede forzar su liberación. Los Gerentes solo pueden liberar terminales de Venta (T2-T6)."
+                                            message: "Esta terminal es una CAJA o tiene un turno activo.\n\nPor seguridad, SOLO UN ADMINISTRADOR puede forzar su liberación."
                                         });
                                         return;
                                     }
 
-                                    // 2. Caso: Terminal de venta normal o Usuario con permisos (Admin o Manager)
-                                    if (isAdmin || isManager) {
+                                    // 2. Caso: Terminal de venta normal o Usuario con permisos
+                                    if (isAdmin || hasUnlockPermission) {
                                         setUnlockingTerminal({ 
                                             id: t.id, 
                                             occupier: isOccupied.occupier_name, 
