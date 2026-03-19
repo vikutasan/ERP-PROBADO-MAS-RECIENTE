@@ -23,14 +23,26 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                             key={t.id} 
                             onClick={async () => {
                                 if (lockedByOther) {
-                                    const isAdmin = currentUser?.role === 'ADMIN';
-                                    const isManager = currentUser?.role === 'MANAGER' || currentUser?.role === 'GERENTE';
+                                    const userRole = (currentUser?.role || '').toString().trim().toUpperCase();
+                                    const isAdmin = userRole === 'ADMIN';
+                                    const isManager = userRole === 'MANAGER' || userRole === 'GERENTE';
                                     
-                                    // 1. Caso: Terminal con CAJA abierta (Solo ADMIN puede liberar)
-                                    if (isOccupied.is_cash_register && !isAdmin) {
+                                    console.log("Terminal Unlock Attempt:", {
+                                        terminal: t.id,
+                                        user: currentUser?.name,
+                                        role: userRole,
+                                        isAdmin,
+                                        isManager,
+                                        isCashRegister: isOccupied.is_cash_register
+                                    });
+
+                                    // 1. Caso: Terminal de CAJA (Solo ADMIN puede liberar si es la caja principal o tiene sesión)
+                                    const isCashTerminal = t.id === 'CAJA' || isOccupied.is_cash_register === true;
+
+                                    if (isCashTerminal && !isAdmin) {
                                         setDeniedModal({
                                             title: "SEGURIDAD FINANCIERA",
-                                            message: "Esta terminal tiene un turno de CAJA activo.\n\nPor seguridad, SOLO UN ADMINISTRADOR puede forzar la liberación de una caja. Solicite ayuda al dueño o administrador central."
+                                            message: "Esta terminal es una CAJA o tiene un turno activo.\n\nPor seguridad, SOLO UN ADMINISTRADOR puede forzar su liberación. Los Gerentes solo pueden liberar terminales de Venta (T2-T6)."
                                         });
                                         return;
                                     }
