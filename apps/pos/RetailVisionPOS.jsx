@@ -14,57 +14,8 @@ import { TicketTemplate } from './components/TicketTemplate';
 import { GestorDeCaja } from './components/GestorDeCaja';
 import { cashService } from './services/cashService';
 
-const INITIAL_CATEGORIES = [
-    { name: "1.-EMPAQUE Y PAN BLANCO", icon: "🥖", visionEnabled: true },
-    { name: "2.-A - B", icon: "🍪", visionEnabled: true },
-    { name: "3.-C - D", icon: "🍩", visionEnabled: true },
-    { name: "4.-E - K", icon: "🥐", visionEnabled: true },
-    { name: "5.-L - M", icon: "🧁", visionEnabled: true },
-    { name: "6.-N - P", icon: "🥧", visionEnabled: true },
-    { name: "7.-R - S", icon: "🍰", visionEnabled: true },
-    { name: "8.-T - Z", icon: "🥨", visionEnabled: true },
-    { name: "17.-ROSCA DE REYES", icon: "👑", visionEnabled: true },
-    { name: "9.-LACTEOS", icon: "🥛", visionEnabled: false },
-    { name: "10.-SOBRE PEDIDO", icon: "🎂", visionEnabled: false },
-    { name: "11.-ESPORADICOS", icon: "🎁", visionEnabled: false },
-    { name: "12.-CAFES Y CHOCOLATES", icon: "☕", visionEnabled: false },
-    { name: "13.-SOUVENIRS", icon: "🛍️", visionEnabled: false },
-    { name: "14.-HELADOS", icon: "🍨", visionEnabled: false },
-    { name: "15.-PALETAS", icon: "🍭", visionEnabled: false },
-    { name: "16.-AGUAS Y MALTEADAS", icon: "🥤", visionEnabled: false }
-];
-
-const getProductEmoji = (p) => {
-    const name = (p.name || '').toUpperCase();
-    const categoryObj = p.category;
-    const catName = (typeof categoryObj === 'string' ? categoryObj : (categoryObj?.name || 'GENERAL')).toUpperCase();
-    
-    if (catName.includes('LACTEOS') || name.includes('LECHE')) return '🥛';
-    if (name.includes('CAF')) return '☕';
-    if (name.includes('AGUA')) return '💧';
-    if (name.includes('HELADO')) return '🍨';
-    if (name.includes('PALETA')) return '🍭';
-    if (name.includes('MALTEADA')) return '🥤';
-    if (name.includes('PASTEL') || name.includes('TARTA')) return '🍰';
-    if (name.includes('ROSCA')) return '👑';
-    if (name.includes('DONA')) return '🍩';
-    if (name.includes('CONCHA')) return '🥯';
-    if (name.includes('BOLILLO') || name.includes('TELERA') || name.includes('BAGUETTE')) return '🥖';
-    if (name.includes('CROISSANT') || name.includes('CUERNITO')) return '🥐';
-    if (name.includes('GALLETA') || name.includes('POLVORON')) return '🍪';
-    if (name.includes('MUFFIN') || name.includes('MAGDALENA')) return '🧁';
-    if (catName.includes('PAN')) return '🍞';
-    return '📦';
-};
-
-const terminals = [
-    { id: 'T6', name: 'Terminal 6', icon: '🖥️' },
-    { id: 'T5', name: 'Terminal 5', icon: '🖥️' },
-    { id: 'T4', name: 'Terminal 4', icon: '🖥️' },
-    { id: 'T3', name: 'Terminal 3', icon: '🖥️' },
-    { id: 'T2', name: 'Terminal 2', icon: '🖥️' },
-    { id: 'CAJA', name: 'CAJA', icon: '/assets/pos_register.png' }
-];
+import { INITIAL_CATEGORIES, getProductEmoji, terminals } from './utils/posConstants';
+import { generateTicketHTML } from './utils/ticketGenerator';
 
 export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     // --- Estado ---
@@ -83,7 +34,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const [originalCapturer, setOriginalCapturer] = useState(null);
     const printRef = React.useRef();
 
-    // --- Estado de Ocupación de Terminales ---
+    // --- Estado de OcupaciÃ³n de Terminales ---
     const [terminalStatuses, setTerminalStatuses] = useState({});
     const [unlockingTerminal, setUnlockingTerminal] = useState(null);
     const [deniedModal, setDeniedModal] = useState(null);
@@ -107,8 +58,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const { cart, setCart, total, addToCart, updateQuantity, removeFromCart, clearCart } = useCart(PRODUCTS);
     const { isScanning, setIsScanning } = useVision();
 
-    // --- Efectos de Ocupación ---
-    // Polling en pantalla principal para ver quién ocupa las terminales
+    // --- Efectos de OcupaciÃ³n ---
+    // Polling en pantalla principal para ver quiÃ©n ocupa las terminales
     useEffect(() => {
         let interval;
         const fetchStatuses = async () => {
@@ -126,14 +77,14 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         return () => clearInterval(interval);
     }, [selectedTerminal]);
 
-    // Polling de Auto-Expulsión: verifica si un Admin rompió nuestro bloqueo
+    // Polling de Auto-ExpulsiÃ³n: verifica si un Admin rompiÃ³ nuestro bloqueo
     useEffect(() => {
         if (!selectedTerminal || forceLogoutModal) return;
         
         const checkMyLock = async () => {
             try {
                 const data = await posService.getTerminalsStatus();
-                // Si la terminal no aparece en la vida del candado, o el dueño no soy yo...
+                // Si la terminal no aparece en la vida del candado, o el dueÃ±o no soy yo...
                 const myStatus = data[selectedTerminal];
                 if (!myStatus || myStatus.occupier_id !== currentUser?.id) {
                     setForceLogoutModal(true);
@@ -147,12 +98,12 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         return () => clearInterval(intervalId);
     }, [selectedTerminal, currentUser, forceLogoutModal]);
 
-    // Limpieza al desmontar: liberar terminal si el usuario cierra sesión o cierra la pestaña
+    // Limpieza al desmontar: liberar terminal si el usuario cierra sesiÃ³n o cierra la pestaÃ±a
     useEffect(() => {
         return () => {
             if (selectedTerminal && currentUser?.id) {
                 // Al desmontarse el componente (o cambiar modal), intentamos liberar la terminal
-                posService.unlockTerminal(selectedTerminal, currentUser.id).catch(e => console.warn("Auto-unlock en limpieza falló", e));
+                posService.unlockTerminal(selectedTerminal, currentUser.id).catch(e => console.warn("Auto-unlock en limpieza fallÃ³", e));
             }
         };
     }, [selectedTerminal, currentUser]);
@@ -166,7 +117,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     .filter(c => c.name !== 'TODOS')
                     .map(c => {
                         const original = INITIAL_CATEGORIES.find(ic => ic.name === c.name);
-                        return { ...c, icon: c.icon || (original ? original.icon : '📦') };
+                        return { ...c, icon: c.icon || (original ? original.icon : 'ðŸ“¦') };
                     });
                 setCategories(normalized);
                 if (normalized.length > 0 && !activeCategory) setActiveCategory(normalized[0].name);
@@ -207,7 +158,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         if (selectedTerminal) {
             if (!currentAccountNum) generateNewAccountNum();
             
-            // Verificar si hay sesión de caja activa para habilitar el cobro inmediatamente
+            // Verificar si hay sesiÃ³n de caja activa para habilitar el cobro inmediatamente
             const syncCashState = async () => {
                 try {
                     const session = await cashService.obtenerSesionActiva(selectedTerminal);
@@ -249,134 +200,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         return () => window.removeEventListener('keydown', handleKeys);
     }, [PRODUCTS, addToCart]);
 
-    // --- Lógica de Negocio (Tickets) ---
-    const generateTicketHTML = (ticketData) => {
-        const dateObj = new Date(ticketData.created_at || new Date());
-        const printDate = dateObj.toLocaleDateString();
-        const printTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
-        const items = ticketData.items || [];
-        const payments = ticketData.payment_details || [];
-        
-        let totalQty = 0; // Calculador de total artículos
-
-        // Obtener nombres e IDs de todas las fuentes posibles
-        const capturedBy = ticketData.captured_by_name || ticketData.captured_by?.name || 'SISTEMA';
-        const cashedBy = ticketData.cashed_by_name || ticketData.cashed_by?.name || 'SISTEMA/AUTO';
-        
-        let itemsHtml = '';
-        items.forEach(item => {
-            const name = item.product?.name || item.name || 'Articulo';
-            const qty = item.quantity || 1;
-            totalQty += qty; 
-            const price = item.unit_price || item.price || 0;
-            itemsHtml += `
-                <tr>
-                    <td style="width: 28px; font-weight: bold;">${qty}x</td>
-                    <td>
-                        <div style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${name}</div>
-                        <div style="font-size: 12pt; font-weight: 900; color: #000;">$${price.toFixed(2)} c/u</div>
-                    </td>
-                    <td style="text-align: right; font-weight: bold; white-space: nowrap;">$${(price * qty).toFixed(2)}</td>
-                </tr>
-            `;
-        });
-
-        let paymentsHtml = '';
-        payments.forEach(p => {
-            paymentsHtml += `
-                <div style="display: flex; justify-content: space-between;">
-                    <span>${p.method}</span>
-                    <span>$${(p.amount || 0).toFixed(2)}</span>
-                </div>
-            `;
-        });
-
-        return `
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    @page { size: 80mm auto; margin: 0; }
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    html, body {
-                        font-family: 'Courier New', Courier, monospace;
-                        width: 76mm;
-                        padding: 0mm 1mm;
-                        font-size: 14pt;
-                        line-height: 1.35;
-                        color: #000;
-                        background: #fff;
-                    }
-                    .line { border-top: 1px dashed #000; margin: 4px 0; }
-                    .row { display: flex; justify-content: space-between; align-items: center; }
-                    .col { display: flex; flex-direction: column; }
-                    .bold { font-weight: bold; }
-                    .upper { text-transform: uppercase; }
-                    .center { text-align: center; }
-                    .small { font-size: 11pt; }
-                    .xsmall { font-size: 10pt; font-style: italic; }
-                    table { width: 100%; border-collapse: collapse; font-size: 13pt; }
-                    td { padding: 3px 0; vertical-align: top; }
-                    .audit { font-size: 11pt; text-transform: uppercase; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000; }
-                </style>
-            </head>
-            <body>
-                <!-- ENCABEZADO: logo grande con pixel rendering nativo + nombre -->
-                <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 2px; margin-bottom: 4px;">
-                    <img src="/assets/logo.png" alt="Logo" style="width: 50px; height: 50px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0;" />
-                    <div class="bold upper" style="font-size: 18pt; letter-spacing: 1px; line-height: 1;">R DE RICO</div>
-                </div>
-
-                <!-- Fecha, Hora y Número de cuenta al CENTRO  -->
-                <div class="col bold center" style="font-size: 12pt; margin-bottom: 4px; align-items: center;">
-                    <div>CTA: ${ticketData.account_num || '---'}</div>
-                    <div style="font-weight: normal; margin-top: 2px;">${printDate} ${printTime}</div>
-                </div>
-
-                <div class="line"></div>
-
-                <table style="margin: 4px 0;">
-                    <tbody>${itemsHtml}</tbody>
-                </table>
-
-                <div class="line"></div>
-
-                <div class="row bold" style="font-size: 11pt; margin: 4px 0;">
-                    <span>TOTAL DE ARTICULOS:</span>
-                    <span>${totalQty}</span>
-                </div>
-
-                <div class="line"></div>
-
-                <div class="row bold" style="font-size: 16pt; margin: 4px 0;">
-                    <span>TOTAL</span>
-                    <span>$${(ticketData.total || 0).toFixed(2)}</span>
-                </div>
-
-                <div style="margin: 4px 0; font-size: 12pt;">
-                    ${paymentsHtml}
-                </div>
-
-                <div class="audit">
-                    <div class="row bold"><span>CAPTURÓ:</span><span>${capturedBy}</span></div>
-                    <div class="row bold"><span>COBRÓ:</span><span>${cashedBy}</span></div>
-                    <div class="row xsmall"><span>Terminal:</span><span>${ticketData.terminal_id || 'T1'}</span></div>
-                </div>
-
-                <div class="center xsmall" style="margin-top: 6px; padding-top: 3px; border-top: 1px solid #ccc;">
-                    *** Disfrute su pan ***
-                </div>
-            </body>
-            </html>
-        `;
-    };
+    // --- LÃ³gica de Negocio (Tickets) ---
 
     const handlePrintTicket = (ticketData = null) => {
         // PRIORIDAD DE DATOS:
         // 1. Datos pasados por argumento (ticket oficial del servidor)
-        // 2. Datos guardados en el último ticket impreso (printTicketData)
-        // 3. Fallback a estado local (solo si no hay nada más)
+        // 2. Datos guardados en el Ãºltimo ticket impreso (printTicketData)
+        // 3. Fallback a estado local (solo si no hay nada mÃ¡s)
         const activeTicket = ticketData || printTicketData || { 
             account_num: currentAccountNum,
             items: cart.map(i => ({ product: { name: i.name }, quantity: i.quantity, unit_price: i.price })),
@@ -442,7 +272,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             };
 
             const savedTicket = await posService.createTicket(payload);
-            setPrintTicketData(savedTicket); // Actualizar datos de impresión con la respuesta oficial del servidor
+            setPrintTicketData(savedTicket); // Actualizar datos de impresiÃ³n con la respuesta oficial del servidor
             
             if (finalizeUI) {
                 if (status === 'PAID') {
@@ -476,7 +306,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }));
         setCart(recovered);
         setCurrentAccountNum(account.accountNum);
-        // Guardar también quién la capturó originalmente para que persista en el ticket final
+        // Guardar tambiÃ©n quiÃ©n la capturÃ³ originalmente para que persista en el ticket final
         // Limpiamos los datos para asegurar que tengan el formato correcto
         const capturer = account.capturedById ? { 
             id: account.capturedById, 
@@ -503,7 +333,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     capturedById: t.captured_by_id,
                     capturedByName: t.captured_by_name || t.captured_by?.name || 'Desconocido',
                     cashierName: t.cashed_by_name || t.cashed_by?.name || '---',
-                    clientName: 'Público General'
+                    clientName: 'PÃºblico General'
                 })));
             }).catch(console.error);
         }
@@ -533,7 +363,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                     if (isOccupied.is_cash_register && !(currentUser?.role === 'ADMIN' || currentUser?.role === 'GERENTE')) {
                                         setDeniedModal({
                                             title: "ACCESO DENEGADO",
-                                            message: `La terminal '${t.name}' tiene un turno de CAJA abierto.\nDebido a la responsabilidad del dinero, NO SE PUEDE forzar la liberación hasta que el cajero haga el Corte de Caja.`
+                                            message: `La terminal '${t.name}' tiene un turno de CAJA abierto.\nDebido a la responsabilidad del dinero, NO SE PUEDE forzar la liberaciÃ³n hasta que el cajero haga el Corte de Caja.`
                                         });
                                         return;
                                     }
@@ -542,7 +372,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                     } else {
                                         setDeniedModal({
                                             title: "TERMINAL OCUPADA",
-                                            message: `Esta terminal está siendo ocupada por ${isOccupied.occupier_name}. Solicita a un Administrador que libere la estación si quedó atascada.`
+                                            message: `Esta terminal estÃ¡ siendo ocupada por ${isOccupied.occupier_name}. Solicita a un Administrador que libere la estaciÃ³n si quedÃ³ atascada.`
                                         });
                                     }
                                     return;
@@ -561,7 +391,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                 : 'p-10 gap-6 bg-black/20 hover:bg-orange-600 border-white/5 hover:border-orange-400 hover:scale-110'}`}>
                             
                             {lockedByOther ? (
-                                /* === CARD OCUPADA: diseño re-pensado === */
+                                /* === CARD OCUPADA: diseÃ±o re-pensado === */
                                 <div className="w-full flex flex-col relative">
                                     {/* Header con nombre de terminal */}
                                     <div className="bg-red-900/60 px-4 py-2 flex items-center justify-between">
@@ -572,9 +402,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                             {isOccupied.is_cash_register ? 'EN CAJA' : 'OCUPADA'}
                                         </span>
                                     </div>
-                                    {/* Cuerpo con cédula del ocupante */}
+                                    {/* Cuerpo con cÃ©dula del ocupante */}
                                     <div className="px-4 py-5 flex flex-col items-center gap-3">
-                                        <span className="text-5xl">🔒</span>
+                                        <span className="text-5xl">ðŸ”’</span>
                                         <div className="text-center">
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-1">En uso por</p>
                                             <p className="text-white font-black text-base uppercase leading-tight">
@@ -603,15 +433,15 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     )})}
                 </div>
                 
-                {/* Modal de Forzar Liberación */}
+                {/* Modal de Forzar LiberaciÃ³n */}
                 {unlockingTerminal && (
                     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
                         <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,100,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
                             <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
-                            <div className="text-6xl mb-4 relative z-10">⚠️</div>
+                            <div className="text-6xl mb-4 relative z-10">âš ï¸</div>
                             <h2 className="text-xl font-black uppercase text-white mb-2 relative z-10">FORZAR LIBERACION</h2>
                             <p className="text-sm font-bold text-gray-400 mb-6 relative z-10">
-                                La terminal está actualmente ocupada por <span className="text-orange-400">{unlockingTerminal.occupier}</span>.<br/><br/>¿Estás seguro que deseas romper su sesión y liberarla para el equipo?
+                                La terminal estÃ¡ actualmente ocupada por <span className="text-orange-400">{unlockingTerminal.occupier}</span>.<br/><br/>Â¿EstÃ¡s seguro que deseas romper su sesiÃ³n y liberarla para el equipo?
                             </p>
                             <div className="flex gap-4 relative z-10">
                                 <button 
@@ -633,7 +463,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                     }}
                                     className="flex-1 py-3 rounded-2xl bg-red-600/80 hover:bg-red-500 border border-red-500/50 font-black uppercase text-[10px] tracking-widest text-white shadow-lg transition-all shadow-red-500/20"
                                 >
-                                    SÍ, FORZAR
+                                    SÃ, FORZAR
                                 </button>
                             </div>
                         </div>
@@ -645,7 +475,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
                         <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,0,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
                             <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
-                            <div className="text-6xl mb-4 relative z-10">❌</div>
+                            <div className="text-6xl mb-4 relative z-10">âŒ</div>
                             <h2 className="text-xl font-black uppercase text-red-500 mb-3 relative z-10">{deniedModal.title}</h2>
                             <p className="text-xs font-bold text-gray-400 mb-8 relative z-10 whitespace-pre-wrap leading-relaxed">
                                 {deniedModal.message}
@@ -676,7 +506,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
         return (
             <button onClick={() => addToCart(product)} className="group relative bg-black hover:bg-[#c1d72e] p-3 rounded-[35px] border border-white/10 transition-all duration-500 flex flex-col items-center justify-between gap-2 hover:scale-105 active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:shadow-[#c1d72e]/20 h-full w-full">
-                {/* Imagen expandida con menos márgenes */}
+                {/* Imagen expandida con menos mÃ¡rgenes */}
                 <div className="w-full h-32 flex items-center justify-center mt-1">
                     {imgStatus === 'API_IMG' && (
                         <img 
@@ -788,7 +618,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                     {selectedTerminal === 'CAJA' ? 'Caja Central' : `Terminal ${selectedTerminal}`}
                                 </p>
                                 <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
-                                    Cambiar Estación
+                                    Cambiar EstaciÃ³n
                                 </p>
                             </div>
                         </button>
@@ -800,7 +630,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         </div>
                     </div>
                     <div className="w-1/3 flex justify-end gap-2">
-                        {/* Botón CAJA — uso infrecuente, estilo discreto */}
+                        {/* BotÃ³n CAJA â€” uso infrecuente, estilo discreto */}
                         <button
                             onClick={() => setShowGestorCaja(true)}
                             className="bg-black/60 border border-[#c1d72e]/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#c1d72e]/20 hover:border-[#c1d72e] transition-all shadow-xl"
@@ -809,12 +639,12 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                             <div className="text-left">
                                 <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">Caja</p>
                                 <p className={`text-[14px] font-black uppercase tracking-tighter leading-none ${isCashEnabled ? 'text-[#c1d72e]' : 'text-[#c1d72e]/60'}`}>
-                                    {isCashEnabled ? '● Activa' : '○ Habilitar'}
+                                    {isCashEnabled ? 'â— Activa' : 'â—‹ Habilitar'}
                                 </p>
                             </div>
                         </button>
 
-                        {/* Botón Pizarrón — uso frecuente, estilo prominente */}
+                        {/* BotÃ³n PizarrÃ³n â€” uso frecuente, estilo prominente */}
                         <button 
                             onClick={() => setShowCorkboard(true)} 
                             className="bg-[#2d1e13] border border-orange-900/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#3d2b1f] hover:border-orange-500/50 transition-all group shadow-xl"
@@ -926,15 +756,15 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
 
             {/* Contenedor Principal (Fin) */}
-            {/* Modal de Auto-Expulsión (Polling Remoto) */}
+            {/* Modal de Auto-ExpulsiÃ³n (Polling Remoto) */}
             {forceLogoutModal && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] animate-in fade-in zoom-in duration-500">
                     <div className="bg-gray-950 border border-red-500/30 p-12 rounded-[50px] shadow-[0_0_100px_rgba(255,0,0,0.3)] max-w-md w-full text-center relative overflow-hidden">
                         <div className="absolute -top-40 -left-40 w-80 h-80 bg-red-600/20 blur-[100px] rounded-full"></div>
-                        <div className="text-8xl mb-6 relative z-10 animate-pulse">🚨</div>
-                        <h2 className="text-3xl font-black uppercase text-red-500 mb-4 relative z-10 tracking-tighter">SESIÓN TERMINADA</h2>
+                        <div className="text-8xl mb-6 relative z-10 animate-pulse">ðŸš¨</div>
+                        <h2 className="text-3xl font-black uppercase text-red-500 mb-4 relative z-10 tracking-tighter">SESIÃ“N TERMINADA</h2>
                         <p className="text-sm font-bold text-gray-300 mb-10 relative z-10 leading-relaxed">
-                            Un Administrador ha forzado la liberación total de tu terminal.<br/><br/>
+                            Un Administrador ha forzado la liberaciÃ³n total de tu terminal.<br/><br/>
                             <span className="text-red-400">Has sido desconectado por seguridad.</span>
                         </p>
                         <div className="flex justify-center relative z-10">
