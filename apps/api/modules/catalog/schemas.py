@@ -20,6 +20,8 @@ class ProductBase(BaseModel):
     barcode: Optional[str] = None
     name: str
     price: float
+    image_url: Optional[str] = None
+    position: Optional[int] = None
     category_id: Optional[int] = None
     active: bool = True
 

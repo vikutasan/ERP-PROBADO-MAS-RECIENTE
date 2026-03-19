@@ -98,7 +98,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const PRODUCTS = useMemo(() => initialProducts.map(p => ({
         ...p,
         id: p.id, 
-        image: getProductEmoji(p),
+        image: p.image_url,
+        emoji: getProductEmoji(p),
+        hasRealImage: !!p.image_url,
         category: p.category ? (typeof p.category === 'string' ? p.category : p.category.name) : 'OTROS'
     })), [initialProducts]);
 
@@ -655,18 +657,28 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
     // --- Componentes Locales (Mantenidos para preservar Grid estable) ---
     const ProductCard = ({ product }) => {
-        const [imgStatus, setImgStatus] = useState('TRY_PNG'); // TRY_PNG, TRY_JPG, FALLBACK
+        const [imgStatus, setImgStatus] = useState(product.hasRealImage ? 'API_IMG' : 'TRY_PNG');
         const baseStaticUrl = CONFIG.API_BASE_URL.replace('/api/v1', '/static/catalog');
-        const pngUrl = `${baseStaticUrl}/Img1118_${product.sku}.png`;
-        const jpgUrl = `${baseStaticUrl}/Img1118_${product.sku}.jpg`;
+        const skuPngUrl = `${baseStaticUrl}/${product.sku}.png`;
+        const skuJpgUrl = `${baseStaticUrl}/${product.sku}.jpg`;
+        const legacyPng = `${baseStaticUrl}/Img1118_${product.sku}.png`;
+        const legacyJpg = `${baseStaticUrl}/Img1118_${product.sku}.jpg`;
 
         return (
             <button onClick={() => addToCart(product)} className="group relative bg-black hover:bg-[#c1d72e] p-3 rounded-[35px] border border-white/10 transition-all duration-500 flex flex-col items-center justify-between gap-2 hover:scale-105 active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:shadow-[#c1d72e]/20 h-full w-full">
                 {/* Imagen expandida con menos márgenes */}
                 <div className="w-full h-32 flex items-center justify-center mt-1">
+                    {imgStatus === 'API_IMG' && (
+                        <img 
+                            src={product.image} 
+                            alt={product.name} 
+                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
+                            onError={() => setImgStatus('TRY_PNG')}
+                        />
+                    )}
                     {imgStatus === 'TRY_PNG' && (
                         <img 
-                            src={pngUrl} 
+                            src={skuPngUrl} 
                             alt={product.name} 
                             className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
                             onError={() => setImgStatus('TRY_JPG')}
@@ -674,14 +686,30 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     )}
                     {imgStatus === 'TRY_JPG' && (
                         <img 
-                            src={jpgUrl} 
+                            src={skuJpgUrl} 
+                            alt={product.name} 
+                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
+                            onError={() => setImgStatus('LEGACY_PNG')}
+                        />
+                    )}
+                    {imgStatus === 'LEGACY_PNG' && (
+                        <img 
+                            src={legacyPng} 
+                            alt={product.name} 
+                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
+                            onError={() => setImgStatus('LEGACY_JPG')}
+                        />
+                    )}
+                    {imgStatus === 'LEGACY_JPG' && (
+                        <img 
+                            src={legacyJpg} 
                             alt={product.name} 
                             className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
                             onError={() => setImgStatus('FALLBACK')}
                         />
                     )}
                     {imgStatus === 'FALLBACK' && (
-                        <div className="text-6xl group-hover:scale-110 transition-transform">{product.image}</div>
+                        <div className="text-6xl group-hover:scale-110 transition-transform">{product.emoji}</div>
                     )}
                 </div>
                 
@@ -701,7 +729,14 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     };
 
     const ProductGrid = ({ category }) => {
-        const filtered = PRODUCTS.filter(p => p.category === category);
+        const filtered = PRODUCTS
+            .filter(p => p.category === category)
+            .sort((a, b) => {
+                const posA = a.position !== null && a.position !== undefined ? a.position : 9999;
+                const posB = b.position !== null && b.position !== undefined ? b.position : 9999;
+                if (posA !== posB) return posA - posB;
+                return a.name.localeCompare(b.name);
+            });
         const totalPages = Math.ceil(filtered.length / CONFIG.ITEMS_PER_PAGE);
         const paginated = filtered.slice((currentPage - 1) * CONFIG.ITEMS_PER_PAGE, currentPage * CONFIG.ITEMS_PER_PAGE);
 

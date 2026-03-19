@@ -20,6 +20,8 @@ class Product(Base):
     barcode = Column(String, unique=True, index=True, nullable=True)
     name = Column(String, index=True, nullable=False)
     price = Column(Float, nullable=False)
+    image_url = Column(String, nullable=True)
+    position = Column(Integer, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"))
     active = Column(Boolean, default=True)
 
