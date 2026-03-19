@@ -197,38 +197,44 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
                         <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
                             {payments.map(p => (
-                                <div key={p.id} className="bg-white/5 border border-white/10 p-6 rounded-[25px] flex justify-between items-center group relative overflow-hidden animate-in slide-in-from-right-4 duration-300">
-                                    <div>
-                                        <p className="text-[11px] font-black uppercase text-white/90 tracking-tighter">{p.method} {p.type && `(${p.type})`}</p>
-                                        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Procesado</p>
+                                <div key={p.id} className="bg-white/5 border border-white/10 p-8 rounded-[30px] flex justify-between items-center group relative overflow-hidden animate-in slide-in-from-right-4 duration-300">
+                                    <div className="flex flex-col gap-1">
+                                        <p className="text-[13px] font-black uppercase text-white tracking-tight">{p.method} {p.type && `(${p.type})`}</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-[#c1d72e]"></span>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Procesado</p>
+                                        </div>
                                     </div>
-                                    <div className="flex flex-col items-end gap-1.5">
+                                    <div className="flex flex-col items-end gap-2">
                                         {!isLiquidado && (
                                             <button 
                                                 onClick={() => handleDeletePayment(p.id)}
-                                                className="w-7 h-7 flex items-center justify-center text-[12px] text-white/40 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                                                className="w-10 h-10 flex items-center justify-center text-[16px] text-white/40 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
                                                 title="Eliminar abono"
                                             >
                                                 ✕
                                             </button>
                                         )}
                                         {p.method === 'EFECTIVO' ? (
-                                            <div className="flex flex-col items-end leading-[1]">
-                                                <div className="flex items-center gap-1.5 justify-end w-full">
-                                                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-tighter">Recibo</span>
-                                                    <span className="text-[12px] font-black text-white font-mono">${p.received.toFixed(2)}</span>
+                                            <div className="flex flex-col items-end leading-[1.2]">
+                                                <div className="flex items-center gap-2 justify-end w-full">
+                                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Recibo</span>
+                                                    <span className="text-[14px] font-black text-white/80 font-mono">${p.received.toFixed(2)}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5 justify-end w-full mt-1.5">
-                                                    <span className="text-[10px] font-black text-[#c1d72e] uppercase tracking-tighter">Abona</span>
-                                                    <span className="text-xl font-black text-[#c1d72e] font-mono">${p.amount.toFixed(2)}</span>
+                                                <div className="flex items-center gap-2 justify-end w-full mt-2">
+                                                    <span className="text-[11px] font-black text-[#c1d72e] uppercase tracking-tighter">Abona</span>
+                                                    <span className="text-3xl font-black text-[#c1d72e] font-mono tracking-tight">${p.amount.toFixed(2)}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5 justify-end w-full mt-1.5">
-                                                    <span className="text-[9px] font-black text-orange-500 uppercase tracking-tighter">Cambio</span>
-                                                    <span className="text-[12px] font-black text-orange-400 font-mono">${p.cambio.toFixed(2)}</span>
+                                                <div className="flex items-center gap-2 justify-end w-full mt-2">
+                                                    <span className="text-[10px] font-black text-orange-500 uppercase tracking-tighter">Cambio</span>
+                                                    <span className="text-[14px] font-black text-orange-400 font-mono">${p.cambio.toFixed(2)}</span>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <span className="text-xl font-black text-[#c1d72e] font-mono leading-none">+${p.amount.toFixed(2)}</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[11px] font-black text-[#c1d72e] uppercase tracking-tighter">Abona</span>
+                                                <span className="text-3xl font-black text-[#c1d72e] font-mono tracking-tight">${p.amount.toFixed(2)}</span>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
