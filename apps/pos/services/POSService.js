@@ -94,6 +94,15 @@ class POSService {
         if (!res.ok) throw new Error("Error forzando liberación");
         return res.json();
     }
+
+    async heartbeatTerminal(terminalId, occupierId) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/${terminalId}/heartbeat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ occupier_id: occupierId, occupier_name: "heartbeat" })
+        });
+        return res.ok;
+    }
 }
 
 export const posService = new POSService();

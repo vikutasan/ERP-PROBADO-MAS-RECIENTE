@@ -23,14 +23,17 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                             key={t.id} 
                             onClick={async () => {
                                 if (lockedByOther) {
-                                    if (isOccupied.is_cash_register && !(currentUser?.role === 'ADMIN' || currentUser?.role === 'GERENTE')) {
+                                    // Comprobación de roles: permitimos ADMIN y MANAGER
+                                    const canForce = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER' || currentUser?.role === 'GERENTE';
+                                    
+                                    if (isOccupied.is_cash_register && !canForce) {
                                         setDeniedModal({
                                             title: "ACCESO DENEGADO",
                                             message: `La terminal '${t.name}' tiene un turno de CAJA abierto.\nDebido a la responsabilidad del dinero, NO SE PUEDE forzar la liberación hasta que el cajero haga el Corte de Caja.`
                                         });
                                         return;
                                     }
-                                    if (currentUser?.role === 'ADMIN' || currentUser?.role === 'GERENTE') {
+                                    if (canForce) {
                                         setUnlockingTerminal({ id: t.id, occupier: isOccupied.occupier_name, is_cash: isOccupied.is_cash_register });
                                     } else {
                                         setDeniedModal({

@@ -1,24 +1,39 @@
-from typing import Dict, Optional
+from typing import Dict
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Diccionario en memoria: terminal_id -> info
 # Esto es seguro porque uvicorn corre con 1 solo worker.
 _locks: Dict[str, dict] = {}
+
+# TTL: los candados mueren automáticamente si no se renuevan
+LOCK_TTL_MINUTES = 5
 
 class LockInfo(BaseModel):
     occupier_id: int
     occupier_name: str
     locked_at: datetime
 
+def _purge_stale_locks():
+    """Elimina candados cuyo timestamp supere el TTL."""
+    now = datetime.utcnow()
+    stale = [tid for tid, info in _locks.items()
+             if now - info.get("locked_at", now) > timedelta(minutes=LOCK_TTL_MINUTES)]
+    for tid in stale:
+        print(f"TTL: Auto-liberando terminal {tid} (lock expirado)")
+        del _locks[tid]
+
 def get_all_locks() -> Dict[str, dict]:
+    _purge_stale_locks()
     return _locks
 
 def lock_terminal(terminal_id: str, occupier_id: int, occupier_name: str) -> bool:
+    _purge_stale_locks()
     if terminal_id in _locks:
         if _locks[terminal_id]["occupier_id"] == occupier_id:
-            return True # Ya la tiene bloqueada él mismo
-        return False # Está ocupada por alguien más
+            _locks[terminal_id]["locked_at"] = datetime.utcnow()  # Renueva TTL
+            return True
+        return False
     
     _locks[terminal_id] = {
         "occupier_id": occupier_id,
@@ -32,9 +47,17 @@ def unlock_terminal(terminal_id: str, occupier_id: int) -> bool:
         if _locks[terminal_id]["occupier_id"] == occupier_id:
             del _locks[terminal_id]
             return True
-        return False # No puede desbloquear la de otro (a menos que sea force)
+        return False
     return True
 
 def force_unlock(terminal_id: str):
     if terminal_id in _locks:
         del _locks[terminal_id]
+
+def heartbeat(terminal_id: str, occupier_id: int) -> bool:
+    """Renueva el timestamp del candado para evitar que expire por TTL."""
+    if terminal_id in _locks:
+        if _locks[terminal_id]["occupier_id"] == occupier_id:
+            _locks[terminal_id]["locked_at"] = datetime.utcnow()
+            return True
+    return False

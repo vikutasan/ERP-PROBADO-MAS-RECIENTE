@@ -11,7 +11,7 @@ class LockRequest(BaseModel):
     occupier_id: int
     occupier_name: str
 
-from .occupancy import get_all_locks, lock_terminal, unlock_terminal, force_unlock
+from .occupancy import get_all_locks, lock_terminal, unlock_terminal, force_unlock, heartbeat
 
 router = APIRouter()
 
@@ -77,17 +77,19 @@ async def get_terminals_status(db: AsyncSession = Depends(get_db)):
 
 @router.post("/terminals/{terminal_id}/lock")
 async def take_terminal_lock(terminal_id: str, req: LockRequest):
-    success = lock_terminal(terminal_id, req.occupier_id, req.occupier_name)
+    tid = terminal_id.strip()
+    success = lock_terminal(tid, req.occupier_id, req.occupier_name)
     if not success:
         raise HTTPException(status_code=400, detail="Terminal ocupada por otra persona.")
-    return {"status": "locked", "terminal_id": terminal_id}
+    return {"status": "locked", "terminal_id": tid}
 
 @router.post("/terminals/{terminal_id}/unlock")
 async def release_terminal_lock(terminal_id: str, req: LockRequest):
-    success = unlock_terminal(terminal_id, req.occupier_id)
+    tid = terminal_id.strip()
+    success = unlock_terminal(tid, req.occupier_id)
     if not success:
         raise HTTPException(status_code=403, detail="No tienes permiso para liberar esta terminal.")
-    return {"status": "unlocked", "terminal_id": terminal_id}
+    return {"status": "unlocked", "terminal_id": tid}
 
 @router.post("/terminals/{terminal_id}/force_unlock")
 async def force_terminal_unlock(terminal_id: str, db: AsyncSession = Depends(get_db)):
@@ -97,7 +99,8 @@ async def force_terminal_unlock(terminal_id: str, db: AsyncSession = Depends(get
     from datetime import datetime
     
     # 1. Limpiar bloqueo en memoria
-    force_unlock(terminal_id)
+    tid = terminal_id.strip()
+    force_unlock(tid)
     
     # 2. Forzar cierre de cualquier sesión de caja abierta en esta terminal
     # Usamos TRIM para manejar posibles espacios en blanco si es CHAR(N)
@@ -110,3 +113,10 @@ async def force_terminal_unlock(terminal_id: str, db: AsyncSession = Depends(get
     await db.commit()
     
     return {"status": "unlocked", "terminal_id": terminal_id}
+
+@router.post("/terminals/{terminal_id}/heartbeat")
+async def terminal_heartbeat(terminal_id: str, req: LockRequest):
+    success = heartbeat(terminal_id, req.occupier_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="No active lock found for this terminal/user.")
+    return {"status": "alive", "terminal_id": terminal_id}

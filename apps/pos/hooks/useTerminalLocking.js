@@ -59,5 +59,20 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
         };
     }, [selectedTerminal, currentUser]);
 
+    // Heartbeat: renueva el timestamp del candado cada 2 minutos para evitar que expire por TTL
+    useEffect(() => {
+        if (!selectedTerminal || !currentUser?.id) return;
+        
+        const sendHeartbeat = () => {
+            posService.heartbeatTerminal(selectedTerminal, currentUser.id)
+                .catch(e => console.warn("Heartbeat failed", e));
+        };
+
+        // Enviar heartbeat inmediatamente al seleccionar terminal
+        sendHeartbeat();
+        const intervalId = setInterval(sendHeartbeat, 120000); // Cada 2 minutos
+        return () => clearInterval(intervalId);
+    }, [selectedTerminal, currentUser]);
+
     return { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal };
 };
