@@ -57,18 +57,22 @@ async def get_terminals_status(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(CashSession).where(CashSession.status == "OPEN"))
     active_cash = result.scalars().all()
     
+    if active_cash:
+        print(f"DEBUG: Found {len(active_cash)} open cash sessions in DB: {[c.terminal_id for c in active_cash]}")
+    
     # Combinar locks efímeros en memoria y sesiones de caja reales (que persisten a reinicios)
     res = dict(locks)
     for c in active_cash:
-        if c.terminal_id not in res:
-            res[c.terminal_id] = {
+        tid = c.terminal_id.strip() if c.terminal_id else ""
+        if tid not in res:
+            res[tid] = {
                 "occupier_id": c.employee_id,
                 "occupier_name": c.employee_name,
                 "locked_at": c.opened_at,
                 "is_cash_register": True
             }
         else:
-            res[c.terminal_id]["is_cash_register"] = True
+            res[tid]["is_cash_register"] = True
     return res
 
 @router.post("/terminals/{terminal_id}/lock")
@@ -86,6 +90,23 @@ async def release_terminal_lock(terminal_id: str, req: LockRequest):
     return {"status": "unlocked", "terminal_id": terminal_id}
 
 @router.post("/terminals/{terminal_id}/force_unlock")
-async def force_terminal_unlock(terminal_id: str):
+async def force_terminal_unlock(terminal_id: str, db: AsyncSession = Depends(get_db)):
+    from .occupancy import force_unlock
+    from modules.cash.models import CashSession
+    from sqlalchemy import update
+    from datetime import datetime
+    
+    # 1. Limpiar bloqueo en memoria
     force_unlock(terminal_id)
+    
+    # 2. Forzar cierre de cualquier sesión de caja abierta en esta terminal
+    # Usamos TRIM para manejar posibles espacios en blanco si es CHAR(N)
+    from sqlalchemy import func
+    await db.execute(
+        update(CashSession)
+        .where(func.trim(CashSession.terminal_id) == terminal_id.strip(), CashSession.status == "OPEN")
+        .values(status="CLOSED", closed_at=datetime.utcnow())
+    )
+    await db.commit()
+    
     return {"status": "unlocked", "terminal_id": terminal_id}

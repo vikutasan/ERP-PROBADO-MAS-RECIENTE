@@ -147,6 +147,16 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         return () => clearInterval(intervalId);
     }, [selectedTerminal, currentUser, forceLogoutModal]);
 
+    // Limpieza al desmontar: liberar terminal si el usuario cierra sesión o cierra la pestaña
+    useEffect(() => {
+        return () => {
+            if (selectedTerminal && currentUser?.id) {
+                // Al desmontarse el componente (o cambiar modal), intentamos liberar la terminal
+                posService.unlockTerminal(selectedTerminal, currentUser.id).catch(e => console.warn("Auto-unlock en limpieza falló", e));
+            }
+        };
+    }, [selectedTerminal, currentUser]);
+
     // --- Efectos de Carga ---
     useEffect(() => {
         const loadInitialData = async () => {
@@ -520,7 +530,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                             key={t.id} 
                             onClick={async () => {
                                 if (lockedByOther) {
-                                    if (isOccupied.is_cash_register) {
+                                    if (isOccupied.is_cash_register && !(currentUser?.role === 'ADMIN' || currentUser?.role === 'GERENTE')) {
                                         setDeniedModal({
                                             title: "ACCESO DENEGADO",
                                             message: `La terminal '${t.name}' tiene un turno de CAJA abierto.\nDebido a la responsabilidad del dinero, NO SE PUEDE forzar la liberación hasta que el cajero haga el Corte de Caja.`
@@ -528,7 +538,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                         return;
                                     }
                                     if (currentUser?.role === 'ADMIN' || currentUser?.role === 'GERENTE') {
-                                        setUnlockingTerminal({ id: t.id, occupier: isOccupied.occupier_name });
+                                        setUnlockingTerminal({ id: t.id, occupier: isOccupied.occupier_name, is_cash: isOccupied.is_cash_register });
                                     } else {
                                         setDeniedModal({
                                             title: "TERMINAL OCUPADA",
