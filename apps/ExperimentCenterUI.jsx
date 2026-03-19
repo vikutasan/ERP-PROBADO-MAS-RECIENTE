@@ -240,6 +240,7 @@ export const ExperimentCenterUI = () => {
                                     initialCategories={categories} 
                                     initialProducts={REAL_PRODUCTS}
                                     currentUser={{ id: userId, name: userName, role: userRole }}
+                                    onForceLogout={() => setIsAuthenticated(false)}
                                 />
                             </div>
                         )}

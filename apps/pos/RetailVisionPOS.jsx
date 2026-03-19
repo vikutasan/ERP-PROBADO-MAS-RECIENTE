@@ -66,7 +66,7 @@ const terminals = [
     { id: 'CAJA', name: 'CAJA', icon: '/assets/pos_register.png' }
 ];
 
-export const RetailVisionPOS = ({ currentUser }) => {
+export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     // --- Estado ---
     const [selectedTerminal, setSelectedTerminal] = useState(null);
     const [showCorkboard, setShowCorkboard] = useState(false);
@@ -86,6 +86,8 @@ export const RetailVisionPOS = ({ currentUser }) => {
     // --- Estado de Ocupación de Terminales ---
     const [terminalStatuses, setTerminalStatuses] = useState({});
     const [unlockingTerminal, setUnlockingTerminal] = useState(null);
+    const [deniedModal, setDeniedModal] = useState(null);
+    const [forceLogoutModal, setForceLogoutModal] = useState(false);
 
     // --- Estado del Gestor de Caja ---
     const [isCashEnabled, setIsCashEnabled] = useState(false);
@@ -104,6 +106,7 @@ export const RetailVisionPOS = ({ currentUser }) => {
     const { isScanning, setIsScanning } = useVision();
 
     // --- Efectos de Ocupación ---
+    // Polling en pantalla principal para ver quién ocupa las terminales
     useEffect(() => {
         let interval;
         const fetchStatuses = async () => {
@@ -120,6 +123,27 @@ export const RetailVisionPOS = ({ currentUser }) => {
         interval = setInterval(fetchStatuses, 3000); // Polling cada 3 segs
         return () => clearInterval(interval);
     }, [selectedTerminal]);
+
+    // Polling de Auto-Expulsión: verifica si un Admin rompió nuestro bloqueo
+    useEffect(() => {
+        if (!selectedTerminal || forceLogoutModal) return;
+        
+        const checkMyLock = async () => {
+            try {
+                const data = await posService.getTerminalsStatus();
+                // Si la terminal no aparece en la vida del candado, o el dueño no soy yo...
+                const myStatus = data[selectedTerminal];
+                if (!myStatus || myStatus.occupier_id !== currentUser?.id) {
+                    setForceLogoutModal(true);
+                }
+            } catch (e) {
+                console.error("Polling lock error", e);
+            }
+        };
+        
+        const intervalId = setInterval(checkMyLock, 10000); // Checa cada 10 segs
+        return () => clearInterval(intervalId);
+    }, [selectedTerminal, currentUser, forceLogoutModal]);
 
     // --- Efectos de Carga ---
     useEffect(() => {
@@ -494,10 +518,20 @@ export const RetailVisionPOS = ({ currentUser }) => {
                             key={t.id} 
                             onClick={async () => {
                                 if (lockedByOther) {
+                                    if (isOccupied.is_cash_register) {
+                                        setDeniedModal({
+                                            title: "ACCESO DENEGADO",
+                                            message: `La terminal '${t.name}' tiene un turno de CAJA abierto.\nDebido a la responsabilidad del dinero, NO SE PUEDE forzar la liberación hasta que el cajero haga el Corte de Caja.`
+                                        });
+                                        return;
+                                    }
                                     if (currentUser?.role === 'ADMIN' || currentUser?.role === 'GERENTE') {
                                         setUnlockingTerminal({ id: t.id, occupier: isOccupied.occupier_name });
                                     } else {
-                                        alert(`Terminal ocupada por ${isOccupied.occupier_name}`);
+                                        setDeniedModal({
+                                            title: "TERMINAL OCUPADA",
+                                            message: `Esta terminal está siendo ocupada por ${isOccupied.occupier_name}. Solicita a un Administrador que libere la estación si quedó atascada.`
+                                        });
                                     }
                                     return;
                                 }
@@ -506,24 +540,53 @@ export const RetailVisionPOS = ({ currentUser }) => {
                                     await posService.lockTerminal(t.id, currentUser.id, currentUser.name);
                                     setSelectedTerminal(t.id);
                                 } catch (e) {
-                                    alert(e.message);
+                                    setDeniedModal({ title: "ERROR", message: e.message });
                                 }
                             }} 
-                            className={`group relative transition-all duration-500 p-10 rounded-[40px] border flex flex-col items-center gap-6 shadow-2xl 
-                            ${lockedByOther ? 'bg-red-900/40 border-red-500/50 cursor-not-allowed opacity-80' : 'bg-black/20 hover:bg-orange-600 border-white/5 hover:border-orange-400 hover:scale-110'}`}>
+                            className={`group relative transition-all duration-500 rounded-[40px] border flex flex-col items-center shadow-2xl overflow-hidden
+                            ${lockedByOther 
+                                ? 'cursor-not-allowed border-red-500/60 bg-[#1a0808]' 
+                                : 'p-10 gap-6 bg-black/20 hover:bg-orange-600 border-white/5 hover:border-orange-400 hover:scale-110'}`}>
                             
-                            <div className={`w-24 h-24 flex items-center justify-center rounded-3xl transition-colors ${lockedByOther ? 'bg-red-500/10' : 'bg-white/5 group-hover:bg-white/20'}`}>
-                                {lockedByOther ? <span className="text-4xl">🔒</span> : (t.icon.endsWith('.png') ? <img src={t.icon} alt={t.name} className="w-16 h-16 object-contain" /> : <span className="text-4xl">{t.icon}</span>)}
-                            </div>
-                            <div className="text-center">
-                                <span className={`block text-2xl font-black italic uppercase transition-colors ${lockedByOther ? 'text-red-400' : 'group-hover:text-white'}`}>
-                                    {t.name === 'CAJA' ? 'CAJA' : t.name.split(' ')[1]}
-                                </span>
-                                <span className={`text-[8px] font-bold uppercase tracking-widest ${lockedByOther ? 'text-red-300' : 'text-gray-500 group-hover:text-orange-200'}`}>
-                                    {lockedByOther ? `Ocupada: ${isOccupied.occupier_name.split(' ')[0]}` : (t.name === 'CAJA' ? 'Cajero Central' : 'Punto de Venta')}
-                                </span>
-                                {lockedByOther && isOccupied.is_cash_register && <span className="block text-[7px] text-yellow-300 font-bold mt-1">SESIÓN DE CAJA</span>}
-                            </div>
+                            {lockedByOther ? (
+                                /* === CARD OCUPADA: diseño re-pensado === */
+                                <div className="w-full flex flex-col relative">
+                                    {/* Header con nombre de terminal */}
+                                    <div className="bg-red-900/60 px-4 py-2 flex items-center justify-between">
+                                        <span className="text-white font-black text-sm uppercase tracking-widest">
+                                            {t.name === 'CAJA' ? 'CAJA' : `T${t.name.split(' ')[1]}`}
+                                        </span>
+                                        <span className="text-[9px] font-black uppercase tracking-wider bg-red-600 text-white px-2 py-0.5 rounded-full">
+                                            {isOccupied.is_cash_register ? 'EN CAJA' : 'OCUPADA'}
+                                        </span>
+                                    </div>
+                                    {/* Cuerpo con cédula del ocupante */}
+                                    <div className="px-4 py-5 flex flex-col items-center gap-3">
+                                        <span className="text-5xl">🔒</span>
+                                        <div className="text-center">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-1">En uso por</p>
+                                            <p className="text-white font-black text-base uppercase leading-tight">
+                                                {isOccupied.occupier_name}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* === CARD LIBRE === */
+                                <>
+                                    <div className="w-24 h-24 flex items-center justify-center bg-white/5 group-hover:bg-white/20 rounded-3xl transition-colors">
+                                        {t.icon.endsWith('.png') ? <img src={t.icon} alt={t.name} className="w-16 h-16 object-contain" /> : <span className="text-4xl">{t.icon}</span>}
+                                    </div>
+                                    <div className="text-center">
+                                        <span className="block text-2xl font-black italic uppercase group-hover:text-white transition-colors">
+                                            {t.name === 'CAJA' ? 'CAJA' : t.name.split(' ')[1]}
+                                        </span>
+                                        <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-orange-200">
+                                            {t.name === 'CAJA' ? 'Cajero Central' : 'Punto de Venta'}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
                         </button>
                     )})}
                 </div>
@@ -559,6 +622,28 @@ export const RetailVisionPOS = ({ currentUser }) => {
                                     className="flex-1 py-3 rounded-2xl bg-red-600/80 hover:bg-red-500 border border-red-500/50 font-black uppercase text-[10px] tracking-widest text-white shadow-lg transition-all shadow-red-500/20"
                                 >
                                     SÍ, FORZAR
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Modal de Denegado / Advertencia */}
+                {deniedModal && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
+                        <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,0,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
+                            <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
+                            <div className="text-6xl mb-4 relative z-10">❌</div>
+                            <h2 className="text-xl font-black uppercase text-red-500 mb-3 relative z-10">{deniedModal.title}</h2>
+                            <p className="text-xs font-bold text-gray-400 mb-8 relative z-10 whitespace-pre-wrap leading-relaxed">
+                                {deniedModal.message}
+                            </p>
+                            <div className="flex justify-center relative z-10">
+                                <button 
+                                    onClick={() => setDeniedModal(null)}
+                                    className="w-full py-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 font-black uppercase text-[10px] tracking-widest text-white transition-all shadow-lg"
+                                >
+                                    ENTENDIDO
                                 </button>
                             </div>
                         </div>
@@ -793,6 +878,31 @@ export const RetailVisionPOS = ({ currentUser }) => {
 
 
             {/* Contenedor Principal (Fin) */}
+            {/* Modal de Auto-Expulsión (Polling Remoto) */}
+            {forceLogoutModal && (
+                <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] animate-in fade-in zoom-in duration-500">
+                    <div className="bg-gray-950 border border-red-500/30 p-12 rounded-[50px] shadow-[0_0_100px_rgba(255,0,0,0.3)] max-w-md w-full text-center relative overflow-hidden">
+                        <div className="absolute -top-40 -left-40 w-80 h-80 bg-red-600/20 blur-[100px] rounded-full"></div>
+                        <div className="text-8xl mb-6 relative z-10 animate-pulse">🚨</div>
+                        <h2 className="text-3xl font-black uppercase text-red-500 mb-4 relative z-10 tracking-tighter">SESIÓN TERMINADA</h2>
+                        <p className="text-sm font-bold text-gray-300 mb-10 relative z-10 leading-relaxed">
+                            Un Administrador ha forzado la liberación total de tu terminal.<br/><br/>
+                            <span className="text-red-400">Has sido desconectado por seguridad.</span>
+                        </p>
+                        <div className="flex justify-center relative z-10">
+                            <button 
+                                onClick={() => {
+                                    if (onForceLogout) onForceLogout();
+                                    else window.location.reload();
+                                }}
+                                className="w-full py-5 rounded-3xl bg-red-600 hover:bg-red-500 border border-red-500/50 font-black uppercase text-xs tracking-[0.2em] text-white transition-all shadow-[0_10px_40px_rgba(220,38,38,0.4)]"
+                            >
+                                SALIR AL LOGIN
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
