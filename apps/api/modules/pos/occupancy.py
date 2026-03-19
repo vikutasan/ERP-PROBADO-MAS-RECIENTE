@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 # Esto es seguro porque uvicorn corre con 1 solo worker.
 _locks: Dict[str, dict] = {}
 
-# TTL: los candados mueren automáticamente si no se renuevan
-LOCK_TTL_MINUTES = 5
+# TTL: los candados mueren automáticamente si no se renuevan (1 minuto)
+LOCK_TTL_MINUTES = 1
 
 class LockInfo(BaseModel):
     occupier_id: int
