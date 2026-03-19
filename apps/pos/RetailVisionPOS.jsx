@@ -828,7 +828,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
-                <div className="flex-1 flex flex-col p-4 pt-0 bg-transparent overflow-hidden">
+                <div className="flex-1 flex flex-col p-4 pt-0 pb-24 bg-transparent overflow-hidden">
                     {viewMode === 'CAMERA' ? (
                         <VisionVisor 
                             isScanning={isScanning} 
