@@ -94,7 +94,7 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
-            <div className="bg-[#1a1a1a] w-[600px] rounded-[50px] border border-white/10 shadow-[0_0_100px_rgba(193,215,46,0.1)] overflow-hidden flex flex-col">
+            <div className="bg-[#1a1a1a] w-[800px] rounded-[50px] border border-white/10 shadow-[0_0_100px_rgba(193,215,46,0.1)] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="p-8 border-b border-white/5 flex justify-between items-center bg-black/20">
                     <div>
@@ -106,7 +106,7 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
                 <div className="flex flex-row flex-1 overflow-hidden">
                     {/* Left Panel: Payment Entry */}
-                    <div className="w-3/5 p-8 border-r border-white/5 space-y-6">
+                    <div className="w-1/2 p-10 border-r border-white/5 space-y-6">
                         {/* Status Display */}
                         <div className="flex flex-col bg-black/40 p-5 rounded-3xl border border-white/5">
                             <div className="flex justify-between items-center opacity-50 mb-1">
@@ -189,46 +189,46 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                     </div>
 
                     {/* Right Panel: Payments List */}
-                    <div className="w-2/5 p-8 bg-black/10 flex flex-col">
-                        <h3 className="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500 mb-6 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                    <div className="w-1/2 p-10 bg-black/10 flex flex-col">
+                        <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-gray-500 mb-8 flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
                             Resumen de Pagos
                         </h3>
 
-                        <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
+                        <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
                             {payments.map(p => (
-                                <div key={p.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center group relative overflow-hidden animate-in slide-in-from-right-4 duration-300">
+                                <div key={p.id} className="bg-white/5 border border-white/10 p-6 rounded-[25px] flex justify-between items-center group relative overflow-hidden animate-in slide-in-from-right-4 duration-300">
                                     <div>
-                                        <p className="text-[9px] font-black uppercase text-white/90 tracking-tighter">{p.method} {p.type && `(${p.type})`}</p>
-                                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Procesado</p>
+                                        <p className="text-[11px] font-black uppercase text-white/90 tracking-tighter">{p.method} {p.type && `(${p.type})`}</p>
+                                        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Procesado</p>
                                     </div>
-                                    <div className="flex flex-col items-end gap-1">
+                                    <div className="flex flex-col items-end gap-1.5">
                                         {!isLiquidado && (
                                             <button 
                                                 onClick={() => handleDeletePayment(p.id)}
-                                                className="w-5 h-5 flex items-center justify-center text-[10px] text-white/40 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                                                className="w-7 h-7 flex items-center justify-center text-[12px] text-white/40 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
                                                 title="Eliminar abono"
                                             >
                                                 ✕
                                             </button>
                                         )}
                                         {p.method === 'EFECTIVO' ? (
-                                            <div className="flex flex-col items-end leading-[1.1]">
+                                            <div className="flex flex-col items-end leading-[1]">
                                                 <div className="flex items-center gap-1.5 justify-end w-full">
-                                                    <span className="text-[7.5px] font-black text-gray-500 uppercase tracking-tighter">Recibo</span>
-                                                    <span className="text-[10px] font-black text-white/60 font-mono">${p.received.toFixed(2)}</span>
+                                                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-tighter">Recibo</span>
+                                                    <span className="text-[12px] font-black text-white font-mono">${p.received.toFixed(2)}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5 justify-end w-full mt-0.5">
-                                                    <span className="text-[8px] font-black text-[#c1d72e] uppercase tracking-tighter">Abona</span>
-                                                    <span className="text-sm font-black text-[#c1d72e] font-mono">${p.amount.toFixed(2)}</span>
+                                                <div className="flex items-center gap-1.5 justify-end w-full mt-1.5">
+                                                    <span className="text-[10px] font-black text-[#c1d72e] uppercase tracking-tighter">Abona</span>
+                                                    <span className="text-xl font-black text-[#c1d72e] font-mono">${p.amount.toFixed(2)}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5 justify-end w-full mt-0.5">
-                                                    <span className="text-[7.5px] font-black text-orange-500 uppercase tracking-tighter">Cambio</span>
-                                                    <span className="text-[10px] font-black text-orange-400 font-mono">${p.cambio.toFixed(2)}</span>
+                                                <div className="flex items-center gap-1.5 justify-end w-full mt-1.5">
+                                                    <span className="text-[9px] font-black text-orange-500 uppercase tracking-tighter">Cambio</span>
+                                                    <span className="text-[12px] font-black text-orange-400 font-mono">${p.cambio.toFixed(2)}</span>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <span className="text-sm font-black text-[#c1d72e] font-mono leading-none">+${p.amount.toFixed(2)}</span>
+                                            <span className="text-xl font-black text-[#c1d72e] font-mono leading-none">+${p.amount.toFixed(2)}</span>
                                         )}
                                     </div>
                                 </div>
