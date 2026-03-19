@@ -43,6 +43,11 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
         setReceivedAmount('');
     };
 
+    const handleDeletePayment = (id) => {
+        if (isLiquidado) return;
+        setPayments(payments.filter(p => p.id !== id));
+    };
+
     const handleFinalize = async () => {
         if (isLiquidado) return;
         
@@ -186,10 +191,19 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
                         <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
                             {payments.map(p => (
-                                <div key={p.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center animate-in slide-in-from-right-4 duration-300">
-                                    <div>
-                                        <p className="text-[9px] font-black uppercase text-white/90 tracking-tighter">{p.method} {p.type && `(${p.type})`}</p>
-                                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Procesado</p>
+                                <div key={p.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center group overflow-hidden">
+                                    <div className="flex items-center gap-3">
+                                        <button 
+                                            onClick={() => handleDeletePayment(p.id)}
+                                            className="w-6 h-6 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center text-[10px] hover:bg-red-500 active:bg-red-700 active:scale-95 transition-all opacity-40 hover:opacity-100"
+                                            title="Eliminar abono"
+                                        >
+                                            ✕
+                                        </button>
+                                        <div>
+                                            <p className="text-[9px] font-black uppercase text-white/90 tracking-tighter">{p.method} {p.type && `(${p.type})`}</p>
+                                            <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Procesado</p>
+                                        </div>
                                     </div>
                                     <span className="text-sm font-black text-[#c1d72e] font-mono">+${p.amount.toFixed(2)}</span>
                                 </div>
