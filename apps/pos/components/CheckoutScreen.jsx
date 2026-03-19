@@ -165,12 +165,12 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                                 <button 
                                     disabled={!receivedAmount || pendingAmount <= 0 || isLiquidado}
                                     onClick={handleAddPayment}
-                                    className={`w-24 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 shadow-2xl active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-white/10 border-white/20 text-white/50 cursor-not-allowed' : 'bg-[#c1d72e]/20 border-[#c1d72e] text-[#c1d72e] hover:bg-[#c1d72e]/30 shadow-[#c1d72e]/20 font-black'}`}
+                                    className={`w-24 rounded-xl border transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 text-white shadow-xl'}`}
                                 >
-                                    <span className="text-2xl mb-0.5">➕</span>
+                                    <span className={`text-2xl mb-0.5 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'opacity-20' : 'opacity-100'}`}>➕</span>
                                     <div className="flex flex-col items-center leading-none">
-                                        <span className={`text-[12px] font-black uppercase tracking-tighter ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'text-white/40' : 'text-[#c1d72e]'}`}>Abonar</span>
-                                        <span className={`text-[12px] font-black uppercase tracking-tighter ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'text-white/40' : 'text-[#c1d72e]'}`}>Pago</span>
+                                        <span className="text-[12px] font-black uppercase tracking-tighter">Abonar</span>
+                                        <span className="text-[12px] font-black uppercase tracking-tighter">Pago</span>
                                     </div>
                                 </button>
                             </div>
