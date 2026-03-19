@@ -68,6 +68,8 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
             finalPayments = [...finalPayments, {
                 method: paymentMethod,
                 amount: realAbono,
+                received: entered,
+                cambio: Math.max(0, entered - realAbono),
                 displayAmount: entered,
                 type: paymentMethod === 'TARJETA' ? cardType : null,
                 id: Date.now()
