@@ -143,22 +143,33 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                         {/* Input Area */}
                         <div className="space-y-4">
                             <div className="bg-white text-black p-4 rounded-2xl text-4xl font-black text-right shadow-inner min-h-[70px] flex flex-col justify-center">
-                                <span className="text-[8px] absolute top-[-10px] left-2 font-black uppercase text-gray-400">Importe a Recibir</span>
+                                <span className="text-[8px] absolute top-[-2px] left-3 font-black uppercase text-gray-400">Importe a Recibir</span>
                                 {receivedAmount ? `$${receivedAmount}` : '$0.00'}
                             </div>
 
-                            <div className="grid grid-cols-3 gap-2">
-                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, '.', 0].map((num) => (
-                                    <button 
-                                        key={num}
-                                        disabled={isLiquidado}
-                                        onClick={() => handleNumberClick(num.toString())}
-                                        className={`h-12 rounded-xl border text-lg font-black transition-all ${isLiquidado ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 active:scale-90 text-white'}`}
-                                    >
-                                        {num}
-                                    </button>
-                                ))}
-                                <button disabled={isLiquidado} onClick={handleClear} className={`h-12 rounded-xl text-[10px] font-black uppercase transition-all ${isLiquidado ? 'bg-red-500/5 text-red-500/20 cursor-not-allowed' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}>C</button>
+                            <div className="flex gap-2">
+                                <div className="grid grid-cols-3 gap-2 flex-grow">
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, '.', 0].map((num) => (
+                                        <button 
+                                            key={num}
+                                            disabled={isLiquidado}
+                                            onClick={() => handleNumberClick(num.toString())}
+                                            className={`h-12 rounded-xl border text-lg font-black transition-all ${isLiquidado ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 active:scale-90 text-white'}`}
+                                        >
+                                            {num}
+                                        </button>
+                                    ))}
+                                    <button disabled={isLiquidado} onClick={handleClear} className={`h-12 rounded-xl text-[10px] font-black uppercase transition-all ${isLiquidado ? 'bg-red-500/5 text-red-500/20 cursor-not-allowed' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}>C</button>
+                                </div>
+                                
+                                <button 
+                                    disabled={!receivedAmount || pendingAmount <= 0 || isLiquidado}
+                                    onClick={handleAddPayment}
+                                    className={`w-24 rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-xl active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-50' : 'bg-[#c1d72e] text-black hover:bg-[#d4e157]'}`}
+                                >
+                                    <span className="text-xl">➕</span>
+                                    <span className="[writing-mode:vertical-lr] text-[10px] font-black uppercase tracking-widest leading-none">Abonar Pago</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -202,21 +213,12 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                 {/* Footer Action */}
                 <div className="p-8 bg-black/40 border-t border-white/5 flex gap-4">
                     {!isLiquidado ? (
-                        <>
-                            <button 
-                                disabled={!receivedAmount || pendingAmount <= 0}
-                                onClick={handleAddPayment}
-                                className="flex-1 bg-white/10 text-white font-black py-5 rounded-[25px] text-[10px] uppercase tracking-widest hover:bg-white/20 active:scale-95 transition-all disabled:opacity-20"
-                            >
-                                Abonar Pago
-                            </button>
-                            <button 
-                                onClick={handleFinalize}
-                                className={`flex-[1.5] py-5 rounded-[25px] text-lg font-black uppercase italic tracking-tighter transition-all shadow-2xl active:scale-95 ${pendingAmount <= 0 || (receivedAmount && parseFloat(receivedAmount) >= pendingAmount) ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-gray-800 text-gray-500 grayscale cursor-not-allowed'}`}
-                            >
-                                {pendingAmount <= 0 ? 'Liquidar Cuenta' : 'Liquidar Cuenta'}
-                            </button>
-                        </>
+                        <button 
+                            onClick={handleFinalize}
+                            className={`flex-1 py-5 rounded-[25px] text-lg font-black uppercase italic tracking-tighter transition-all shadow-2xl active:scale-95 ${pendingAmount <= 0 || (receivedAmount && parseFloat(receivedAmount) >= pendingAmount) ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-gray-800 text-gray-500 grayscale cursor-not-allowed'}`}
+                        >
+                            {pendingAmount <= 0 ? 'Liquidar Cuenta' : 'Liquidar Cuenta'}
+                        </button>
                     ) : (
                         <div className="flex-1 flex gap-4 animate-in slide-in-from-bottom-4 duration-500">
                             <button 
