@@ -62,3 +62,8 @@ class TerminalSessionResponse(TerminalSessionBase):
     closed_at: Optional[datetime] = None
     is_active: bool
     model_config = ConfigDict(from_attributes=True)
+
+# --- Vision Training ---
+class VisionTrainingUpload(BaseModel):
+    sku: str
+    images: List[str] # List of base64 strings

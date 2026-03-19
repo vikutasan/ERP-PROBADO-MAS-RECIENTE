@@ -114,9 +114,10 @@ async def force_terminal_unlock(terminal_id: str, db: AsyncSession = Depends(get
     
     return {"status": "unlocked", "terminal_id": terminal_id}
 
-@router.post("/terminals/{terminal_id}/heartbeat")
-async def terminal_heartbeat(terminal_id: str, req: LockRequest):
-    success = heartbeat(terminal_id, req.occupier_id)
     if not success:
         raise HTTPException(status_code=404, detail="No active lock found for this terminal/user.")
     return {"status": "alive", "terminal_id": terminal_id}
+
+@router.post("/vision/training/upload")
+async def upload_vision_training(payload: schemas.VisionTrainingUpload):
+    return await pos_service.upload_training_images(payload)

@@ -233,4 +233,44 @@ class POSService:
         ticket_obj.terminal_id = session.terminal_id
         return ticket_obj
 
+    async def upload_training_images(self, payload: schemas.VisionTrainingUpload):
+        import os
+        import base64
+        import time
+        from pathlib import Path
+        
+        # 1. Crear subdirectorio para el SKU si no existe
+        # Nota: La carpeta apps/api/static/training ya fue creada por el agente
+        base_dir = Path("apps/api/static/training")
+        # Aseguramos que la carpeta base exista por si acaso
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Normalizar SKU para usarlo como nombre de carpeta
+        safe_sku = "".join(c for c in payload.sku if c.isalnum() or c in ("-", "_")).rstrip()
+        sku_dir = base_dir / safe_sku
+        sku_dir.mkdir(parents=True, exist_ok=True)
+        
+        saved_files = []
+        for i, b64_str in enumerate(payload.images):
+            try:
+                # Limpiar prefijo base64 si existe (ej. data:image/jpeg;base64,...)
+                if "," in b64_str:
+                    b64_str = b64_str.split(",")[1]
+                
+                # 2. Decodificar y Guardar
+                img_data = base64.b64decode(b64_str)
+                # Formato: train_timestamp_index.jpg
+                filename = f"train_{int(time.time())}_{i}.jpg"
+                file_path = sku_dir / filename
+                
+                with open(file_path, "wb") as f:
+                    f.write(img_data)
+                
+                saved_files.append(str(file_path))
+            except Exception as e:
+                print(f"Error guardando imagen {i} para SKU {payload.sku}: {e}")
+            
+        print(f"VISION: Guardadas {len(saved_files)} imágenes para SKU {payload.sku} en {sku_dir}")
+        return {"sku": payload.sku, "count": len(saved_files), "path": str(sku_dir)}
+
 pos_service = POSService()

@@ -70,7 +70,7 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
 
         // Enviar heartbeat inmediatamente al seleccionar terminal
         sendHeartbeat();
-        const intervalId = setInterval(sendHeartbeat, 20000); // Cada 20 segundos
+        const intervalId = setInterval(sendHeartbeat, 420000); // Cada 420 segundos (7 minutos)
         return () => clearInterval(intervalId);
     }, [selectedTerminal, currentUser]);
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { VisionScanner } from './VisionScanner';
 import { CategoryEditor } from './CategoryEditor';
+import { posService } from './services/POSService';
 
 /**
  * VisionTrainingUI - R de Rico
@@ -38,17 +39,26 @@ export const VisionTrainingUI = ({ products, categories = [], onCategoriesChange
         setIsCapturing(true);
     };
 
-    const handleSync = () => {
-        setSyncProgress(10);
-        const timer = setInterval(() => {
-            setSyncProgress(prev => {
-                if (prev >= 100) {
-                    clearInterval(timer);
-                    return 100;
-                }
-                return prev + 15;
-            });
-        }, 300);
+    const handleSync = async () => {
+        if (!selectedProduct || capturedImages.length === 0) return;
+        
+        try {
+            setSyncProgress(10);
+            const imageUrls = capturedImages.map(img => img.url);
+            
+            // Subida real al servidor
+            await posService.uploadTrainingImages(selectedProduct.sku, imageUrls);
+            
+            setSyncProgress(100);
+            setTimeout(() => {
+                setSyncProgress(0);
+                setCapturedImages([]);
+            }, 3000);
+        } catch (error) {
+            console.error("Error sincronizando dataset:", error);
+            alert("Error al subir imágenes al servidor corporativo.");
+            setSyncProgress(0);
+        }
     };
 
     if (isEditingCategories) {

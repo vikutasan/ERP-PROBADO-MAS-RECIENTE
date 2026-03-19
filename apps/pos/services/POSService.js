@@ -105,6 +105,16 @@ class POSService {
         });
         return res.ok;
     }
+
+    async uploadTrainingImages(sku, images) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/vision/training/upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sku, images })
+        });
+        if (!res.ok) throw new Error("Error subiendo imágenes de entrenamiento");
+        return res.json();
+    }
 }
 
 export const posService = new POSService();
