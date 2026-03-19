@@ -194,7 +194,7 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                                 <div key={p.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center group relative overflow-hidden">
                                     <button 
                                         onClick={() => handleDeletePayment(p.id)}
-                                        className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-[12px] text-white/20 hover:text-red-500 active:text-red-500 active:scale-95 transition-all"
+                                        className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-[12px] text-white hover:text-red-500 active:text-red-500 active:scale-95 transition-all"
                                         title="Eliminar abono"
                                     >
                                         ✕
