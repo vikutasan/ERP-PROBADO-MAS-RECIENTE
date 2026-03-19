@@ -772,11 +772,14 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                 await posService.unlockTerminal(selectedTerminal, currentUser?.id);
                             } catch(e) { console.error("Could not unlock terminal", e); }
                             setSelectedTerminal(null);
-                        }} className="bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 rounded-xl flex items-center gap-3 hover:bg-white/10 transition-all group shadow-xl">
-                            <div className="w-8 h-8 bg-orange-600/20 rounded-lg flex items-center justify-center text-orange-500 border border-orange-500/20">🖥️</div>
+                        }} className="bg-zinc-900/90 border border-white/5 px-6 py-2 rounded-xl flex items-center hover:bg-zinc-800 transition-all group shadow-2xl">
                             <div className="text-left">
-                                <p className="text-[9px] font-black text-white/90 uppercase tracking-tighter">Terminal {selectedTerminal}</p>
-                                <p className="text-[7px] font-bold text-orange-400 uppercase tracking-widest group-hover:underline">Cambiar Estacion (Liberar)</p>
+                                <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">
+                                    {selectedTerminal === 'CAJA' ? 'Caja Central' : `Terminal ${selectedTerminal}`}
+                                </p>
+                                <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
+                                    Cambiar Estación
+                                </p>
                             </div>
                         </button>
                     </div>
