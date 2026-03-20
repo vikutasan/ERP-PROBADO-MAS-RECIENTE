@@ -114,6 +114,10 @@ async def force_terminal_unlock(terminal_id: str, db: AsyncSession = Depends(get
     
     return {"status": "unlocked", "terminal_id": terminal_id}
 
+@router.post("/terminals/{terminal_id}/heartbeat")
+async def heartbeat_terminal_lock(terminal_id: str, req: LockRequest):
+    tid = terminal_id.strip()
+    success = heartbeat(tid, req.occupier_id)
     if not success:
         raise HTTPException(status_code=404, detail="No active lock found for this terminal/user.")
     return {"status": "alive", "terminal_id": terminal_id}

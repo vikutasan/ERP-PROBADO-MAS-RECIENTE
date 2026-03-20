@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 _locks: Dict[str, dict] = {}
 
 # TTL: los candados mueren automáticamente si no se renuevan (10 minutos)
-LOCK_TTL_MINUTES = 10
+LOCK_TTL_MINUTES = 15
 
 class LockInfo(BaseModel):
     occupier_id: int
