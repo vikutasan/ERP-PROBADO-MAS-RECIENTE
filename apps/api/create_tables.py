@@ -5,6 +5,7 @@ from modules.security.models import SecurityProfile, Employee
 from modules.catalog.models import Category, Product
 from modules.pos.models import Ticket, TerminalSession
 from modules.cash.models import CashSession, CashMovement
+from modules.settings.models import SystemSetting
 
 async def create_tables():
     print("Creando nuevas tablas...")

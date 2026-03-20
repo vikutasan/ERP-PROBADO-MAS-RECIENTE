@@ -12,6 +12,7 @@ class LockRequest(BaseModel):
     occupier_name: str
 
 from .occupancy import get_all_locks, lock_terminal, unlock_terminal, force_unlock, heartbeat
+from modules.settings.service import get_setting_by_key
 
 router = APIRouter()
 
@@ -50,7 +51,12 @@ async def get_open_tickets(db: AsyncSession = Depends(get_db)):
 
 @router.get("/terminals/status")
 async def get_terminals_status(db: AsyncSession = Depends(get_db)):
-    locks = get_all_locks()
+    try:
+        ttl_setting = await get_setting_by_key(db, "pos_terminal_lock_ttl_m")
+        ttl = int(ttl_setting.value)
+    except Exception:
+        ttl = 15
+    locks = get_all_locks(ttl_minutes=ttl)
     
     from modules.cash.models import CashSession
     from sqlalchemy.future import select
@@ -76,9 +82,14 @@ async def get_terminals_status(db: AsyncSession = Depends(get_db)):
     return res
 
 @router.post("/terminals/{terminal_id}/lock")
-async def take_terminal_lock(terminal_id: str, req: LockRequest):
+async def take_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
     tid = terminal_id.strip()
-    success = lock_terminal(tid, req.occupier_id, req.occupier_name)
+    try:
+        ttl_setting = await get_setting_by_key(db, "pos_terminal_lock_ttl_m")
+        ttl = int(ttl_setting.value)
+    except Exception:
+        ttl = 15
+    success = lock_terminal(tid, req.occupier_id, req.occupier_name, ttl_minutes=ttl)
     if not success:
         raise HTTPException(status_code=400, detail="Terminal ocupada por otra persona.")
     return {"status": "locked", "terminal_id": tid}

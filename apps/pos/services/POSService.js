@@ -106,6 +106,12 @@ class POSService {
         return res.ok;
     }
 
+    async getSystemSettings() {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/settings`);
+        if (!res.ok) throw new Error("Error cargando ajustes");
+        return res.json();
+    }
+
     async uploadTrainingImages(sku, images) {
         const res = await fetch(`${CONFIG.API_BASE_URL}/pos/vision/training/upload`, {
             method: 'POST',

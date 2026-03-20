@@ -12,6 +12,28 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
     const [terminalStatuses, setTerminalStatuses] = useState({});
     const [forceLogoutModal, setForceLogoutModal] = useState(false);
 
+    const [settings, setSettings] = useState({
+        statusPolling: 3000,
+        checkLockPolling: 10000,
+        heartbeatInterval: 60000
+    });
+
+    // Cargar ajustes del sistema al montar
+    useEffect(() => {
+        posService.getSystemSettings()
+            .then(data => {
+                const s = {};
+                data.forEach(item => {
+                    if (item.key === 'pos_terminal_status_polling_ms') s.statusPolling = parseInt(item.value);
+                    if (item.key === 'pos_heartbeat_interval_ms') s.heartbeatInterval = parseInt(item.value);
+                });
+                if (Object.keys(s).length > 0) {
+                    setSettings(prev => ({ ...prev, ...s }));
+                }
+            })
+            .catch(e => console.warn("Usando intervalos por defecto", e));
+    }, []);
+
     // Polling en pantalla principal para ver quién ocupa las terminales
     useEffect(() => {
         let interval;
@@ -26,9 +48,9 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
             }
         };
         fetchStatuses();
-        interval = setInterval(fetchStatuses, 3000);
+        interval = setInterval(fetchStatuses, settings.statusPolling);
         return () => clearInterval(interval);
-    }, [selectedTerminal]);
+    }, [selectedTerminal, settings.statusPolling]);
 
     // Polling de Auto-Expulsión: verifica si un Admin rompió nuestro bloqueo
     useEffect(() => {
@@ -46,9 +68,9 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
             }
         };
         
-        const intervalId = setInterval(checkMyLock, 10000);
+        const intervalId = setInterval(checkMyLock, settings.checkLockPolling);
         return () => clearInterval(intervalId);
-    }, [selectedTerminal, currentUser, forceLogoutModal]);
+    }, [selectedTerminal, currentUser, forceLogoutModal, settings.checkLockPolling]);
 
     // Limpieza al desmontar: liberar terminal si el usuario cierra sesión o cierra la pestaña
     useEffect(() => {
@@ -59,7 +81,7 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
         };
     }, [selectedTerminal, currentUser]);
 
-    // Heartbeat: renueva el timestamp del candado cada 2 minutos para evitar que expire por TTL
+    // Heartbeat: renueva el timestamp del candado para evitar que expire por TTL
     useEffect(() => {
         if (!selectedTerminal || !currentUser?.id) return;
         
@@ -70,9 +92,9 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
 
         // Enviar heartbeat inmediatamente al seleccionar terminal
         sendHeartbeat();
-        const intervalId = setInterval(sendHeartbeat, 60000); // Cada 60 segundos (1 minuto) para asegurar el candado
+        const intervalId = setInterval(sendHeartbeat, settings.heartbeatInterval); 
         return () => clearInterval(intervalId);
-    }, [selectedTerminal, currentUser]);
+    }, [selectedTerminal, currentUser, settings.heartbeatInterval]);
 
     return { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal };
 };

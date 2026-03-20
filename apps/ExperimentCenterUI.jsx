@@ -21,6 +21,7 @@ import { ProductMasterUI } from './inventory/ProductMasterUI';
 import { WarehouseManagerUI } from './inventory/WarehouseManagerUI';
 import { PurchaseManagerUI } from './inventory/PurchaseManagerUI';
 import { AuditoriaUI } from './AuditoriaUI';
+import { SystemSettingsUI } from './settings/SystemSettingsUI';
 import REAL_PRODUCTS from '../importar_productos_AQUI.json';
 
 /**
@@ -86,6 +87,7 @@ export const ExperimentCenterUI = () => {
         { id: 'driver', name: 'App Repartidor', color: 'bg-gray-800', icon: '📱', access: ['ADMIN', 'DRIVER', 'LOGISTICS'] },
         { id: 'seguridad_acceso', name: 'Seguridad y Acceso', color: 'bg-indigo-900', icon: '🔑', access: ['ADMIN', 'MANAGER'] },
         { id: 'auditoria', name: 'Auditoría y Control', color: 'bg-slate-900', icon: '📋', access: ['ADMIN', 'MANAGER'] },
+        { id: 'settings', name: 'Ajustes del Sistema', color: 'bg-red-900', icon: '⚙️', access: ['ADMIN'] },
     ];
 
 
@@ -264,6 +266,7 @@ export const ExperimentCenterUI = () => {
                         {activeModule === 'driver' && <DriverAppUI activeRoute={{ orders: [] }} currentDriver={{ name: 'Juan Pérez' }} />}
                         {activeModule === 'seguridad_acceso' && <SeguridadAccesoUI />}
                         {activeModule === 'auditoria' && <AuditoriaUI />}
+                        {activeModule === 'settings' && <SystemSettingsUI />}
                     </div>
 
                 </div>
