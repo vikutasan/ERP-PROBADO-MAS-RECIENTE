@@ -1,5 +1,8 @@
 export const generateTicketHTML = (ticketData) => {
-    const dateObj = new Date(ticketData.created_at || new Date());
+    let dateObj = new Date();
+    if (ticketData.created_at) {
+        dateObj = new Date(String(ticketData.created_at).endsWith('Z') ? ticketData.created_at : ticketData.created_at + 'Z');
+    }
     const printDate = dateObj.toLocaleDateString();
     const printTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
