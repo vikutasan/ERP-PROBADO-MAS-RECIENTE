@@ -253,7 +253,7 @@ export const AuditoriaUI = () => {
                                     onClick={() => handlePrintTicket(selectedTicket)}
                                     className="w-full mt-6 bg-black hover:bg-orange-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-[0_10px_20px_rgba(0,0,0,0.2)] hover:shadow-[0_10px_20px_rgba(234,88,12,0.4)] flex justify-center items-center gap-2"
                                 >
-                                    <span className="text-lg">ðŸ–¨ï¸</span> REIMPRIMIR TICKET
+                                    REIMPRIMIR TICKET
                                 </button>
                             </div>
                         )}
