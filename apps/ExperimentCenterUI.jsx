@@ -98,6 +98,7 @@ export const ExperimentCenterUI = () => {
         // Si el usuario tiene una configuración de permisos granulares (objeto no vacío),
         // esa es la fuente de verdad absoluta para este usuario.
         if (userPermissions && Object.keys(userPermissions).length > 0) {
+            if (userPermissions.all === 'full') return true;
             return userPermissions[mod.id] === 'full';
         }
         
@@ -197,7 +198,18 @@ export const ExperimentCenterUI = () => {
             </aside>
 
             {/* Area de Experiencia */}
-            <main className="flex-1 overflow-y-auto relative custom-scrollbar bg-cover bg-center" style={{ backgroundImage: 'url("/assets/wood_bg.jpg")' }}>
+            <main 
+                className="flex-1 overflow-y-auto relative custom-scrollbar bg-cover bg-center transition-all duration-700" 
+                style={{ 
+                    backgroundImage: activeModule === 'settings' 
+                        ? `radial-gradient(circle at 50% 50%, rgba(249, 115, 22, 0.03), transparent 70%),
+                           linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                           linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px)`
+                        : 'url("/assets/wood_bg.jpg")',
+                    backgroundColor: activeModule === 'settings' ? '#050505' : 'transparent',
+                    backgroundSize: activeModule === 'settings' ? '100% 100%, 50px 50px, 50px 50px' : 'cover'
+                }}
+            >
 
                 <div className="relative z-10 h-full">
                     {activeModule === 'overview' && (

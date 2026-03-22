@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { OpenAccountsCorkboard } from './OpenAccountsCorkboard';
 import { posService } from './services/POSService';
 import { useCart } from './hooks/useCart';
@@ -269,7 +269,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     };
 
     useEffect(() => {
-        if (showCorkboard) {
+        if (!showCorkboard) return;
+
+        const fetchOpenAccounts = () => {
             posService.getOpenTickets().then(data => {
                 console.log("Open tickets from server:", data);
                 setAllOpenAccounts(data.map(t => ({
@@ -286,7 +288,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     clientName: 'PÃºblico General'
                 })));
             }).catch(console.error);
-        }
+        };
+
+        fetchOpenAccounts();
+        const interval = setInterval(fetchOpenAccounts, 5000);
+        return () => clearInterval(interval);
     }, [showCorkboard]);
 
     const visibleAccounts = selectedTerminal === 'CAJA' ? allOpenAccounts : allOpenAccounts.filter(a => a.terminal === selectedTerminal);

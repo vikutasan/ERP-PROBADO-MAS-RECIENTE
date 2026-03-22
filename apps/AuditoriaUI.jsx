@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
+import { generateTicketHTML } from './pos/utils/ticketGenerator';
 
 const API_BASE = `http://${window.location.hostname}:3001/api/v1`;
 
@@ -22,7 +23,9 @@ export const AuditoriaUI = () => {
             const url = search ? `${API_BASE}/pos/tickets?search=${search}` : `${API_BASE}/pos/tickets`;
             const resp = await fetch(url);
             const data = await resp.json();
-            setTickets(Array.isArray(data) ? data : []);
+            const arr = Array.isArray(data) ? data : [];
+            const sorted = arr.sort((a, b) => new Date(b.created_at + 'Z') - new Date(a.created_at + 'Z'));
+            setTickets(sorted);
         } catch (e) {
             console.error(e);
         } finally {
@@ -41,6 +44,27 @@ export const AuditoriaUI = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handlePrintTicket = (ticketData) => {
+        const html = generateTicketHTML(ticketData);
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 500);
     };
 
     const handleSearch = (e) => {
@@ -107,7 +131,7 @@ export const AuditoriaUI = () => {
                                             <tr key={t.id} className="hover:bg-gray-50/80 transition-colors group">
                                                 <td className="px-6 py-4 font-black">{t.account_num}</td>
                                                 <td className="px-6 py-4 font-bold text-gray-500">{t.terminal_id}</td>
-                                                <td className="px-6 py-4 text-xs font-bold text-gray-400">{new Date(t.created_at).toLocaleString()}</td>
+                                                <td className="px-6 py-4 text-xs font-bold text-gray-400">{new Date(t.created_at + 'Z').toLocaleString()}</td>
                                                 <td className="px-6 py-4">
                                                     <span className="text-[10px] font-black uppercase text-gray-600 truncate max-w-[80px] block">{t.captured_by?.name || '---'}</span>
                                                 </td>
@@ -147,7 +171,7 @@ export const AuditoriaUI = () => {
                                         </div>
                                         <div className="flex justify-between text-xs font-bold text-gray-500">
                                             <span>Cierre:</span>
-                                            <span className="text-black">{new Date(c.closed_at).toLocaleString()}</span>
+                                            <span className="text-black">{new Date(c.closed_at + 'Z').toLocaleString()}</span>
                                         </div>
                                     </div>
                                     <div className="border-t border-dashed border-gray-100 pt-4 flex justify-between items-end">
@@ -173,7 +197,7 @@ export const AuditoriaUI = () => {
                                 <div className="text-center">
                                     <div className="text-6xl mb-4">🧾</div>
                                     <h2 className="text-2xl font-black italic uppercase tracking-tighter">Venta {selectedTicket.account_num}</h2>
-                                    <p className="text-gray-400 text-xs font-bold">{new Date(selectedTicket.created_at).toLocaleString()}</p>
+                                    <p className="text-gray-400 text-xs font-bold">{new Date(selectedTicket.created_at + 'Z').toLocaleString()}</p>
                                 </div>
 
                                 <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
@@ -225,6 +249,12 @@ export const AuditoriaUI = () => {
                                         </div>
                                     ))}
                                 </div>
+                                <button 
+                                    onClick={() => handlePrintTicket(selectedTicket)}
+                                    className="w-full mt-6 bg-black hover:bg-orange-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-[0_10px_20px_rgba(0,0,0,0.2)] hover:shadow-[0_10px_20px_rgba(234,88,12,0.4)] flex justify-center items-center gap-2"
+                                >
+                                    <span className="text-lg">ðŸ–¨ï¸</span> REIMPRIMIR TICKET
+                                </button>
                             </div>
                         )}
 
@@ -316,7 +346,7 @@ export const AuditoriaUI = () => {
 
                                 <div className="text-center">
                                     <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Cajere: {selectedCorte.employee_name}</p>
-                                    <p className="text-[8px] text-gray-300 mt-1">{new Date(selectedCorte.closed_at).toLocaleString()}</p>
+                                    <p className="text-[8px] text-gray-300 mt-1">{new Date(selectedCorte.closed_at + 'Z').toLocaleString()}</p>
                                 </div>
                             </div>
                         )}

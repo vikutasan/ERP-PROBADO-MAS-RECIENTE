@@ -32,12 +32,35 @@ export const generateTicketHTML = (ticketData) => {
 
     let paymentsHtml = '';
     payments.forEach(p => {
-        paymentsHtml += `
-            <div style="display: flex; justify-content: space-between;">
-                <span>${p.method}</span>
-                <span>$${(p.amount || 0).toFixed(2)}</span>
-            </div>
-        `;
+        if (p.method === 'EFECTIVO' && p.received != null) {
+            const received = p.received || 0;
+            const abonado = p.amount || 0;
+            const cambio = p.cambio || 0;
+            paymentsHtml += `
+                <div style="margin-bottom: 2px;">
+                    <div style="font-weight: bold;">${p.method}</div>
+                    <div style="display: flex; justify-content: space-between; padding-left: 8px; font-size: 12pt;">
+                        <span>Recibido:</span>
+                        <span>$${received.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding-left: 8px; font-size: 12pt;">
+                        <span>Abonado:</span>
+                        <span>$${abonado.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding-left: 8px; font-size: 12pt;">
+                        <span>Cambio:</span>
+                        <span>$${cambio.toFixed(2)}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            paymentsHtml += `
+                <div style="display: flex; justify-content: space-between;">
+                    <span>${p.method}</span>
+                    <span>$${(p.amount || 0).toFixed(2)}</span>
+                </div>
+            `;
+        }
     });
 
     return `
