@@ -8,7 +8,9 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     icon = Column(String, nullable=True)
+    position = Column(Integer, nullable=True)
     vision_enabled = Column(Boolean, default=False)
+    is_system = Column(Boolean, default=False)
 
     products = relationship("Product", back_populates="category")
 

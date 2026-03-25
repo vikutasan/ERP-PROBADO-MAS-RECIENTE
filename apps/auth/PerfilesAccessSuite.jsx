@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = `http://${window.location.hostname}:3001/api/v1`;
+const API_BASE = `http://${window.location.hostname}:3002/api/v1`;
 
 // Módulos del sistema para la matriz de permisos
 const SYSTEM_MODULES = [

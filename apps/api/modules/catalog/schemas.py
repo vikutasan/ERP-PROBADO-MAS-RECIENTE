@@ -6,7 +6,9 @@ from modules.production.schemas import TechnicalSheetResponse
 class CategoryBase(BaseModel):
     name: str
     icon: Optional[str] = None
+    position: Optional[int] = None
     vision_enabled: bool = False
+    is_system: bool = False
 
 class CategoryCreate(CategoryBase):
     pass

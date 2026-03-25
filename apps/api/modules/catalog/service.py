@@ -9,7 +9,7 @@ from modules.production import schemas as prod_schemas
 
 class CatalogService:
     async def get_categories(self, db: AsyncSession):
-        result = await db.execute(select(models.Category))
+        result = await db.execute(select(models.Category).order_by(models.Category.position.asc(), models.Category.name.asc()))
         return result.scalars().all()
 
     async def create_category(self, db: AsyncSession, category: schemas.CategoryCreate):
@@ -24,17 +24,36 @@ class CatalogService:
         db_cat = result.scalar_one_or_none()
         if not db_cat:
             return None
+        
+        # Proteger categorías de sistema (no cambiar nombre ni borrar, pero talvez permitir visibilidad?)
+        # El usuario dice "que NO sean de sistema" para editar/borrar/ocultar.
+        if db_cat.is_system:
+            # Solo permitimos actualizar vision_enabled si acaso, pero el usuario dice "que NO sean del sistema"
+            # Así que bloqueamos todo para categorías de sistema por ahora.
+            return db_cat
+        
         db_cat.name = category.name
         db_cat.icon = category.icon
+        db_cat.vision_enabled = category.vision_enabled
         await db.commit()
         await db.refresh(db_cat)
         return db_cat
 
     async def delete_category(self, db: AsyncSession, category_id: int):
+        # 1. Verificar existencia y exclusión de categorías de sistema
         result = await db.execute(select(models.Category).where(models.Category.id == category_id))
         db_cat = result.scalar_one_or_none()
-        if not db_cat:
+        if not db_cat or db_cat.is_system:
             return False
+            
+        # 2. Verificar si la categoría está vacía (Integridad Imperial)
+        result_prod = await db.execute(
+            select(models.Product).where(models.Product.category_id == category_id)
+        )
+        if result_prod.scalar_one_or_none():
+            # Si hay productos, no permitimos borrar (el usuario debe moverlos a DESCONTINUADOS)
+            raise ValueError("No se puede eliminar una categoría que contiene productos.")
+
         await db.delete(db_cat)
         await db.commit()
         return True
@@ -43,7 +62,8 @@ class CatalogService:
         query = select(models.Product).options(
             selectinload(models.Product.category), 
             selectinload(models.Product.technical_sheet)
-        )
+        ).order_by(models.Product.position.asc(), models.Product.name.asc())
+        
         if category_id:
             query = query.where(models.Product.category_id == category_id)
         result = await db.execute(query)
@@ -124,14 +144,14 @@ class CatalogService:
             if existing.scalar_one_or_none():
                 continue
 
-            cat_name = str(item.get('category', 'GENERAL')).strip().upper()
-            if not cat_name or cat_name == 'NAN':
-                cat_name = 'GENERAL'
+            cat_name = str(item.get('category', 'TODOS')).strip().upper()
+            if not cat_name or cat_name == 'NAN' or cat_name == 'GENERAL':
+                cat_name = 'TODOS'
 
             result = await db.execute(select(models.Category).where(models.Category.name == cat_name))
             db_category = result.scalar_one_or_none()
             if not db_category:
-                db_category = models.Category(name=cat_name, icon="📦")
+                db_category = models.Category(name=cat_name, icon="")
                 db.add(db_category)
                 await db.flush()
 
@@ -146,6 +166,26 @@ class CatalogService:
 
         await db.commit()
         return count
+
+    async def reorder_categories(self, db: AsyncSession, category_ids: list):
+        """Actualiza el campo position de una lista de IDs de categoría en el orden recibido."""
+        for index, cat_id in enumerate(category_ids):
+            result = await db.execute(select(models.Category).where(models.Category.id == cat_id))
+            category = result.scalar_one_or_none()
+            if category:
+                category.position = index
+        await db.commit()
+        return True
+
+    async def reorder_products(self, db: AsyncSession, product_ids: list):
+        """Actualiza el campo position de una lista de IDs de producto en el orden recibido."""
+        for index, prod_id in enumerate(product_ids):
+            result = await db.execute(select(models.Product).where(models.Product.id == prod_id))
+            product = result.scalar_one_or_none()
+            if product:
+                product.position = index
+        await db.commit()
+        return True
 
 
 catalog_service = CatalogService()

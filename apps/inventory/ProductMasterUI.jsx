@@ -8,27 +8,6 @@ import ReactDOM from 'react-dom';
  * Sincronizado en tiempo real con el servidor FastAPI.
  */
 
-const INITIAL_CATEGORIES_LOCAL = [
-    { name: "1.-EMPAQUE Y PAN BLANCO", icon: "🥖" },
-    { name: "2.-A - B", icon: "🍪" },
-    { name: "3.-C - D", icon: "🍩" },
-    { name: "4.-E - K", icon: "🥐" },
-    { name: "5.-L - M", icon: "🧁" },
-    { name: "6.-N - P", icon: "🥧" },
-    { name: "7.-R - S", icon: "🍰" },
-    { name: "8.-T - Z", icon: "🥨" },
-    { name: "17.-ROSCA DE REYES", icon: "👑" },
-    { name: "9.-LACTEOS", icon: "🥛" },
-    { name: "10.-SOBRE PEDIDO", icon: "🎂" },
-    { name: "11.-ESPORADICOS", icon: "🎁" },
-    { name: "12.-CAFES Y CHOCOLATES", icon: "☕" },
-    { name: "13.-SOUVENIRS", icon: "🛍️" },
-    { name: "14.-HELADOS", icon: "🍨" },
-    { name: "15.-PALETAS", icon: "🍭" },
-    { name: "16.-AGUAS Y MALTEADAS", icon: "🥤" },
-    { name: "DESCONTINUADOS", icon: "📁" }
-];
-
 const INITIAL_INGREDIENTS = [
     { id: 'ing_harina', name: 'Harina de Trigo', unit: 'kg', costPerUnit: 18.5 },
     { id: 'ing_mantequilla', name: 'Mantequilla de Planta', unit: 'kg', costPerUnit: 120.0 },
@@ -47,7 +26,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
     const [globalIngredients, setGlobalIngredients] = useState(INITIAL_INGREDIENTS);
     const [showIngredientSelector, setShowIngredientSelector] = useState(false);
     const [showCategoryManager, setShowCategoryManager] = useState(false);
-    const [newCategory, setNewCategory] = useState({ name: '', icon: '📦' });
+    const [newCategory, setNewCategory] = useState({ name: '' });
     const [renamingCategory, setRenamingCategory] = useState(null);
     const [renameValue, setRenameValue] = useState('');
     const [categoryToDelete, setCategoryToDelete] = useState(null);
@@ -59,9 +38,13 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
     const [showPermanentDeleteConfirm, setShowPermanentDeleteConfirm] = useState(false);
     const [productToDeletePermanently, setProductToDeletePermanently] = useState(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showCategoryNotEmptyModal, setShowCategoryNotEmptyModal] = useState(false);
+    const [emptyErrorCount, setEmptyErrorCount] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
+    const [draggedCatIndex, setDraggedCatIndex] = useState(null);
+    const [draggedProdIndex, setDraggedProdIndex] = useState(null);
 
-    const API_BASE = "http://localhost:3001/api/v1/catalog";
+    const API_BASE = "http://localhost:3002/api/v1/catalog";
 
     // Carga inicial de datos desde la API
     useEffect(() => {
@@ -72,10 +55,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                 const catRes = await fetch(`${API_BASE}/categories`);
                 if (catRes.ok) {
                     const catData = await catRes.json();
-                    const normalized = catData.map(c => {
-                        const local = INITIAL_CATEGORIES_LOCAL.find(lc => lc.name === c.name);
-                        return { ...c, icon: c.icon || (local ? local.icon : '📦') };
-                    });
+                    const normalized = catData.map(c => ({ ...c, icon: '' }));
                     setCategories(normalized);
                 }
 
@@ -93,7 +73,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                 }
 
                 // Masas (Producción)
-                const massRes = await fetch("http://localhost:3001/api/v1/production/masses");
+                const massRes = await fetch("http://localhost:3002/api/v1/production/masses");
                 if (massRes.ok) {
                     setMasses(await massRes.json());
                 }
@@ -202,7 +182,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
         const newProd = {
             sku: `SKU-${Math.floor(Math.random() * 10000)}`,
             name: 'NUEVO PRODUCTO',
-            categories: activeCategory === 'TODOS' ? [(categories[0]?.name || 'GENERAL')] : [activeCategory],
+            categories: activeCategory === 'TODOS' ? [(categories[0]?.name || '')] : [activeCategory],
             price: 0,
             cost: 0,
             stock: 0,
@@ -334,11 +314,9 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
             if (res.ok) {
                 const catRes = await fetch(`${API_BASE}/categories`);
                 const catData = await catRes.json();
-                setCategories(catData.map(c => {
-                    const local = INITIAL_CATEGORIES_LOCAL.find(lc => lc.name === c.name);
-                    return { ...c, icon: c.icon || (local ? local.icon : '📦') };
-                }));
-                setNewCategory({ name: '', icon: '📦' });
+                // Simplificamos: No usamos INITIAL_CATEGORIES_LOCAL
+                setCategories(catData.map(c => ({ ...c, icon: c.icon || '' })));
+                setNewCategory({ name: '', icon: '' });
                 setShowCategoryManager(false);
             }
         } catch (err) {
@@ -350,9 +328,18 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
         const cat = categories.find(c => c.name === categoryToDelete);
         if (!cat) return;
 
-        // Defensa en Profundidad: Verificar permisos antes de ejecutar
+        // 1. Verificar permisos
         if (userPermissions?.inventory_delete !== 'full' && userPermissions?.all !== 'full') {
             alert("No tienes autoridad para eliminar categorías del sistema.");
+            return;
+        }
+
+        // 2. Verificar si la categoría está vacía en el estado local
+        const productsInCat = products.filter(p => p.categories && p.categories.includes(cat.name));
+        if (productsInCat.length > 0) {
+            setEmptyErrorCount(productsInCat.length);
+            setShowCategoryNotEmptyModal(true);
+            setCategoryToDelete(null);
             return;
         }
 
@@ -363,9 +350,146 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                 if (activeCategory === cat.name) setActiveCategory('TODOS');
                 setCategoryToDelete(null);
                 await refreshProducts();
+            } else {
+                const errData = await res.json();
+                alert(`Error del servidor: ${errData.detail || 'No se pudo eliminar'}`);
             }
         } catch (err) {
             console.error("Delete category error:", err);
+        }
+    };
+
+    const handleToggleCategoryVisibility = async (cat) => {
+        try {
+            const res = await fetch(`${API_BASE}/categories/${cat.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: cat.name,
+                    icon: cat.icon,
+                    vision_enabled: !cat.vision_enabled
+                })
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                setCategories(categories.map(c => c.id === cat.id ? updated : c));
+            }
+        } catch (err) {
+            console.error("Toggle visibility error:", err);
+        }
+    };
+
+    const handleRenameCategory = async () => {
+        if (!renamingCategory || !renameValue) return;
+
+        try {
+            const res = await fetch(`${API_BASE}/categories/${renamingCategory.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: renameValue.toUpperCase(),
+                    icon: '',
+                    vision_enabled: renamingCategory.vision_enabled
+                })
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                const oldName = renamingCategory.name;
+                const newName = updated.name;
+
+                // 1. Actualizar lista de categorías
+                setCategories(categories.map(c => c.id === renamingCategory.id ? updated : c));
+                
+                // 2. Sincronizar nombres en la lista de productos (Fichas)
+                setProducts(products.map(p => {
+                    if (p.categories && p.categories.includes(oldName)) {
+                        return {
+                            ...p,
+                            categories: p.categories.map(cat => cat === oldName ? newName : cat)
+                        };
+                    }
+                    return p;
+                }));
+
+                if (activeCategory === oldName) setActiveCategory(newName);
+                setRenamingCategory(null);
+            }
+        } catch (err) {
+            console.error("Rename category error:", err);
+            alert("Error al renombrar categoría.");
+        }
+    };
+
+    const handleOpenRenameModal = (cat) => {
+        setRenamingCategory(cat);
+        setRenameValue(cat.name);
+    };
+
+    // --- Drag & Drop Logic ---
+
+    const handleCategoryDragStart = (e, index) => {
+        setDraggedCatIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleCategoryDrop = async (e, targetIndex) => {
+        e.preventDefault();
+        if (draggedCatIndex === null || draggedCatIndex === targetIndex) return;
+
+        const newCats = [...categories];
+        const [movedCat] = newCats.splice(draggedCatIndex, 1);
+        newCats.splice(targetIndex, 0, movedCat);
+        
+        setCategories(newCats);
+        setDraggedCatIndex(null);
+
+        // Sync with API
+        try {
+            const ids = newCats.map(c => c.id);
+            await fetch(`${API_BASE}/reorder-categories`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(ids)
+            });
+        } catch (err) {
+            console.error("Error reordering categories:", err);
+        }
+    };
+
+    const handleProductDragStart = (e, index) => {
+        setDraggedProdIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleProductDrop = async (e, targetIndex) => {
+        e.preventDefault();
+        if (draggedProdIndex === null || draggedProdIndex === targetIndex) return;
+        if (activeCategory === 'TODOS') return; // Solo permitir reordenar dentro de categorías
+
+        // Obtener productos visibles (filtrados por categoría activa)
+        const visibleIndices = filteredProducts.map(p => products.findIndex(op => op.id === p.id));
+        
+        const newProducts = [...products];
+        const sourceGlobalIndex = products.findIndex(p => p.id === filteredProducts[draggedProdIndex].id);
+        const targetGlobalIndex = products.findIndex(p => p.id === filteredProducts[targetIndex].id);
+
+        const [movedProd] = newProducts.splice(sourceGlobalIndex, 1);
+        newProducts.splice(targetGlobalIndex, 0, movedProd);
+
+        setProducts(newProducts);
+        setDraggedProdIndex(null);
+
+        // Sync with API (Enviar IDs de la categoría actual reordenados)
+        try {
+            const categoryProds = newProducts.filter(p => p.categories.includes(activeCategory));
+            const ids = categoryProds.map(p => p.id);
+            await fetch(`${API_BASE}/reorder-products`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(ids)
+            });
+        } catch (err) {
+            console.error("Error reordering products:", err);
         }
     };
 
@@ -399,7 +523,46 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                 document.body
             )}
 
-            {/* Modal de Advertencia Crítica para Eliminación de Producto */}
+            {/* Modal de Renombrar Categoría (Sistema) */}
+            {renamingCategory && ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
+                    <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setRenamingCategory(null)} />
+                    <div className="relative w-full max-w-md bg-gray-900 border border-indigo-900/30 rounded-[40px] p-10 shadow-2xl">
+                        <h3 className="text-3xl font-black uppercase italic tracking-tighter text-indigo-400 mb-2 text-center">Editar Categoría</h3>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-10 text-center">
+                            Modifica el nombre y el icono identificador.
+                        </p>
+                        
+                        <div className="space-y-6 mb-10">
+                            <div>
+                                <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">Nombre de Categoría</label>
+                                <input 
+                                    className="w-full bg-black/40 border border-gray-800 p-4 rounded-2xl text-lg font-bold outline-none focus:border-indigo-500 uppercase text-center"
+                                    value={renameValue}
+                                    onChange={(e) => setRenameValue(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-4">
+                            <button 
+                                onClick={() => setRenamingCategory(null)}
+                                className="flex-1 py-4 bg-gray-800 rounded-2xl text-[10px] font-black uppercase hover:bg-gray-700 transition-all font-bold"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={handleRenameCategory}
+                                className="flex-1 py-4 bg-indigo-600 rounded-2xl text-[10px] font-black uppercase hover:scale-105 active:scale-95 transition-all font-bold shadow-xl shadow-indigo-600/20"
+                            >
+                                Guardar Cambios
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
             {showDeleteConfirm && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
                     <div className="absolute inset-0 bg-black/95 backdrop-blur-2xl" onClick={() => setShowDeleteConfirm(false)} />
@@ -432,7 +595,30 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                 document.body
             )}
 
-            {/* Modal de Edición de Producto */}
+            {/* Modal de Error: Categoría No Vacía */}
+            {showCategoryNotEmptyModal && ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[400] flex items-center justify-center p-6">
+                    <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setShowCategoryNotEmptyModal(false)} />
+                    <div className="relative w-full max-w-md bg-gray-900 border border-orange-900/40 rounded-[40px] p-10 shadow-2xl text-center">
+                        <div className="w-20 h-20 bg-orange-600/10 border-2 border-orange-600 rounded-3xl mx-auto mb-6 flex items-center justify-center text-4xl">
+                            🚫
+                        </div>
+                        <h3 className="text-2xl font-black uppercase italic tracking-tighter text-orange-400 mb-4">Categoría No Vacía</h3>
+                        <p className="text-xs text-gray-400 font-bold uppercase tracking-widest leading-loose mb-10">
+                            Esta categoría contiene <span className="text-white text-sm"> {emptyErrorCount} productos</span> actualmente.<br/><br/>
+                            Por seguridad, es <span className="text-red-400">imposible eliminarla</span> hasta que esté completamente vacía.
+                            <span className="block mt-4 italic text-[10px] text-gray-500">Usa el botón "Quitar del Catálogo" en cada producto para moverlo a DESCONTINUADOS.</span>
+                        </p>
+                        <button 
+                            onClick={() => setShowCategoryNotEmptyModal(false)}
+                            className="w-full py-4 bg-orange-600 rounded-2xl text-[10px] font-black uppercase hover:bg-orange-500 transition-all font-bold"
+                        >
+                            Entendido
+                        </button>
+                    </div>
+                </div>,
+                document.body
+            )}
             {editingProduct && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
                     <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setEditingProduct(null)} />
@@ -805,18 +991,48 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                     >
                         Todos
                     </button>
-                    {categories.map(cat => (
-                        <button 
+                    {categories.map((cat, idx) => (
+                        <div 
                             key={cat.id}
+                            draggable
+                            onDragStart={(e) => handleCategoryDragStart(e, idx)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => handleCategoryDrop(e, idx)}
                             onClick={() => setActiveCategory(cat.name)}
-                            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all flex items-center gap-2 ${activeCategory === cat.name ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-900/50 text-gray-500 hover:text-white'}`}
+                            className={`
+                                group relative px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-center transition-all 
+                                flex items-center justify-center min-w-[140px] h-auto min-h-[56px] whitespace-normal break-words cursor-pointer
+                                ${activeCategory === cat.name 
+                                    ? 'bg-indigo-600 text-white shadow-lg z-10 scale-105' 
+                                    : cat.vision_enabled 
+                                        ? 'bg-gray-800 text-gray-200 border border-gray-700 hover:border-indigo-500 shadow-md' 
+                                        : 'bg-gray-900/40 text-gray-600 border border-gray-800/50 opacity-40 grayscale backdrop-blur-sm hover:opacity-100 hover:grayscale-0'}
+                                ${draggedCatIndex === idx ? 'opacity-30' : ''}
+                            `}
                         >
-                            <span>{cat.icon}</span>
-                            {cat.name}
-                            {cat.name !== 'DESCONTINUADOS' && cat.name !== 'TODOS' && (
-                                <span onClick={(e) => { e.stopPropagation(); setCategoryToDelete(cat.name); }} className="ml-2 hover:text-red-500">✕</span>
+                            <span>{cat.name}</span>
+                            
+                            {/* Micro-controles Flotantes */}
+                            {!cat.is_system && (
+                                <div className="absolute right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleOpenRenameModal(cat); }}
+                                        className="hover:text-yellow-400 transition-colors"
+                                        title="Editar Nombre"
+                                    >✏️</button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleToggleCategoryVisibility(cat); }}
+                                        className={`transition-colors ${cat.vision_enabled ? 'hover:text-indigo-400' : 'text-red-500 hover:text-red-400'}`}
+                                        title={cat.vision_enabled ? "Ocultar" : "Mostrar"}
+                                    >{cat.vision_enabled ? '👁️' : '🕶️'}</button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setCategoryToDelete(cat.name); }}
+                                        className="hover:text-red-500 transition-colors ml-1"
+                                        title="Eliminar"
+                                    >✕</button>
+                                </div>
                             )}
-                        </button>
+                        </div>
                     ))}
                     
                     <button 
@@ -831,9 +1047,9 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                             <input 
                                 type="text"
                                 placeholder="Nueva Cat..."
-                                className="bg-black/60 border border-gray-800 p-2 rounded-lg text-[10px] uppercase font-black outline-none w-24"
+                                className="bg-black/60 border border-gray-800 p-2 rounded-lg text-[10px] uppercase font-black outline-none w-32"
                                 value={newCategory.name}
-                                onChange={(e) => setNewCategory({...newCategory, name: e.target.value.toUpperCase()})}
+                                onChange={(e) => setNewCategory({ name: e.target.value.toUpperCase() })}
                             />
                             <button onClick={handleAddCategory} className="bg-[#c1d72e] text-black px-3 py-2 rounded-lg text-[9px] font-black uppercase">OK</button>
                         </div>
@@ -844,11 +1060,15 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                     <div className="flex-1 flex items-center justify-center text-indigo-500 font-black uppercase tracking-widest animate-pulse">Cargando Imperio Digital...</div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2 custom-scrollbar flex-1">
-                        {filteredProducts.map(product => (
+                        {filteredProducts.map((product, idx) => (
                             <div 
                                 key={product.id || product.sku}
+                                draggable={activeCategory !== 'TODOS'}
+                                onDragStart={(e) => handleProductDragStart(e, idx)}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => handleProductDrop(e, idx)}
                                 onClick={() => setEditingProduct(product)}
-                                className="bg-gray-900/40 border border-gray-800 p-6 rounded-[32px] hover:border-indigo-500 transition-all cursor-pointer group"
+                                className={`bg-gray-900/40 border border-gray-800 p-6 rounded-[32px] hover:border-indigo-500 transition-all cursor-pointer group ${draggedProdIndex === idx ? 'opacity-30 scale-95 border-dashed border-indigo-500' : ''}`}
                             >
                                 {product.image_url ? (
                                     <div className="h-32 w-full mb-4 rounded-xl overflow-hidden border border-gray-800 relative z-0">

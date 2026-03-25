@@ -21,7 +21,7 @@ if not exist "node_modules" (
 )
 
 :: Iniciar servidor
-echo [INFO] Abriendo sistema en http://localhost:3000...
+echo [INFO] Abriendo sistema en http://localhost:5173...
 powershell -ExecutionPolicy Bypass -Command "npm run dev"
 
 pause

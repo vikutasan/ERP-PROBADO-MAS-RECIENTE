@@ -64,7 +64,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             try {
                 const catData = await posService.getCategories();
                 const normalized = catData
-                    .filter(c => c.name !== 'TODOS' && c.name !== 'DESCONTINUADOS')
+                    .filter(c => c.name.trim().toUpperCase() !== 'TODOS' && c.name.trim().toUpperCase() !== 'DESCONTINUADOS')
                     .map(c => {
                         const original = INITIAL_CATEGORIES.find(ic => ic.name === c.name);
                         return { ...c, icon: c.icon || (original ? original.icon : '📦') };

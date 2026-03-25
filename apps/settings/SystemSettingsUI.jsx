@@ -14,7 +14,7 @@ export const SystemSettingsUI = () => {
     const fetchSettings = async () => {
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:3001/api/v1/settings/');
+            const res = await fetch('http://localhost:3002/api/v1/settings/');
             const data = await res.json();
             setSettings(data);
         } catch (e) {
@@ -28,7 +28,7 @@ export const SystemSettingsUI = () => {
         if (!selectedSetting) return;
         setIsSaving(true);
         try {
-            const res = await fetch(`http://localhost:3001/api/v1/settings/${selectedSetting.key}`, {
+            const res = await fetch(`http://localhost:3002/api/v1/settings/${selectedSetting.key}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ value: newValue })
