@@ -1100,13 +1100,18 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
 
                 <div className="mt-6 flex justify-between items-center bg-indigo-600/5 p-6 rounded-3xl border border-indigo-500/10">
                     <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Total: {filteredProducts.length} productos en linea</p>
+                </div>
+
+                {/* Botón Flotante de Registro - Garantizado mediante Portal */}
+                {ReactDOM.createPortal(
                     <button 
                         onClick={handleCreateProduct}
-                        className="bg-indigo-600 px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-600/20"
+                        className="fixed bottom-10 right-10 z-[1000] bg-indigo-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5),0_0_20px_rgba(79,70,229,0.3)] border border-indigo-400/20"
                     >
                         + Registrar Producto
-                    </button>
-                </div>
+                    </button>,
+                    document.body
+                )}
             </div>
 
             <style>{`
