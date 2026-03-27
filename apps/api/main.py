@@ -6,6 +6,7 @@ from modules.pos.router import router as pos_router
 from modules.security.router import router as security_router
 from modules.cash.router import router as cash_router
 from modules.settings.router import router as settings_router
+from modules.production.router import router as production_router
 
 app = FastAPI(
     title="R de Rico ERP API",
@@ -21,8 +22,11 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://192.168.1.117:3000",
-        "http://192.168.1.117:3001"
+        "http://192.168.1.117:3001",
+        "http://192.168.1.117:5173"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -38,6 +42,7 @@ app.include_router(pos_router, prefix="/api/v1/pos", tags=["POS"])
 app.include_router(security_router, prefix="/api/v1/security", tags=["Security"])
 app.include_router(cash_router, prefix="/api/v1/cash", tags=["Cash"])
 app.include_router(settings_router, prefix="/api/v1/settings", tags=["Settings"])
+app.include_router(production_router, prefix="/api/v1/production", tags=["Production"])
 
 # Montar carpeta de imágenes estáticas
 app.mount("/static/catalog", StaticFiles(directory="static/catalog"), name="static")

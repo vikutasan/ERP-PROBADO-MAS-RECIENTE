@@ -10,5 +10,5 @@ if (-not (Test-Path "node_modules")) {
 }
 
 # 2. Iniciar servidor de desarrollo
-Write-Host "🌐 Abriendo Centro de Experimentación en http://localhost:3000" -ForegroundColor Green
+Write-Host "🌐 Abriendo Centro de Experimentación en http://localhost:5173" -ForegroundColor Green
 powershell -ExecutionPolicy Bypass -Command "npm run dev"

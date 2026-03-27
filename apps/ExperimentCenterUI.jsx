@@ -5,7 +5,7 @@ import { B2BManagerUI } from './b2b/B2BManagerUI';
 import { CakeConfiguratorUI } from './ecommerce/CakeConfiguratorUI';
 import { LogisticsDashboardUI } from './logistics/LogisticsDashboardUI';
 import { DriverAppUI } from './driver-app/DriverAppUI';
-import { MaestroPanaderoDashboard } from './production/MaestroPanaderoUI';
+import { ProductionManagementUI } from "./production/ProductionManagementUI";
 import { WaiterAppUI } from './waiter-app/WaiterAppUI';
 import { LoginUI } from './auth/LoginUI';
 import { SeguridadAccesoUI } from './auth/SeguridadAccesoUI';
@@ -59,24 +59,34 @@ export const ExperimentCenterUI = () => {
     const [userId, setUserId] = useState(null);
     const [activeModule, setActiveModule] = useState('overview');
     const [userPermissions, setUserPermissions] = useState({});
+    const [userProfileId, setUserProfileId] = useState(null);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     const handleLogin = (user) => {
         setUserRole(user.role);
         setUserName(user.name || '');
         setUserId(user.id);
+        setUserProfileId(user.profile_id);
         setUserPermissions(user.permissions || {});
         setIsAuthenticated(true);
+    };
+
+    const handleUpdatePermissions = (updatedProfile) => {
+        // Si el perfil editado es el mismo que tiene el usuario actual, actualizamos permisos en vivo
+        if (updatedProfile.id === userProfileId) {
+            console.log("Sincronizando permisos en vivo para:", updatedProfile.name);
+            setUserPermissions(updatedProfile.permissions);
+        }
     };
 
     if (!isAuthenticated) return <LoginUI onLogin={handleLogin} />;
 
     const allModules = [
         { id: 'pos_retail', name: 'Punto de Venta IA', color: 'bg-orange-600', icon: '🛒', access: ['ADMIN', 'MANAGER'] },
-        { id: 'inventory', name: 'Gestión de Productos', color: 'bg-indigo-600', icon: '📦', access: ['ADMIN', 'MANAGER'] },
+        { id: 'inventory', name: 'Gestión de Productos', color: 'bg-indigo-600', icon: '🥐', access: ['ADMIN', 'MANAGER'] },
         { id: 'warehouse', name: 'Gestión de Almacenes', color: 'bg-slate-700', icon: '🏬', access: ['ADMIN', 'MANAGER'] },
         { id: 'vision_train', name: 'Entrenamiento IA', color: 'bg-[#c1d72e]', icon: '👁️', access: ['ADMIN', 'MANAGER'] },
-        { id: 'production', name: 'Maestro Panadero', color: 'bg-amber-800', icon: '🍞', access: ['ADMIN', 'BAKER'] },
+        { id: 'production', name: 'Gestión de la Producción', color: 'bg-amber-800', icon: '🥣', access: ['ADMIN', 'BAKER'] },
         { id: 'financials', name: 'Módulo Financiero', color: 'bg-emerald-800', icon: '📈', access: ['ADMIN', 'MANAGER'] },
         { id: 'invoicing', name: 'Facturación CFDI', color: 'bg-blue-600', icon: '🧾', access: ['ADMIN', 'MANAGER', 'CASHIER'] },
         { id: 'purchasing', name: 'Gestión de Compras', color: 'bg-indigo-900', icon: '🛒', access: ['ADMIN', 'MANAGER'] },
@@ -268,15 +278,17 @@ export const ExperimentCenterUI = () => {
                             </div>
                         )}
                         {activeModule === 'ecommerce' && <CakeConfiguratorUI />}
-                        {activeModule === 'production' && <MaestroPanaderoDashboard dailyPlan={mockData.dailyPlan} />}
+                        {activeModule === 'production' && <ProductionManagementUI dailyPlan={mockData.dailyPlan} />}
                         {activeModule === 'b2b' && <B2BManagerUI clients={mockData.clients} products={[]} />}
-                        {activeModule === 'inventory' && <ProductMasterUI />}
+                        {activeModule === 'inventory' && <ProductMasterUI userPermissions={userPermissions} />}
                         {activeModule === 'warehouse' && <WarehouseManagerUI />}
                         {activeModule === 'purchasing' && <PurchaseManagerUI />}
                         { activeModule === 'procurement' && <PurchasingHubUI /> }
                         { activeModule === 'logistics' && <LogisticsDashboardUI pendingDeliveries={mockData.pendingDeliveries} vehicles={mockData.vehicles} drivers={mockData.drivers} /> }
                         {activeModule === 'driver' && <DriverAppUI activeRoute={{ orders: [] }} currentDriver={{ name: 'Juan Pérez' }} />}
-                        {activeModule === 'seguridad_acceso' && <SeguridadAccesoUI />}
+                        {activeModule === 'seguridad_acceso' && (
+                            <SeguridadAccesoUI onPermissionsUpdate={handleUpdatePermissions} />
+                        )}
                         {activeModule === 'auditoria' && <AuditoriaUI />}
                         {activeModule === 'settings' && <SystemSettingsUI />}
                     </div>

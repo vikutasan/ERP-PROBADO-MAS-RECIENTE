@@ -28,10 +28,17 @@ async def update_category(category_id: int, category: schemas.CategoryCreate, db
 
 @router.delete("/categories/{category_id}")
 async def delete_category(category_id: int, db: AsyncSession = Depends(get_db)):
-    success = await catalog_service.delete_category(db, category_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Categoria no encontrada")
-    return {"message": "Categoria eliminada"}
+    try:
+        success = await catalog_service.delete_category(db, category_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Categoria no encontrada o protegida")
+        return {"message": "Categoria eliminada exitosamente"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+@router.post("/reorder-categories")
+async def reorder_categories(category_ids: List[int], db: AsyncSession = Depends(get_db)):
+    await catalog_service.reorder_categories(db, category_ids)
+    return {"message": "Categorias reordenadas"}
 
 # ─── Productos ───────────────────────────────────────────────────────────────
 
@@ -44,7 +51,7 @@ async def create_product(product: schemas.ProductCreate, db: AsyncSession = Depe
     return await catalog_service.create_product(db, product)
 
 @router.put("/products/{product_id}", response_model=schemas.ProductResponse)
-async def update_product(product_id: int, product: schemas.ProductCreate, db: AsyncSession = Depends(get_db)):
+async def update_product(product_id: int, product: schemas.ProductUpdate, db: AsyncSession = Depends(get_db)):
     result = await catalog_service.update_product(db, product_id, product)
     if not result:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -55,7 +62,10 @@ async def delete_product(product_id: int, db: AsyncSession = Depends(get_db)):
     success = await catalog_service.delete_product(db, product_id)
     if not success:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-    return {"message": "Producto eliminado"}
+@router.post("/reorder-products")
+async def reorder_products(product_ids: List[int], db: AsyncSession = Depends(get_db)):
+    await catalog_service.reorder_products(db, product_ids)
+    return {"message": "Productos reordenados"}
 
 # ─── Importacion ─────────────────────────────────────────────────────────────
 

@@ -3,11 +3,13 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import delete
 from . import models, schemas
+from modules.production import service as prod_service
+from modules.production import schemas as prod_schemas
 
 
 class CatalogService:
     async def get_categories(self, db: AsyncSession):
-        result = await db.execute(select(models.Category))
+        result = await db.execute(select(models.Category).order_by(models.Category.position.asc(), models.Category.name.asc()))
         return result.scalars().all()
 
     async def create_category(self, db: AsyncSession, category: schemas.CategoryCreate):
@@ -22,51 +24,95 @@ class CatalogService:
         db_cat = result.scalar_one_or_none()
         if not db_cat:
             return None
+        
+        # Proteger categorías de sistema (no cambiar nombre ni borrar, pero talvez permitir visibilidad?)
+        # El usuario dice "que NO sean de sistema" para editar/borrar/ocultar.
+        if db_cat.is_system:
+            # Solo permitimos actualizar vision_enabled si acaso, pero el usuario dice "que NO sean del sistema"
+            # Así que bloqueamos todo para categorías de sistema por ahora.
+            return db_cat
+        
         db_cat.name = category.name
         db_cat.icon = category.icon
+        db_cat.vision_enabled = category.vision_enabled
         await db.commit()
         await db.refresh(db_cat)
         return db_cat
 
     async def delete_category(self, db: AsyncSession, category_id: int):
+        # 1. Verificar existencia y exclusión de categorías de sistema
         result = await db.execute(select(models.Category).where(models.Category.id == category_id))
         db_cat = result.scalar_one_or_none()
-        if not db_cat:
+        if not db_cat or db_cat.is_system:
             return False
+            
+        # 2. Verificar si la categoría está vacía (Integridad Imperial)
+        result_prod = await db.execute(
+            select(models.Product).where(models.Product.category_id == category_id)
+        )
+        if result_prod.scalar_one_or_none():
+            # Si hay productos, no permitimos borrar (el usuario debe moverlos a DESCONTINUADOS)
+            raise ValueError("No se puede eliminar una categoría que contiene productos.")
+
         await db.delete(db_cat)
         await db.commit()
         return True
 
     async def get_products(self, db: AsyncSession, category_id: int = None):
-        query = select(models.Product).options(selectinload(models.Product.category))
+        query = select(models.Product).options(
+            selectinload(models.Product.category), 
+            selectinload(models.Product.technical_sheet)
+        ).order_by(models.Product.position.asc(), models.Product.name.asc())
+        
         if category_id:
             query = query.where(models.Product.category_id == category_id)
         result = await db.execute(query)
         return result.scalars().all()
 
     async def create_product(self, db: AsyncSession, product: schemas.ProductCreate):
-        db_product = models.Product(**product.model_dump())
+        product_data = product.model_dump(exclude={"technical_data"})
+        db_product = models.Product(**product_data)
         db.add(db_product)
         await db.commit()
         await db.refresh(db_product)
+        
+        if product.technical_data:
+            tech_data = prod_schemas.TechnicalSheetCreate(product_id=db_product.id, **product.technical_data)
+            await prod_service.upsert_technical_sheet(db, tech_data)
+
         result = await db.execute(
-            select(models.Product).options(selectinload(models.Product.category)).where(models.Product.id == db_product.id)
+            select(models.Product)
+            .options(selectinload(models.Product.category), selectinload(models.Product.technical_sheet))
+            .where(models.Product.id == db_product.id)
         )
         return result.scalar_one()
 
-    async def update_product(self, db: AsyncSession, product_id: int, product: schemas.ProductCreate):
+    async def update_product(self, db: AsyncSession, product_id: int, product: schemas.ProductUpdate):
         result = await db.execute(
-            select(models.Product).options(selectinload(models.Product.category)).where(models.Product.id == product_id)
+            select(models.Product).where(models.Product.id == product_id)
         )
         db_product = result.scalar_one_or_none()
         if not db_product:
             return None
-        for key, value in product.model_dump().items():
+            
+        product_data = product.model_dump(exclude={"technical_data"}, exclude_unset=True)
+        for key, value in product_data.items():
             setattr(db_product, key, value)
+            
         await db.commit()
         await db.refresh(db_product)
+        
+        if product.technical_data is not None:
+            # Evitar colisión de product_id si viene en technical_data
+            t_data = product.technical_data.copy()
+            t_data.pop("product_id", None)
+            tech_data = prod_schemas.TechnicalSheetCreate(product_id=product_id, **t_data)
+            await prod_service.upsert_technical_sheet(db, tech_data)
+
         result = await db.execute(
-            select(models.Product).options(selectinload(models.Product.category)).where(models.Product.id == product_id)
+            select(models.Product)
+            .options(selectinload(models.Product.category), selectinload(models.Product.technical_sheet))
+            .where(models.Product.id == product_id)
         )
         return result.scalar_one()
 
@@ -98,14 +144,14 @@ class CatalogService:
             if existing.scalar_one_or_none():
                 continue
 
-            cat_name = str(item.get('category', 'GENERAL')).strip().upper()
-            if not cat_name or cat_name == 'NAN':
-                cat_name = 'GENERAL'
+            cat_name = str(item.get('category', 'TODOS')).strip().upper()
+            if not cat_name or cat_name == 'NAN' or cat_name == 'GENERAL':
+                cat_name = 'TODOS'
 
             result = await db.execute(select(models.Category).where(models.Category.name == cat_name))
             db_category = result.scalar_one_or_none()
             if not db_category:
-                db_category = models.Category(name=cat_name, icon="📦")
+                db_category = models.Category(name=cat_name, icon="")
                 db.add(db_category)
                 await db.flush()
 
@@ -120,6 +166,26 @@ class CatalogService:
 
         await db.commit()
         return count
+
+    async def reorder_categories(self, db: AsyncSession, category_ids: list):
+        """Actualiza el campo position de una lista de IDs de categoría en el orden recibido."""
+        for index, cat_id in enumerate(category_ids):
+            result = await db.execute(select(models.Category).where(models.Category.id == cat_id))
+            category = result.scalar_one_or_none()
+            if category:
+                category.position = index
+        await db.commit()
+        return True
+
+    async def reorder_products(self, db: AsyncSession, product_ids: list):
+        """Actualiza el campo position de una lista de IDs de producto en el orden recibido."""
+        for index, prod_id in enumerate(product_ids):
+            result = await db.execute(select(models.Product).where(models.Product.id == prod_id))
+            product = result.scalar_one_or_none()
+            if product:
+                product.position = index
+        await db.commit()
+        return True
 
 
 catalog_service = CatalogService()
