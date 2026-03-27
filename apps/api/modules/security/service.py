@@ -168,34 +168,41 @@ async def validar_pin(db: AsyncSession, pin: str) -> schemas.PINValidateResponse
     Valida el PIN ingresado por el cajero.
     Devuelve el nombre y objeto de perfil si el PIN es correcto.
     """
-    resultado = await db.execute(
-        select(models.Employee).where(
-            models.Employee.employee_code == pin,
-            models.Employee.is_active == True,
-        ).options(selectinload(models.Employee.profile))
-    )
-    empleado = resultado.scalar_one_or_none()
-    if not empleado:
-        raise HTTPException(status_code=401, detail="PIN incorrecto o empleado inactivo")
+    try:
+        resultado = await db.execute(
+            select(models.Employee).where(
+                models.Employee.employee_code == pin,
+                models.Employee.is_active == True,
+            ).options(selectinload(models.Employee.profile))
+        )
+        empleado = resultado.scalar_one_or_none()
+        if not empleado:
+            raise HTTPException(status_code=401, detail="PIN incorrecto o empleado inactivo")
 
-    # Serialización manual para evitar errores de lazy loading (MissingGreenlet)
-    perfil_data = None
-    if empleado.profile:
-        perfil_data = {
-            "id": empleado.profile.id,
-            "name": empleado.profile.name,
-            "description": empleado.profile.description,
-            "permissions": empleado.profile.permissions,
-            "is_system": empleado.profile.is_system,
-            "employee_count": 0 # No es necesario el conteo para el login
+        # Serialización manual para evitar errores de lazy loading (MissingGreenlet)
+        perfil_data = None
+        if empleado.profile:
+            # Aseguramos que los campos requeridos por ProfileResponse estén presentes
+            perfil_data = {
+                "id": empleado.profile.id,
+                "name": empleado.profile.name,
+                "description": empleado.profile.description,
+                "permissions": empleado.profile.permissions if empleado.profile.permissions is not None else {},
+                "is_system": empleado.profile.is_system,
+                "employee_count": 0
+            }
+
+        return {
+            "id": empleado.id,
+            "name": empleado.name,
+            "role": empleado.profile.name if empleado.profile else empleado.role,
+            "profile": perfil_data
         }
-
-    return schemas.PINValidateResponse(
-        id=empleado.id,
-        name=empleado.name,
-        role=empleado.profile.name if empleado.profile else empleado.role,
-        profile=perfil_data
-    )
+    except Exception as e:
+        import traceback
+        print(f"ERROR EN VALIDAR_PIN: {e}")
+        traceback.print_exc()
+        raise e
 
 
 async def actualizar_empleado(

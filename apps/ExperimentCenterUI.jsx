@@ -5,7 +5,7 @@ import { B2BManagerUI } from './b2b/B2BManagerUI';
 import { CakeConfiguratorUI } from './ecommerce/CakeConfiguratorUI';
 import { LogisticsDashboardUI } from './logistics/LogisticsDashboardUI';
 import { DriverAppUI } from './driver-app/DriverAppUI';
-import { MaestroPanaderoDashboard } from './production/MaestroPanaderoUI';
+import { ProductionManagementUI } from "./production/ProductionManagementUI";
 import { WaiterAppUI } from './waiter-app/WaiterAppUI';
 import { LoginUI } from './auth/LoginUI';
 import { SeguridadAccesoUI } from './auth/SeguridadAccesoUI';
@@ -86,7 +86,7 @@ export const ExperimentCenterUI = () => {
         { id: 'inventory', name: 'Gestión de Productos', color: 'bg-indigo-600', icon: '🥐', access: ['ADMIN', 'MANAGER'] },
         { id: 'warehouse', name: 'Gestión de Almacenes', color: 'bg-slate-700', icon: '🏬', access: ['ADMIN', 'MANAGER'] },
         { id: 'vision_train', name: 'Entrenamiento IA', color: 'bg-[#c1d72e]', icon: '👁️', access: ['ADMIN', 'MANAGER'] },
-        { id: 'production', name: 'Maestro Panadero', color: 'bg-amber-800', icon: '🍞', access: ['ADMIN', 'BAKER'] },
+        { id: 'production', name: 'Gestión de la Producción', color: 'bg-amber-800', icon: '🥣', access: ['ADMIN', 'BAKER'] },
         { id: 'financials', name: 'Módulo Financiero', color: 'bg-emerald-800', icon: '📈', access: ['ADMIN', 'MANAGER'] },
         { id: 'invoicing', name: 'Facturación CFDI', color: 'bg-blue-600', icon: '🧾', access: ['ADMIN', 'MANAGER', 'CASHIER'] },
         { id: 'purchasing', name: 'Gestión de Compras', color: 'bg-indigo-900', icon: '🛒', access: ['ADMIN', 'MANAGER'] },
@@ -278,7 +278,7 @@ export const ExperimentCenterUI = () => {
                             </div>
                         )}
                         {activeModule === 'ecommerce' && <CakeConfiguratorUI />}
-                        {activeModule === 'production' && <MaestroPanaderoDashboard dailyPlan={mockData.dailyPlan} />}
+                        {activeModule === 'production' && <ProductionManagementUI dailyPlan={mockData.dailyPlan} />}
                         {activeModule === 'b2b' && <B2BManagerUI clients={mockData.clients} products={[]} />}
                         {activeModule === 'inventory' && <ProductMasterUI userPermissions={userPermissions} />}
                         {activeModule === 'warehouse' && <WarehouseManagerUI />}

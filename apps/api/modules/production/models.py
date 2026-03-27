@@ -1,79 +1,98 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Boolean, Text
 from sqlalchemy.orm import relationship
 from core.database import Base
 
-class MassManager(Base):
+class Dough(Base):
     """
-    Gestor de Masas Base. Proveedor Interno.
-    Controla los parámetros físicos y de rendimiento de una tanda de masa.
+    Maestro de Masas (ADN de la panadería).
+    Representa una receta base escalable por 'Bastones'.
     """
-    __tablename__ = "mass_manager"
+    __tablename__ = "doughs"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True, nullable=False)
+    code = Column(String, unique=True, index=True, nullable=False) # Ej: 'B', 'P', 'D'
+    name = Column(String, nullable=False)                         # Ej: 'Masa para Bolillo'
+    description = Column(Text, nullable=True)
+    dough_type = Column(String, nullable=False)                   # Ej: 'PRE-FERMENTO', 'DULCE', 'SALADA'
     
-    # Rendimiento
-    total_yield_grams = Column(Float, nullable=False)  # Rendimiento total de la tanda en gramos
-    loss_percentage = Column(Float, default=0.0)       # Porcentaje de merma esperada
+    # Parámetros de Reposo
+    requires_rest = Column(Boolean, default=False)
+    rest_container = Column(String, nullable=True)               # Ej: 'Cubeta', 'Charola'
+    rest_warehouse = Column(String, nullable=True)               # Ej: 'Cámara 1', 'Almacén Secos'
+    rest_time_min = Column(Integer, nullable=True)
     
-    # Parámetros físicos / químicos de amase
-    tfm_celsius = Column(Float, nullable=True)         # Temperatura Final de Masa (TFM)
-    autolysis_time_min = Column(Integer, nullable=True) # Tiempo de autólisis
-    kneading_time_low_min = Column(Integer, nullable=True)
-    kneading_time_high_min = Column(Integer, nullable=True)
-    
-    # Fermentación/Reposo
-    bulk_fermentation_time_min = Column(Integer, nullable=True)
-    bulk_fermentation_temp_celsius = Column(Float, nullable=True)
-    folds_count = Column(Integer, default=0)           # Número de pliegues (Stretch & Folds)
-
-class ProductTechnicalSheet(Base):
-    """
-    Ficha Técnica de Producción.
-    Vinculada 1:1 a un Producto, con campos dinámicos según su Naturaleza.
-    """
-    __tablename__ = "product_technical_sheets"
-
-    id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), unique=True)
-    
-    # -----------------------------------------------------
-    # CUALIDADES PARA: MANUFACTURADO (Panadería Artesanal)
-    # -----------------------------------------------------
-    primary_mass_id = Column(Integer, ForeignKey("mass_manager.id"), nullable=True)
-    secondary_mass_id = Column(Integer, ForeignKey("mass_manager.id"), nullable=True)
-    tertiary_mass_id = Column(Integer, ForeignKey("mass_manager.id"), nullable=True)
-    weight_per_piece = Column(Float, nullable=True)     # Gramos por pieza de masa primaria
-    
-    # Parámetros de Horneo
-    baking_temp_top = Column(Float, nullable=True)      # Temp Bóveda
-    baking_temp_bottom = Column(Float, nullable=True)   # Temp Piso
-    baking_time_min = Column(Integer, nullable=True)
-    steam_seconds = Column(Integer, nullable=True)      # Segundos de inyección de vapor
-    scoring_type = Column(String, nullable=True)        # Tipo de Greñado / Corte
-    
-    # Procedimiento y BOM
-    forming_procedure = Column(String, nullable=True)   # Procedimiento de formado (Texto enriquecido)
-    bom_extra = Column(JSON, nullable=True)             # Rellenos, barnices, etc [{"name": "Mermelada", "grams": 20}]
-
-    # -----------------------------------------------------
-    # CUALIDADES PARA: PREPARADO AL MOMENTO (Cafetería/Pizzería)
-    # -----------------------------------------------------
-    preparation_time_min = Column(Integer, nullable=True)
-    recipe_procedure = Column(String, nullable=True)
-    modifiers = Column(JSON, nullable=True)             # Opciones de customización (Ej: Tipo de leche, Extras)
-
-    # -----------------------------------------------------
-    # CUALIDADES PARA: REVENTA (Souvenirs/Lácteos)
-    # -----------------------------------------------------
-    provider = Column(String, nullable=True)
-    original_barcode = Column(String, nullable=True)
-    unit_measure = Column(String, nullable=True)        # Pieza, Paquete, Lt
-    min_stock = Column(Integer, nullable=True)
-    max_stock = Column(Integer, nullable=True)
+    # Rendimientos Teóricos
+    theoretical_yield = Column(Float, nullable=True) # Peso total esperado
+    expected_waste = Column(Float, default=0.0)
 
     # Relaciones
-    product = relationship("Product", back_populates="technical_sheet")
-    primary_mass = relationship("MassManager", foreign_keys=[primary_mass_id])
-    secondary_mass = relationship("MassManager", foreign_keys=[secondary_mass_id])
-    tertiary_mass = relationship("MassManager", foreign_keys=[tertiary_mass_id])
+    batches = relationship("DoughBatchConfig", back_populates="dough", cascade="all, delete-orphan")
+    ingredients = relationship("DoughIngredient", back_populates="dough", cascade="all, delete-orphan", foreign_keys="[DoughIngredient.dough_id]")
+    procedure_steps = relationship("DoughProcedureStep", back_populates="dough", order_by="DoughProcedureStep.step_number", cascade="all, delete-orphan")
+    product_relations = relationship("DoughProductRelation", back_populates="dough", cascade="all, delete-orphan")
+
+class DoughBatchConfig(Base):
+    """
+    Configuración de Tandas / MEP (Mise en Place).
+    Define los 'costales' o batidos estándar (ej: 4B, 6B, P16).
+    """
+    __tablename__ = "dough_batch_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dough_id = Column(Integer, ForeignKey("doughs.id"))
+    name = Column(String, nullable=False)           # Ej: '4B (4 BASTONES)'
+    baston_qty = Column(Float, nullable=False)      # Ej: 4.0
+    
+    dough = relationship("Dough", back_populates="batches")
+
+class DoughIngredient(Base):
+    """
+    Ingredientes de la masa, escalados por Bastón.
+    Incopora tipo de MEP (Polvos/Líquidos).
+    """
+    __tablename__ = "dough_ingredients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dough_id = Column(Integer, ForeignKey("doughs.id"))
+    name = Column(String, nullable=False)
+    qty_per_baston = Column(Float, nullable=False)
+    unit = Column(String, default="g")              # g, kg, L, BASTON
+    mep_type = Column(String, nullable=True)        # POLVOS, LIQUIDOS, PRE-FERMENTO
+    
+    # Si la unidad es BASTON, podemos vincular a otro pre-fermento (opcional)
+    preferment_id = Column(Integer, ForeignKey("doughs.id"), nullable=True)
+
+    dough = relationship("Dough", back_populates="ingredients", foreign_keys=[dough_id])
+    preferment = relationship("Dough", foreign_keys=[preferment_id])
+
+class DoughProcedureStep(Base):
+    """
+    Pasos detallados de la revoltura.
+    """
+    __tablename__ = "dough_procedure_steps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dough_id = Column(Integer, ForeignKey("doughs.id"))
+    step_number = Column(Integer, nullable=False)
+    task = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    equipment = Column(String, nullable=True)       # Ej: 'Revolvedora', 'Bascula'
+    speed = Column(String, nullable=True)           # Ej: '1', '2', 'Apagado'
+    time_minutes = Column(Integer, default=0)
+
+    dough = relationship("Dough", back_populates="procedure_steps")
+
+class DoughProductRelation(Base):
+    """
+    Relación Masa-Producto.
+    Define cuántos gramos de esta masa usa un producto manufacturado.
+    """
+    __tablename__ = "dough_product_relations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dough_id = Column(Integer, ForeignKey("doughs.id"))
+    product_id = Column(Integer, ForeignKey("products.id"))
+    grams_per_piece = Column(Float, nullable=False)
+    
+    dough = relationship("Dough", back_populates="product_relations")
+    product = relationship("Product")

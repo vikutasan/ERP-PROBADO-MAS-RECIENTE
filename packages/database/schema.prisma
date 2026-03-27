@@ -53,6 +53,7 @@ model Product {
   b2bOrderItems     B2BOrderItem[]
   stockLevels       StockLevel[]
   inventoryMovements InventoryMovement[]
+  masas             MasaProducto[]
 }
 
 model Ingredient {
@@ -697,6 +698,7 @@ model Warehouse {
   type          WarehouseType @default(GENERAL)
   stockLevels   StockLevel[]
   movements     InventoryMovement[]
+  masasEnReposo Masa[]
   createdAt     DateTime      @default(now())
 }
 
@@ -1003,3 +1005,63 @@ enum RouteStatus {
   COMPLETED
 }
 
+// ─── GESTOR DE MASAS (PRODUCCIÓN R DE RICO V1) ─────────────────────────
+enum TipoMasa {
+  PREFERMENTO
+  MASA_SALADA
+  MASA_DULCE
+}
+
+enum EstadoMasa {
+  ACTIVO
+  DESCONTINUADO
+}
+
+model Masa {
+  id                    String              @id @default(uuid())
+  clave                 String              @unique // Ej: "4B"
+  nombre                String
+  descripcion           String?             @db.Text
+  tipo                  TipoMasa
+  rendimiento_teorico   Float
+  rendimiento_real      Float
+  merma_esperada        Float
+  requiere_reposo       Boolean             @default(false)
+  reposo_recipiente     String?
+  reposo_almacen_id     String?
+  reposo_almacen        Warehouse?          @relation(fields: [reposo_almacen_id], references: [id])
+  reposo_tiempo_minutos Int?
+  estado                EstadoMasa          @default(ACTIVO)
+  
+  ingredientes          MasaIngrediente[]
+  procedimiento         MasaProcedimiento[]
+  productos             MasaProducto[]
+  
+  prefermentos_usados   MasaPrefermento[]   @relation("MasaDestino")
+  usada_como_prefermento MasaPrefermento[]  @relation("PrefermentoOrigen")
+  
+}
+
+model MasaProducto {
+  id                 String     @id @default(uuid())
+  masa_id            String
+  masa               Masa       @relation(fields: [masa_id], references: [id], onDelete: Cascade)
+  producto_id        String
+  producto           Product    @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+  cantidad_por_pieza Float
+  unidad_medida      String
+  
+  @@unique([masa_id, producto_id])
+}
+
+model MasaPrefermento {
+  id                 String     @id @default(uuid())
+  masa_destino_id    String
+  masa_destino       Masa       @relation("MasaDestino", fields: [masa_destino_id], references: [id], onDelete: Cascade)
+  prefermento_id     String
+  prefermento        Masa       @relation("PrefermentoOrigen", fields: [prefermento_id], references: [id], onDelete: Cascade)
+  cantidad           Float
+  unidad_medida      String
+  
+  @@unique([masa_destino_id, prefermento_id])
+}
