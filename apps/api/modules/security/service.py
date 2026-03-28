@@ -10,22 +10,26 @@ from . import models, schemas
 
 async def listar_perfiles(db: AsyncSession) -> list[models.SecurityProfile]:
     """Obtiene todos los perfiles registrados con su conteo de empleados activos."""
-    resultado = await db.execute(select(models.SecurityProfile))
-    perfiles = resultado.scalars().all()
+    from sqlalchemy import func
     
-    # Calcular conteo de empleados para cada perfil
-    for p in perfiles:
-        res_count = await db.execute(
-            select(models.Employee).where(
-                models.Employee.profile_id == p.id,
-                models.Employee.is_active == True
-            )
+    # Consulta optimizada con count agrupado
+    query = (
+        select(
+            models.SecurityProfile,
+            func.count(models.Employee.id).label("employee_count")
         )
-        # Nota: scalars().all() + len() es ineficiente pero simple para este volumen. 
-        # En prod real usaríamos func.count()
-        p.employee_count = len(res_count.scalars().all())
-        
-    return perfiles
+        .outerjoin(models.Employee, (models.Employee.profile_id == models.SecurityProfile.id) & (models.Employee.is_active == True))
+        .group_by(models.SecurityProfile.id)
+    )
+    
+    resultado = await db.execute(query)
+    perfiles_con_count = resultado.all()
+    
+    # Mapear resultado a objetos con el atributo inyectado
+    for row in perfiles_con_count:
+        row.SecurityProfile.employee_count = row.employee_count
+    
+    return [row.SecurityProfile for row in perfiles_con_count]
 
 
 async def crear_perfil(db: AsyncSession, datos: schemas.ProfileCreate) -> models.SecurityProfile:
@@ -164,45 +168,36 @@ async def listar_empleados(db: AsyncSession) -> list[models.Employee]:
 
 
 async def validar_pin(db: AsyncSession, pin: str) -> schemas.PINValidateResponse:
-    """
-    Valida el PIN ingresado por el cajero.
-    Devuelve el nombre y objeto de perfil si el PIN es correcto.
-    """
-    try:
-        resultado = await db.execute(
-            select(models.Employee).where(
-                models.Employee.employee_code == pin,
-                models.Employee.is_active == True,
-            ).options(selectinload(models.Employee.profile))
-        )
-        empleado = resultado.scalar_one_or_none()
-        if not empleado:
-            raise HTTPException(status_code=401, detail="PIN incorrecto o empleado inactivo")
+    """Valida el PIN ingresado por el cajero."""
+    resultado = await db.execute(
+        select(models.Employee).where(
+            models.Employee.employee_code == pin,
+            models.Employee.is_active == True,
+        ).options(selectinload(models.Employee.profile))
+    )
+    empleado = resultado.scalar_one_or_none()
+    
+    if not empleado:
+        raise HTTPException(status_code=401, detail="PIN incorrecto o empleado inactivo")
 
-        # Serialización manual para evitar errores de lazy loading (MissingGreenlet)
-        perfil_data = None
-        if empleado.profile:
-            # Aseguramos que los campos requeridos por ProfileResponse estén presentes
-            perfil_data = {
-                "id": empleado.profile.id,
-                "name": empleado.profile.name,
-                "description": empleado.profile.description,
-                "permissions": empleado.profile.permissions if empleado.profile.permissions is not None else {},
-                "is_system": empleado.profile.is_system,
-                "employee_count": 0
-            }
+    return {
+        "id": empleado.id,
+        "name": empleado.name,
+        "role": empleado.profile.name if empleado.profile else empleado.role,
+        "profile": _serialize_profile(empleado.profile)
+    }
 
-        return {
-            "id": empleado.id,
-            "name": empleado.name,
-            "role": empleado.profile.name if empleado.profile else empleado.role,
-            "profile": perfil_data
-        }
-    except Exception as e:
-        import traceback
-        print(f"ERROR EN VALIDAR_PIN: {e}")
-        traceback.print_exc()
-        raise e
+def _serialize_profile(profile: models.SecurityProfile | None) -> dict | None:
+    """Serialización manual segura para evitar MissingGreenlet."""
+    if not profile: return None
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "description": profile.description,
+        "permissions": profile.permissions or {},
+        "is_system": profile.is_system,
+        "employee_count": 0
+    }
 
 
 async def actualizar_empleado(

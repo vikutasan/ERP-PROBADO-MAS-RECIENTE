@@ -1,3 +1,4 @@
+from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -24,10 +25,24 @@ class POSService:
         return result.scalars().first()
 
     async def create_ticket(self, db: AsyncSession, ticket: schemas.TicketCreate):
-        # 1. Calcular Totales y Validar Productos
+        """Crea o actualiza un ticket, aplicando validaciones y reglas de negocio."""
+        # 1. Validar productos y calcular totales
+        db_items, total = await self._get_items_and_total(db, ticket.items)
+
+        # 2. Buscar/Crear cabecera de ticket
+        db_ticket = await self._upsert_ticket_header(db, ticket, total)
+
+        # 3. Persistir movimientos de artículos
+        await self._sync_ticket_items(db, db_ticket.id, db_items)
+        
+        await db.commit()
+        return await self._get_full_ticket(db, db_ticket.id)
+
+    async def _get_items_and_total(self, db: AsyncSession, items: List[schemas.TicketItemCreate]):
+        """Valida stock/existencia y calcula el valor total del carrito."""
         total = 0.0
         db_items = []
-        for item in ticket.items:
+        for item in items:
             product = await db.get(Product, item.product_id)
             if not product:
                 raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
@@ -36,65 +51,67 @@ class POSService:
             
             subtotal = product.price * item.quantity
             total += subtotal
-            
-            db_item = models.TicketItem(
+            db_items.append(models.TicketItem(
                 product_id=product.id,
                 quantity=item.quantity,
                 unit_price=product.price,
                 subtotal=subtotal
-            )
-            db_items.append(db_item)
+            ))
+        return db_items, total
 
-        # 2. Buscar ticket existente por account_num
-        result = await db.execute(
-            select(models.Ticket).where(models.Ticket.account_num == ticket.account_num)
-        )
+    async def _upsert_ticket_header(self, db: AsyncSession, ticket: schemas.TicketCreate, total: float):
+        """Encuentra un ticket existente o inicializa uno nuevo."""
+        result = await db.execute(select(models.Ticket).where(models.Ticket.account_num == ticket.account_num))
         db_ticket = result.scalars().first()
 
         if db_ticket:
-            # El ticket ya existe - actualizamos directamente
-            db_ticket.total = total
-            db_ticket.status = ticket.status
-            db_ticket.payment_details = ticket.payment_details
-            db_ticket.cash_session_id = ticket.cash_session_id
-            
-            # Si se está cobrando ahora, registrar quién lo hizo
-            if ticket.status == "PAID" and ticket.cashed_by_id:
-                db_ticket.cashed_by_id = ticket.cashed_by_id
-            
-            # Registrar quién lo captura.
-            if ticket.captured_by_id:
-                db_ticket.captured_by_id = ticket.captured_by_id
-            
-            # Eliminamos items anteriores para reemplazarlos
-            await db.execute(
-                delete(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
-            )
-        else:
-            # Ticket nuevo - registrar quién lo captura
-            session = await db.get(models.TerminalSession, ticket.session_id)
-            if not session or not session.is_active:
-                raise HTTPException(status_code=400, detail="Terminal session invalid or inactive")
-            
-            db_ticket = models.Ticket(
-                account_num=ticket.account_num,
-                session_id=ticket.session_id,
-                total=total,
-                status=ticket.status or "OPEN",
-                payment_details=ticket.payment_details,
-                cash_session_id=ticket.cash_session_id,
-                captured_by_id=ticket.captured_by_id
-            )
-            db.add(db_ticket)
-            await db.flush()
+            return await self._update_ticket_fields(db_ticket, ticket, total)
         
-        for db_item in db_items:
-            db_item.ticket_id = db_ticket.id
-            db.add(db_item)
-            
-        await db.commit()
+        return await self._initialize_new_ticket(db, ticket, total)
+
+    async def _update_ticket_fields(self, db_ticket: models.Ticket, ticket: schemas.TicketCreate, total: float):
+        """Actualiza campos de un ticket existente."""
+        db_ticket.total = total
+        db_ticket.status = ticket.status
+        db_ticket.payment_details = ticket.payment_details
+        db_ticket.cash_session_id = ticket.cash_session_id
         
-        # Respuesta final con relaciones cargadas SIN lazy loading
+        if ticket.status == "PAID" and ticket.cashed_by_id:
+            db_ticket.cashed_by_id = ticket.cashed_by_id
+        
+        if ticket.captured_by_id:
+            db_ticket.captured_by_id = ticket.captured_by_id
+            
+        return db_ticket
+
+    async def _initialize_new_ticket(self, db: AsyncSession, ticket: schemas.TicketCreate, total: float):
+        """Crea una nueva instancia de Ticket validando la sesión de terminal."""
+        session = await db.get(models.TerminalSession, ticket.session_id)
+        if not session or not session.is_active:
+            raise HTTPException(status_code=400, detail="Terminal session invalid or inactive")
+        
+        db_ticket = models.Ticket(
+            account_num=ticket.account_num,
+            session_id=ticket.session_id,
+            total=total,
+            status=ticket.status or "OPEN",
+            payment_details=ticket.payment_details,
+            cash_session_id=ticket.cash_session_id,
+            captured_by_id=ticket.captured_by_id
+        )
+        db.add(db_ticket)
+        await db.flush()
+        return db_ticket
+
+    async def _sync_ticket_items(self, db: AsyncSession, ticket_id: int, db_items: List[models.TicketItem]):
+        """Reemplaza items previos por la nueva ráfaga de artículos."""
+        await db.execute(delete(models.TicketItem).where(models.TicketItem.ticket_id == ticket_id))
+        for item in db_items:
+            item.ticket_id = ticket_id
+            db.add(item)
+
+    async def _get_full_ticket(self, db: AsyncSession, ticket_id: int):
+        """Recupera un ticket con CARGA ANSIOSA de todas las relaciones para evitar MissingGreenlet."""
         result = await db.execute(
             select(models.Ticket)
             .options(
@@ -104,18 +121,20 @@ class POSService:
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
             )
-            .where(models.Ticket.id == db_ticket.id)
+            .where(models.Ticket.id == ticket_id)
         )
         ticket_obj = result.scalar_one()
-        ticket_obj.terminal_id = ticket_obj.session.terminal_id
-        
-        # Poblar nombres planos para el frontend
+        return self._populate_flat_fields(ticket_obj)
+
+    def _populate_flat_fields(self, ticket_obj: models.Ticket):
+        """Puebla campos calculados o nombres planos para el frontend."""
+        ticket_obj.terminal_id = ticket_obj.session.terminal_id if ticket_obj.session else "UNKNOWN"
         ticket_obj.captured_by_name = ticket_obj.captured_by.name if ticket_obj.captured_by else "SISTEMA"
         ticket_obj.cashed_by_name = ticket_obj.cashed_by.name if ticket_obj.cashed_by else "SISTEMA/AUTO"
-        
         return ticket_obj
 
     async def get_open_tickets(self, db: AsyncSession):
+        """Obtiene todos los tickets en estado OPEN."""
         result = await db.execute(
             select(models.Ticket)
             .options(
@@ -129,17 +148,7 @@ class POSService:
             .order_by(models.Ticket.created_at.desc())
         )
         tickets = result.scalars().all()
-        for t in tickets:
-            try:
-                t.terminal_id = t.session.terminal_id if t.session else "UNKNOWN"
-                t.captured_by_name = t.captured_by.name if t.captured_by else "SISTEMA"
-                t.cashed_by_name = t.cashed_by.name if t.cashed_by else "SISTEMA/AUTO"
-            except Exception as e:
-                print(f"ERROR lazy-load get_open_tickets on {t.account_num}: {e}")
-                t.terminal_id = t.terminal_id if hasattr(t, 'terminal_id') else "UNKNOWN"
-                t.captured_by_name = t.captured_by_name if hasattr(t, 'captured_by_name') else "SISTEMA"
-                t.cashed_by_name = t.cashed_by_name if hasattr(t, 'cashed_by_name') else "SISTEMA/AUTO"
-        return tickets
+        return [self._populate_flat_fields(t) for t in tickets]
 
     async def get_tickets(self, db: AsyncSession, terminal_id: str = None, status: str = None, search: str = None, limit: int = 100):
         query = select(models.Ticket).options(
@@ -204,65 +213,47 @@ class POSService:
         return response_data
 
     async def reserve_ticket(self, db: AsyncSession, terminal_id: str):
-        import uuid
+        """Reserva un ticket vacío o genera uno nuevo con ID correlativo."""
         session = await self.get_active_session(db, terminal_id)
         if not session:
             raise HTTPException(status_code=400, detail="No active session for terminal")
 
-        # 1. Buscar ticket reservado, vacío y abierto
+        # 1. Intentar reciclar un ticket vacío
+        recycled = await self._find_empty_ticket(db, session.id)
+        if recycled:
+            return await self._get_full_ticket(db, recycled.id)
+
+        # 2. Generar ticket nuevo con folio automático
+        new_ticket = await self._generate_consecutive_ticket(db, session.id)
+        return await self._get_full_ticket(db, new_ticket.id)
+
+    async def _find_empty_ticket(self, db: AsyncSession, session_id: int):
+        """Busca un ticket abierto sin items ni monto."""
         result = await db.execute(
             select(models.Ticket)
-            .options(
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
-                selectinload(models.Ticket.session),
-                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
-                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
-            )
-            .where(models.Ticket.session_id == session.id)
+            .options(selectinload(models.Ticket.items))
+            .where(models.Ticket.session_id == session_id)
             .where(models.Ticket.status == "OPEN")
             .where(models.Ticket.total == 0.0)
         )
         tickets = result.scalars().all()
+        # Verificación manual de items para asegurar limpieza total
         for t in tickets:
             if len(t.items) == 0:
-                t.captured_by_id = None
-                t.cashed_by_id = None
-                t.payment_details = None
-                t.terminal_id = session.terminal_id
-                await db.commit()
                 return t
+        return None
 
-        # 2. Reclamar nuevo ID consecutivo
+    async def _generate_consecutive_ticket(self, db: AsyncSession, session_id: int):
+        """Crea un ticket nuevo y le asigna un folio correlativo (V0001, etc)."""
+        import uuid
         temp_num = f"TEMP_{uuid.uuid4().hex[:4]}"
-        db_ticket = models.Ticket(
-            account_num=temp_num,
-            session_id=session.id,
-            total=0.0,
-            status="OPEN"
-        )
+        db_ticket = models.Ticket(account_num=temp_num, session_id=session_id, total=0.0, status="OPEN")
         db.add(db_ticket)
         await db.flush()
         
         db_ticket.account_num = f"V{db_ticket.id:04d}"
-        ticket_id = db_ticket.id
         await db.commit()
-        
-        # Recuperar completo para la serialización Pydantic
-        result = await db.execute(
-            select(models.Ticket)
-            .options(
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
-                selectinload(models.Ticket.session),
-                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
-                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
-            )
-            .where(models.Ticket.id == ticket_id)
-        )
-        ticket_obj = result.scalar_one()
-        ticket_obj.terminal_id = session.terminal_id
-        return ticket_obj
+        return db_ticket
 
     async def upload_training_images(self, payload: schemas.VisionTrainingUpload):
         import os

@@ -94,54 +94,50 @@ async def eliminar_movimiento(db: AsyncSession, session_id: int, movimiento_id: 
 
 
 async def calcular_resumen(db: AsyncSession, session_id: int) -> schemas.CashSummaryResponse:
-    """
-    Calcula el resumen financiero del turno en tiempo real.
-    Suma los tickets PAID de la sesión y los movimientos de efectivo registrados.
-    """
+    """Calcula el resumen financiero del turno en tiempo real."""
     sesion = await _obtener_sesion_por_id(db, session_id)
     movimientos = await _obtener_movimientos(db, session_id)
-
-    total_entradas = sum(m.amount for m in movimientos if m.movement_type == "ENTRADA")
-    total_salidas = sum(m.amount for m in movimientos if m.movement_type == "SALIDA")
-
     tickets_pagados = await _obtener_tickets_pagados(db, session_id)
 
-    total_efectivo_ventas = 0.0
-    total_credito = 0.0
-    total_debito = 0.0
+    # 1. Totales de movimientos (Entradas/Salidas)
+    t_entradas = sum(m.amount for m in movimientos if m.movement_type == "ENTRADA")
+    t_salidas = sum(m.amount for m in movimientos if m.movement_type == "SALIDA")
 
-    for ticket in tickets_pagados:
-        if not ticket.payment_details:
-            continue
-            
-        for pago in ticket.payment_details:
-            metodo = (pago.get("method") or "").upper()
-            tipo = (pago.get("type") or "").upper()
-            monto = float(pago.get("amount") or 0)
-            
-            if metodo == "EFECTIVO":
-                total_efectivo_ventas += monto
-            elif "CRÉDITO" in tipo or "CREDITO" in tipo or "CRÉDITO" in metodo or "CREDITO" in metodo:
-                total_credito += monto
-            elif "DÉBITO" in tipo or "DEBITO" in tipo or "DÉBITO" in metodo or "DEBITO" in metodo:
-                total_debito += monto
-            elif metodo == "TARJETA":
-                # Fallback si no tiene tipo específico
-                total_debito += monto
+    # 2. Clasificación de ventas por método de pago
+    ventas = _clasificar_pagos(tickets_pagados)
 
-    efectivo_esperado = sesion.opening_float + total_efectivo_ventas + total_entradas - total_salidas
-    total_ventas = total_efectivo_ventas + total_credito + total_debito
+    # 3. Cálculo de saldos esperados
+    efectivo_esp = sesion.opening_float + ventas["efectivo"] + t_entradas - t_salidas
+    total_v = ventas["efectivo"] + ventas["credito"] + ventas["debito"]
 
     return schemas.CashSummaryResponse(
-        efectivo_esperado=round(efectivo_esperado, 2),
-        total_credito=round(total_credito, 2),
-        total_debito=round(total_debito, 2),
-        total_ventas=round(total_ventas, 2),
+        efectivo_esperado=round(efectivo_esp, 2),
+        total_credito=round(ventas["credito"], 2),
+        total_debito=round(ventas["debito"], 2),
+        total_ventas=round(total_v, 2),
         num_transacciones=len(tickets_pagados),
         fondo_inicial=sesion.opening_float,
-        total_entradas=round(total_entradas, 2),
-        total_salidas=round(total_salidas, 2),
+        total_entradas=round(t_entradas, 2),
+        total_salidas=round(t_salidas, 2),
     )
+
+def _clasificar_pagos(tickets: list[Ticket]) -> dict:
+    """Helper puro para sumar montos por categoría de pago."""
+    res = {"efectivo": 0.0, "credito": 0.0, "debito": 0.0}
+    for t in tickets:
+        if not t.payment_details: continue
+        for p in t.payment_details:
+            m = (p.get("method") or "").upper()
+            tipo = (p.get("type") or "").upper()
+            amt = float(p.get("amount") or 0)
+            
+            if m == "EFECTIVO":
+                res["efectivo"] += amt
+            elif any(x in (tipo + m) for x in ["CREDITO", "CRÉDITO"]):
+                res["credito"] += amt
+            else:
+                res["debito"] += amt
+    return res
 
 
 async def cerrar_sesion(
