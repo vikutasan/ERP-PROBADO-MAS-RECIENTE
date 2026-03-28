@@ -99,6 +99,7 @@ class POSService:
             select(models.Ticket)
             .options(
                 selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
@@ -118,9 +119,8 @@ class POSService:
         result = await db.execute(
             select(models.Ticket)
             .options(
-                selectinload(models.Ticket.items)
-                .selectinload(models.TicketItem.product)
-                .selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
@@ -213,6 +213,8 @@ class POSService:
         result = await db.execute(
             select(models.Ticket)
             .options(
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
@@ -250,6 +252,8 @@ class POSService:
         result = await db.execute(
             select(models.Ticket)
             .options(
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
