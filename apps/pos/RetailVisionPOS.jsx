@@ -87,12 +87,15 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         loadInitialData();
     }, []);
 
+    const generatingAccount = React.useRef(false);
     const generateNewAccountNum = useCallback(async () => {
+        if (generatingAccount.current) return null;
+        generatingAccount.current = true;
+        
         try {
             const terminalId = selectedTerminal || 'T1';
             const ticket = await posService.reserveTicket(terminalId);
             setCurrentAccountNum(ticket.account_num);
-            // Priorizar el capturador que ya tenga el ticket en el servidor
             if (ticket.captured_by) {
                 setOriginalCapturer({
                     id: ticket.captured_by.id,
@@ -101,17 +104,34 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             } else {
                 setOriginalCapturer(currentUser);
             }
+            return ticket.account_num;
         } catch (error) {
             console.error("Error reservando cuenta oficial, usando fallback:", error);
             const num = Math.floor(1000 + Math.random() * 9000);
-            setCurrentAccountNum(`V${num}`);
+            const fallbackNum = `V${num}`;
+            setCurrentAccountNum(fallbackNum);
             setOriginalCapturer(currentUser);
+            return fallbackNum;
+        } finally {
+            generatingAccount.current = false;
         }
-    }, [selectedTerminal]);
+    }, [selectedTerminal, currentUser]);
+
+    // Lazy Reservation Trigger
+    const handleAddToCart = async (product) => {
+        let activeAccount = currentAccountNum;
+        if (!activeAccount) {
+            // Reservar ticket justo antes de añadir el primer producto
+            activeAccount = await generateNewAccountNum();
+        }
+        if (activeAccount) {
+            addToCart(product);
+        }
+    };
 
     useEffect(() => {
         if (selectedTerminal) {
-            if (!currentAccountNum) generateNewAccountNum();
+            // ELIMINADA: La auto-reserva al cargar (Lazy Mode ON)
             
             // Verificar si hay sesiÃ³n de caja activa para habilitar el cobro inmediatamente
             const syncCashState = async () => {
@@ -146,7 +166,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             if (e.key === 'Enter') {
                 if (buffer) {
                     const prod = PRODUCTS.find(p => p.barcode === buffer || p.id.toString() === buffer);
-                    if (prod) addToCart(prod);
+                    if (prod) handleAddToCart(prod);
                     buffer = '';
                 }
             } else if (e.key.length === 1) buffer += e.key;
@@ -236,7 +256,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 }
                 clearCart();
                 setOriginalCapturer(null);
-                generateNewAccountNum();
+                setCurrentAccountNum(''); // <--- LIMPIAR DESENCADENA UNA NUEVA SOLA VEZ AL AGREGAR
                 setShowCheckout(false);
                 setPaymentsHistory([]);
                 if (status === 'PAID') {
@@ -324,8 +344,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         const legacyJpg = `${baseStaticUrl}/Img1118_${product.sku}.jpg`;
 
         return (
-            <button onClick={() => addToCart(product)} className="group relative bg-black hover:bg-[#c1d72e] p-3 rounded-[35px] border border-white/10 transition-all duration-500 flex flex-col items-center justify-between gap-2 hover:scale-105 active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:shadow-[#c1d72e]/20 h-full w-full">
-                {/* Imagen expandida con menos mÃ¡rgenes */}
+            <button onClick={() => handleAddToCart(product)} className="group relative bg-black hover:bg-[#c1d72e] p-3 rounded-[35px] border border-white/10 transition-all duration-500 flex flex-col items-center justify-between gap-2 hover:scale-105 active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:shadow-[#c1d72e]/20 h-full w-full">
+                {/* Imagen expandida con menos márgenes */}
                 <div className="w-full h-32 flex items-center justify-center mt-1">
                     {imgStatus === 'API_IMG' && (
                         <img 
@@ -447,8 +467,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     </div>
                     <div className="w-1/3 flex items-center justify-center">
                         <div className="bg-black border border-white/10 px-8 py-2 rounded-3xl shadow-2x flex flex-col items-center">
-                            <span className="text-[7px] font-black uppercase text-white tracking-[0.5em] mb-0.5">Transaccion Activa</span>
-                            <span className="text-4xl font-black uppercase tracking-tighter italic text-[#c1d72e] drop-shadow-[0_0_12px_rgba(193,215,46,0.4)]">CUENTA #{(currentAccountNum || '00').slice(-2)}</span>
+                            <span className="text-[7px] font-black uppercase text-white tracking-[0.5em] mb-0.5">ESTADO DE TRANSACCION</span>
+                            <span className={`text-4xl font-black uppercase tracking-tighter italic drop-shadow-[0_0_12px_rgba(193,215,46,0.4)] ${currentAccountNum ? 'text-[#c1d72e]' : 'text-orange-500 animate-pulse'}`}>
+                                {currentAccountNum ? `CUENTA #${currentAccountNum.slice(-2)}` : 'NUEVA VENTA'}
+                            </span>
                         </div>
                     </div>
                     <div className="w-1/3 flex justify-end gap-2">
@@ -498,7 +520,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         <VisionVisor 
                             isScanning={isScanning} 
                             setIsScanning={setIsScanning} 
-                            addToCart={addToCart} 
+                            addToCart={handleAddToCart} 
                             products={PRODUCTS} 
                             categories={categories} 
                         />
@@ -537,7 +559,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     }}
                     onFinish={() => {
                         clearCart();
-                        generateNewAccountNum();
+                        setCurrentAccountNum('');
                         setShowCheckout(false);
                         setPaymentsHistory([]);
                     }}
@@ -545,7 +567,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         console.log("Manual print from CheckoutScreen requested.");
                         handlePrintTicket(printTicketData);
                         clearCart();
-                        generateNewAccountNum();
+                        setCurrentAccountNum('');
                         setShowCheckout(false);
                         setPaymentsHistory([]);
                     }}

@@ -145,6 +145,7 @@ class POSService:
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
             )
             .where(models.Ticket.status == "OPEN")
+            .where(models.Ticket.total > 0)
             .order_by(models.Ticket.created_at.desc())
         )
         tickets = result.scalars().all()
