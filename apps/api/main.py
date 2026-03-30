@@ -11,6 +11,7 @@ from core.database import AsyncSessionLocal, engine, Base
 from modules.catalog.models import Category
 from modules.security.models import SecurityProfile, Employee
 from sqlalchemy import select
+from modules.settings.service import seed_settings as seed_system_settings
 
 # Importar TODOS los modelos para que Base.metadata los conozca
 from modules.pos.models import Ticket, TerminalSession
@@ -120,6 +121,10 @@ async def auto_seed_on_first_boot():
 
             await session.commit()
             print("✅ Seed de seguridad verificado.")
+
+            # Paso 4: Sembrar ajustes de sistema (polling, TTL, heartbeat)
+            await seed_system_settings(session)
+            print("✅ Ajustes de sistema verificados.")
 
     except Exception as e:
         print(f"❌ Error en auto-seed: {e}")
