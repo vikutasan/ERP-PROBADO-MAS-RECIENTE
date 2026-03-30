@@ -26,7 +26,7 @@ export const TicketTemplate = forwardRef(({ ticket, cart, total, payments }, ref
             
             {/* Header Ultra Compacto con Logo */}
             <div className="flex flex-col items-center mb-1">
-                <img src="/assets/logo.png" alt="Logo" className="w-12 h-12 grayscale object-contain mb-1" />
+                <img src="/assets/logo.png" alt="Logo" style={{ width: '50px', height: '50px' }} className="grayscale object-contain mb-1" />
                 <div className="text-center font-bold text-[11px] uppercase tracking-widest">R de Rico</div>
             </div>
             

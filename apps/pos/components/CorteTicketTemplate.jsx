@@ -42,7 +42,7 @@ export const CorteTicketTemplate = forwardRef(({ resumen, sesion, capturado }, r
 
             {/* Header Ultra Compacto con Logo */}
             <div className="flex flex-col items-center mb-1">
-                <img src="/assets/logo.png" alt="Logo" className="w-12 h-12 grayscale object-contain mb-1" />
+                <img src="/assets/logo.png" alt="Logo" style={{ width: '50px', height: '50px' }} className="grayscale object-contain mb-1" />
                 <div className="text-center font-bold text-[11px] uppercase tracking-widest pl-2">R de Rico</div>
                 <div className="text-center font-bold text-[8px] uppercase tracking-widest mt-0.5">*** CORTE DE CAJA ***</div>
             </div>

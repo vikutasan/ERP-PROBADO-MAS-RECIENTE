@@ -46,7 +46,7 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
 
             <div className="flex justify-between items-start border-b-[1.5px] border-dashed border-gray-400 pb-3 mb-2 -mt-4">
                 <div className="flex items-start gap-3">
-                    <img src="/assets/logo.png" alt="R de Rico Logo" className="w-16 h-16 object-contain grayscale opacity-80 -mt-2" />
+                    <img src="/assets/logo.png" alt="R de Rico Logo" style={{ width: '64px', height: '64px' }} className="object-contain grayscale opacity-80 -mt-2" />
                     <div className="flex flex-col justify-center pt-1">
                         <h2 className="text-base font-black uppercase tracking-widest leading-none text-black">R DE RICO</h2>
                         <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mt-1">Ticket de Venta</h3>
