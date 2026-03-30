@@ -10,7 +10,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ../ERP-R-DE-RICO-DATA/postgres_data:/var/lib/postgresql/data
 
   api:
     build:
@@ -22,7 +22,9 @@ services:
       - "5001:3001"
     volumes:
       - ./apps/api:/app
-      - ./CATALOGO DE PRODUCTOS NUMERADOS:/app/static/catalog
+      - ../ERP-R-DE-RICO-DATA/catalogos:/app/static/catalog
+      - ../ERP-R-DE-RICO-DATA/images:/app/static/images
+      - ../ERP-R-DE-RICO-DATA/config/terminal_status.json:/app/terminal_status.json
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/rderico
       - PORT=3001
@@ -43,5 +45,4 @@ services:
     environment:
       - VITE_API_URL=http://192.168.1.117:5001
 
-volumes:
-  pgdata:
+# Los volúmenes ahora son externos (Bind Mounts) para mayor seguridad y facilidad de backup.

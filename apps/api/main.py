@@ -68,8 +68,9 @@ app.include_router(cash_router, prefix="/api/v1/cash", tags=["Cash"])
 app.include_router(settings_router, prefix="/api/v1/settings", tags=["Settings"])
 app.include_router(production_router, prefix="/api/v1/production", tags=["Production"])
 
-# Montar carpeta de imágenes estáticas
-app.mount("/static/catalog", StaticFiles(directory="static/catalog"), name="static")
+# Montar carpetas de archivos estáticos
+app.mount("/static/catalog", StaticFiles(directory="static/catalog"), name="catalog")
+app.mount("/static/images", StaticFiles(directory="static/images"), name="images")
 
 if __name__ == "__main__":
     import uvicorn
