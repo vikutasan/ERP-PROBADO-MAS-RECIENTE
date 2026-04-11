@@ -80,7 +80,7 @@ export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose }
                             {/* Contenido del Post-it */}
                             <div className="text-[#3d2b1f]">
                                 <div className="flex justify-between items-start mb-4">
-                                    <span className="text-5xl font-black font-mono">#{acc.id.slice(-2)}</span>
+                                    <span className="text-5xl font-black font-mono">#{acc.id.slice(-3)}</span>
                                     <span className="text-sm font-black bg-black/5 px-2 py-1 rounded-md uppercase tracking-widest opacity-60">{acc.terminal}</span>
                                 </div>
                                 <h4 className="text-lg font-black uppercase tracking-tight leading-tight mb-2 opacity-35">

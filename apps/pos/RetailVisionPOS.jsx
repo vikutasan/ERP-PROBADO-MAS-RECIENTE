@@ -346,7 +346,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         return (
             <button onClick={() => handleAddToCart(product)} className="group relative bg-black hover:bg-[#c1d72e] p-3 rounded-[35px] border border-white/10 transition-all duration-500 flex flex-col items-center justify-between gap-2 hover:scale-105 active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:shadow-[#c1d72e]/20 h-full w-full">
                 {/* Imagen expandida con menos márgenes */}
-                <div className="w-full h-32 flex items-center justify-center mt-1">
+                <div className="w-full h-20 2xl:h-24 flex items-center justify-center mt-1">
                     {imgStatus === 'API_IMG' && (
                         <img 
                             src={product.image} 
@@ -469,7 +469,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         <div className="bg-black border border-white/10 px-8 py-2 rounded-3xl shadow-2x flex flex-col items-center">
                             <span className="text-[7px] font-black uppercase text-white tracking-[0.5em] mb-0.5">ESTADO DE TRANSACCION</span>
                             <span className={`text-4xl font-black uppercase tracking-tighter italic drop-shadow-[0_0_12px_rgba(193,215,46,0.4)] ${currentAccountNum ? 'text-[#c1d72e]' : 'text-orange-500 animate-pulse'}`}>
-                                {currentAccountNum ? `CUENTA #${currentAccountNum.slice(-2)}` : 'NUEVA VENTA'}
+                                {currentAccountNum ? `CUENTA #${currentAccountNum.slice(-3)}` : 'NUEVA VENTA'}
                             </span>
                         </div>
                     </div>
@@ -526,10 +526,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         />
                     ) : (
                         <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-left-4 duration-500">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-[10px] font-black text-orange-500 uppercase tracking-[0.5em]">{activeCategory}</h3>
-                                <div className="bg-white/5 border border-white/10 rounded-full px-4 py-1 text-[10px] font-bold text-white/40">Catalogo Digital</div>
-                            </div>
+
                             <ProductGrid category={activeCategory} />
                         </div>
                     )}
