@@ -120,9 +120,16 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                                 cashEnabled ? 'text-white' : 'text-gray-500'
                             }`}>COBRAR</span>
                         </div>
-                        <span className={`text-3xl font-black tracking-tighter ${
-                            cashEnabled ? 'text-[#c1d72e]' : 'text-gray-500'
-                        }`}>${total.toFixed(2)}</span>
+                        <div className="flex flex-col items-end">
+                            {currentAccountNum && (
+                                <span className={`text-base font-black tracking-widest uppercase mb-0.5 ${
+                                    cashEnabled ? 'text-white' : 'text-gray-600'
+                                }`}>CTA #{currentAccountNum.slice(-3)}</span>
+                            )}
+                            <span className={`text-3xl font-black tracking-tighter leading-none ${
+                                cashEnabled ? 'text-[#c1d72e]' : 'text-gray-500'
+                            }`}>${total.toFixed(2)}</span>
+                        </div>
                     </div>
                     {/* Glow effect — solo cuando está activo */}
                     {cashEnabled && (
