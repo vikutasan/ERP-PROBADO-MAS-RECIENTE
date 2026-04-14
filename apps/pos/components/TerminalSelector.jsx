@@ -27,7 +27,7 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                                     const isAdmin = userRole === 'ADMIN';
                                     
                                     // Nuevo: Verificar permiso dinámico desde el perfil
-                                    const hasUnlockPermission = currentUser?.permissions?.pos_force_unlock === 'full';
+                                    const hasUnlockPermission = currentUser?.permissions?.pos_force_unlock === 'full' || currentUser?.permissions?.pos_force_unlock === true;
                                     
                                     console.log("Terminal Unlock Attempt:", {
                                         terminal: t.id,
@@ -40,7 +40,7 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
 
                                     // 1. Caso: Terminal de CAJA (Granular: Solo con permiso especial)
                                     const isCashTerminal = t.id === 'CAJA' || isOccupied.is_cash_register === true;
-                                    const hasCashForcePermission = currentUser?.permissions?.pos_force_cash_unlock === 'full';
+                                    const hasCashForcePermission = currentUser?.permissions?.pos_force_cash_unlock === 'full' || currentUser?.permissions?.pos_force_cash_unlock === true;
 
                                     if (isCashTerminal && !hasCashForcePermission) {
                                         setDeniedModal({
@@ -178,6 +178,7 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                                 <p className="mb-1 text-orange-500/50 uppercase font-black tracking-widest">Diagnostic Info:</p>
                                 <p>Role: {currentUser?.role}</p>
                                 <p>Unlock Perm: {String(currentUser?.permissions?.pos_force_unlock)}</p>
+                                <p>Cash Unlock Perm: {String(currentUser?.permissions?.pos_force_cash_unlock)}</p>
                                 <p>Permissions Keys: {Object.keys(currentUser?.permissions || {}).join(', ')}</p>
                             </div>
                         )}

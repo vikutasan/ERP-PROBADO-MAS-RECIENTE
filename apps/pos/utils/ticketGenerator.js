@@ -24,7 +24,7 @@ export const generateTicketHTML = (ticketData) => {
         itemsHtml += `
             <tr>
                 <td style="width: 28px; font-weight: bold;">${qty}x</td>
-                <td>
+                <td style="max-width: 44mm;">
                     <div style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${name}</div>
                     <div style="font-size: 12pt; font-weight: 900; color: #000;">$${price.toFixed(2)} c/u</div>
                 </td>

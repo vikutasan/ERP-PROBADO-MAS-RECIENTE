@@ -22,6 +22,12 @@ def get_all_locks(ttl_minutes: int = 15) -> Dict[str, dict]:
 
 def lock_terminal(terminal_id: str, occupier_id: int, occupier_name: str, ttl_minutes: int = 15) -> bool:
     _purge_stale_locks(ttl_minutes)
+
+    # Remover candados fantasma: un usuario solo puede ocupar 1 terminal a la vez
+    stale_user_locks = [tid for tid, info in _locks.items() if info["occupier_id"] == occupier_id and tid != terminal_id]
+    for tid in stale_user_locks:
+        del _locks[tid]
+
     if terminal_id in _locks:
         if _locks[terminal_id]["occupier_id"] == occupier_id:
             _locks[terminal_id]["locked_at"] = datetime.utcnow()  # Renueva TTL

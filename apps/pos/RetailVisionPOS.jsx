@@ -87,45 +87,47 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         loadInitialData();
     }, []);
 
-    const generatingAccount = React.useRef(false);
+    const accountGenPromise = React.useRef(null);
     const generateNewAccountNum = useCallback(async () => {
-        if (generatingAccount.current) return null;
-        generatingAccount.current = true;
+        if (accountGenPromise.current) return accountGenPromise.current;
         
-        try {
-            const terminalId = selectedTerminal || 'T1';
-            const ticket = await posService.reserveTicket(terminalId);
-            setCurrentAccountNum(ticket.account_num);
-            if (ticket.captured_by) {
-                setOriginalCapturer({
-                    id: ticket.captured_by.id,
-                    name: ticket.captured_by.name
-                });
-            } else {
+        const promise = (async () => {
+            try {
+                const terminalId = selectedTerminal || 'T1';
+                const ticket = await posService.reserveTicket(terminalId);
+                setCurrentAccountNum(ticket.account_num);
+                if (ticket.captured_by) {
+                    setOriginalCapturer({
+                        id: ticket.captured_by.id,
+                        name: ticket.captured_by.name
+                    });
+                } else {
+                    setOriginalCapturer(currentUser);
+                }
+                return ticket.account_num;
+            } catch (error) {
+                console.error("Error reservando cuenta oficial, usando fallback:", error);
+                const num = Math.floor(1000 + Math.random() * 9000);
+                const fallbackNum = `V${num}`;
+                setCurrentAccountNum(fallbackNum);
                 setOriginalCapturer(currentUser);
+                return fallbackNum;
             }
-            return ticket.account_num;
-        } catch (error) {
-            console.error("Error reservando cuenta oficial, usando fallback:", error);
-            const num = Math.floor(1000 + Math.random() * 9000);
-            const fallbackNum = `V${num}`;
-            setCurrentAccountNum(fallbackNum);
-            setOriginalCapturer(currentUser);
-            return fallbackNum;
+        })();
+
+        accountGenPromise.current = promise;
+        try {
+            return await promise;
         } finally {
-            generatingAccount.current = false;
+            accountGenPromise.current = null;
         }
     }, [selectedTerminal, currentUser]);
 
     // Lazy Reservation Trigger
-    const handleAddToCart = async (product) => {
-        let activeAccount = currentAccountNum;
-        if (!activeAccount) {
-            // Reservar ticket justo antes de añadir el primer producto
-            activeAccount = await generateNewAccountNum();
-        }
-        if (activeAccount) {
-            addToCart(product);
+    const handleAddToCart = (product) => {
+        addToCart(product); // UI reacts instantly
+        if (!currentAccountNum) {
+            generateNewAccountNum().catch(e => console.error(e));
         }
     };
 
@@ -133,7 +135,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         if (selectedTerminal) {
             // ELIMINADA: La auto-reserva al cargar (Lazy Mode ON)
             
-            // Verificar si hay sesiÃ³n de caja activa para habilitar el cobro inmediatamente
+            // Verificar si hay sesión de caja activa para habilitar el cobro inmediatamente
             const syncCashState = async () => {
                 try {
                     const session = await cashService.obtenerSesionActiva(selectedTerminal);
@@ -175,13 +177,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         return () => window.removeEventListener('keydown', handleKeys);
     }, [PRODUCTS, addToCart]);
 
-    // --- LÃ³gica de Negocio (Tickets) ---
+    // --- Lógica de Negocio (Tickets) ---
 
     const handlePrintTicket = (ticketData = null) => {
         // PRIORIDAD DE DATOS:
         // 1. Datos pasados por argumento (ticket oficial del servidor)
-        // 2. Datos guardados en el Ãºltimo ticket impreso (printTicketData)
-        // 3. Fallback a estado local (solo si no hay nada mÃ¡s)
+        // 2. Datos guardados en el último ticket impreso (printTicketData)
+        // 3. Fallback a estado local (solo si no hay nada más)
         const activeTicket = ticketData || printTicketData || { 
             account_num: currentAccountNum,
             items: cart.map(i => ({ product: { name: i.name }, quantity: i.quantity, unit_price: i.price })),
@@ -230,13 +232,18 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
 
         try {
+            let targetAccountNum = currentAccountNum;
+            if (!targetAccountNum) {
+                targetAccountNum = await generateNewAccountNum();
+            }
+
             if (paymentData) setPaymentsHistory(paymentData);
             const terminalId = selectedTerminal || 'T1';
             let session = await posService.getActiveSession(terminalId);
             if (!session) session = await posService.createSession(terminalId);
 
             const payload = {
-                account_num: currentAccountNum,
+                account_num: targetAccountNum,
                 session_id: session.id,
                 items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
                 status: status,
@@ -247,7 +254,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             };
 
             const savedTicket = await posService.createTicket(payload);
-            setPrintTicketData(savedTicket); // Actualizar datos de impresiÃ³n con la respuesta oficial del servidor
+            setPrintTicketData(savedTicket); // Actualizar datos de impresión con la respuesta oficial del servidor
             
             if (finalizeUI) {
                 if (status === 'PAID') {
@@ -281,7 +288,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }));
         setCart(recovered);
         setCurrentAccountNum(account.accountNum);
-        // Guardar tambiÃ©n quiÃ©n la capturÃ³ originalmente para que persista en el ticket final
+        // Guardar también quién la capturó originalmente para que persista en el ticket final
         // Limpiamos los datos para asegurar que tengan el formato correcto
         const capturer = account.capturedById ? { 
             id: account.capturedById, 
@@ -310,7 +317,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     capturedById: t.captured_by_id,
                     capturedByName: t.captured_by_name || t.captured_by?.name || 'Desconocido',
                     cashierName: t.cashed_by_name || t.cashed_by?.name || '---',
-                    clientName: 'PÃºblico General'
+                    clientName: 'Público General'
                 })));
             }).catch(console.error);
         };
@@ -460,7 +467,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                     {selectedTerminal === 'CAJA' ? 'Caja Central' : `Terminal ${selectedTerminal}`}
                                 </p>
                                 <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
-                                    Cambiar EstaciÃ³n
+                                    Cambiar Estación
                                 </p>
                             </div>
                         </button>
@@ -474,7 +481,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         </div>
                     </div>
                     <div className="w-1/3 flex justify-end gap-2">
-                        {/* BotÃ³n CAJA â€” uso infrecuente, estilo discreto */}
+                        {/* Botón CAJA — uso infrecuente, estilo discreto */}
                         <button
                             onClick={() => setShowGestorCaja(true)}
                             className="bg-black/60 border border-[#c1d72e]/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#c1d72e]/20 hover:border-[#c1d72e] transition-all shadow-xl"
@@ -483,12 +490,12 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                             <div className="text-left">
                                 <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">Caja</p>
                                 <p className={`text-[14px] font-black uppercase tracking-tighter leading-none ${isCashEnabled ? 'text-[#c1d72e]' : 'text-[#c1d72e]/60'}`}>
-                                    {isCashEnabled ? 'â— Activa' : 'â—‹ Habilitar'}
+                                    {isCashEnabled ? '● Activa' : '○ Habilitar'}
                                 </p>
                             </div>
                         </button>
 
-                        {/* BotÃ³n PizarrÃ³n â€” uso frecuente, estilo prominente */}
+                        {/* Botón Pizarrón — uso frecuente, estilo prominente */}
                         <button 
                             onClick={() => setShowCorkboard(true)} 
                             className="bg-[#2d1e13] border border-orange-900/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#3d2b1f] hover:border-orange-500/50 transition-all group shadow-xl"
@@ -597,15 +604,15 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
 
             {/* Contenedor Principal (Fin) */}
-            {/* Modal de Auto-ExpulsiÃ³n (Polling Remoto) */}
+            {/* Modal de Auto-Expulsión (Polling Remoto) */}
             {forceLogoutModal && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] animate-in fade-in zoom-in duration-500">
                     <div className="bg-gray-950 border border-red-500/30 p-12 rounded-[50px] shadow-[0_0_100px_rgba(255,0,0,0.3)] max-w-md w-full text-center relative overflow-hidden">
                         <div className="absolute -top-40 -left-40 w-80 h-80 bg-red-600/20 blur-[100px] rounded-full"></div>
-                        <div className="text-8xl mb-6 relative z-10 animate-pulse">ðŸš¨</div>
-                        <h2 className="text-3xl font-black uppercase text-red-500 mb-4 relative z-10 tracking-tighter">SESIÃ“N TERMINADA</h2>
+                        <div className="text-8xl mb-6 relative z-10 animate-pulse">🚨</div>
+                        <h2 className="text-3xl font-black uppercase text-red-500 mb-4 relative z-10 tracking-tighter">SESIÓN TERMINADA</h2>
                         <p className="text-sm font-bold text-gray-300 mb-10 relative z-10 leading-relaxed">
-                            Un Administrador ha forzado la liberaciÃ³n total de tu terminal.<br/><br/>
+                            Un Administrador ha forzado la liberación total de tu terminal.<br/><br/>
                             <span className="text-red-400">Has sido desconectado por seguridad.</span>
                         </p>
                         <div className="flex justify-center relative z-10">
