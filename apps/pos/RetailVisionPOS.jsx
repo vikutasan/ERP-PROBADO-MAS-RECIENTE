@@ -615,6 +615,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             {showCheckout && (
                 <CheckoutScreen 
                     total={total}
+                    orderData={orderData}
                     onConfirm={async (method) => {
                         await handleTicketAction('PAID', method, false);
                     }}
@@ -626,6 +627,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         setCurrentAccountNum('');
                         setShowCheckout(false);
                         setPaymentsHistory([]);
+                        setOrderData(null);
+                        setOrderType('VENTA_DIRECTA');
                     }}
                     onPrint={() => {
                         console.log("Manual print from CheckoutScreen requested.");
@@ -634,6 +637,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         setCurrentAccountNum('');
                         setShowCheckout(false);
                         setPaymentsHistory([]);
+                        setOrderData(null);
+                        setOrderType('VENTA_DIRECTA');
                     }}
                 />
             )}

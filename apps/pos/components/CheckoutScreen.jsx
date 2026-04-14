@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint }) => {
+export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint, orderData = null }) => {
     const [payments, setPayments] = useState([]);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('EFECTIVO');
@@ -120,7 +120,11 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
-            <div className="bg-[#1a1a1a] w-[800px] rounded-[50px] border border-white/10 shadow-[0_0_100px_rgba(193,215,46,0.1)] overflow-hidden flex flex-col">
+            <div className={`bg-[#1a1a1a] rounded-[50px] border shadow-[0_0_100px_rgba(193,215,46,0.1)] overflow-hidden flex flex-col transition-all duration-300 ${
+                orderData
+                    ? 'w-[1100px] border-orange-500/20'
+                    : 'w-[800px] border-white/10'
+            }`}>
                 {/* Header */}
                 <div className="p-8 border-b border-white/5 flex justify-between items-center bg-black/20">
                     <div>
@@ -305,6 +309,58 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
                             </div>
                         )}
                     </div>
+
+                    {/* Panel Condicional: Detalles del Pedido (solo si es PEDIDO) */}
+                    {orderData && (
+                        <div className="w-[320px] flex-shrink-0 p-8 bg-orange-500/5 border-l border-orange-500/20 flex flex-col gap-4 animate-in slide-in-from-right-4 duration-300">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+                                <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-orange-400">Confirmar con el Cliente</h3>
+                            </div>
+
+                            {/* Tipo de entrega */}
+                            <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl px-4 py-3 text-center">
+                                <p className="text-[9px] font-black uppercase text-orange-400/60 tracking-widest mb-1">Tipo de Entrega</p>
+                                <p className="text-xl font-black text-orange-300">
+                                    {orderData.delivery_type === 'PICKUP' ? '🏪 Pick Up' : '🚗 Domicilio'}
+                                </p>
+                            </div>
+
+                            {/* Datos clave */}
+                            <div className="space-y-3">
+                                <OrderDetailRow label="Cliente" value={orderData.customer_name} />
+                                <OrderDetailRow label="Teléfono" value={orderData.customer_phone} />
+                                <OrderDetailRow
+                                    label="Entrega Compromiso"
+                                    value={orderData.committed_at
+                                        ? new Date(orderData.committed_at).toLocaleString('es-MX', {
+                                            weekday: 'short', day: '2-digit', month: 'short',
+                                            hour: '2-digit', minute: '2-digit'
+                                          })
+                                        : '---'}
+                                    highlight
+                                />
+                                <OrderDetailRow
+                                    label="Empaque"
+                                    value={orderData.packaging_type === 'PROPIO' ? '🛍️ Empaque del Cliente' : '📦 Se Vende Empaque'}
+                                />
+                                {orderData.delivery_type === 'DOMICILIO' && orderData.delivery_address && (
+                                    <OrderDetailRow label="Dirección" value={orderData.delivery_address} />
+                                )}
+                                {orderData.notes && (
+                                    <OrderDetailRow label="Notas" value={orderData.notes} />
+                                )}
+                            </div>
+
+                            {/* Aviso PAGADO */}
+                            {isLiquidado && (
+                                <div className="mt-auto bg-[#c1d72e] rounded-2xl px-4 py-3 text-center animate-in zoom-in-95 duration-300">
+                                    <p className="text-[10px] font-black uppercase text-black/60 tracking-widest">Estado del Pedido</p>
+                                    <p className="text-lg font-black text-black uppercase tracking-tight">✅ PAGADO — EN ESPERA DE PRODUCCIÓN</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer Action */}
@@ -337,3 +393,13 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint })
         </div>
     );
 };
+
+/** Fila simple de etiqueta + valor para el panel de detalles del pedido. */
+const OrderDetailRow = ({ label, value, highlight = false }) => (
+    <div className="bg-white/5 border border-white/5 rounded-xl px-4 py-2.5">
+        <p className="text-[9px] font-black uppercase text-gray-600 tracking-widest mb-0.5">{label}</p>
+        <p className={`text-sm font-black leading-tight ${highlight ? 'text-orange-300' : 'text-white/80'}`}>
+            {value || '—'}
+        </p>
+    </div>
+);
