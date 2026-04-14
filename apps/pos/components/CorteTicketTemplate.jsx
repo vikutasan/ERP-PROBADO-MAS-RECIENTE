@@ -30,21 +30,23 @@ export const CorteTicketTemplate = forwardRef(({ resumen, sesion, capturado }, r
                             width: 80mm; 
                             background: white; 
                             color: black;
-                            padding: 1mm 2mm; 
+                            padding: 0mm 2mm; 
                             margin: 0;
                         }
                     }
-                    .print-ticket-corte { padding: 2mm 4mm; }
+                    .print-ticket-corte { padding: 1mm 2mm; }
                     .dotted-line { border-top: 1px dotted #000; margin: 2px 0; }
                     .row { display: flex; justify-content: space-between; align-items: flex-end; }
                 `}
             </style>
 
             {/* Header Ultra Compacto con Logo */}
-            <div className="flex flex-col items-center mb-1">
-                <img src="/assets/logo.png" alt="Logo" style={{ width: '50px', height: '50px' }} className="grayscale object-contain mb-1" />
-                <div className="text-center font-bold text-[11px] uppercase tracking-widest pl-2">R de Rico</div>
-                <div className="text-center font-bold text-[8px] uppercase tracking-widest mt-0.5">*** CORTE DE CAJA ***</div>
+            <div className="flex justify-center items-center gap-2 mb-1">
+                <img src="/assets/logo.png" alt="Logo" style={{ width: '32px', height: '32px', imageRendering: 'pixelated' }} className="grayscale object-contain flex-shrink-0" />
+                <div className="flex flex-col items-center">
+                    <div className="font-bold text-[12px] uppercase tracking-widest leading-none">R DE RICO</div>
+                    <div className="font-bold text-[7px] uppercase tracking-widest mt-0.5">*** CORTE CAJA ***</div>
+                </div>
             </div>
 
             {/* Metadatos del Turno */}
