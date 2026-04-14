@@ -23,12 +23,12 @@ export const generateTicketHTML = (ticketData) => {
         const price = item.unit_price || item.price || 0;
         itemsHtml += `
             <tr>
-                <td style="width: 28px; font-weight: bold;">${qty}x</td>
+                <td style="width: 28px;">${qty}x</td>
                 <td style="max-width: 44mm;">
-                    <div style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${name}</div>
-                    <div style="font-size: 12pt; font-weight: 900; color: #000;">$${price.toFixed(2)} c/u</div>
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${name}</div>
+                    <div style="color: #000;">$${price.toFixed(2)} c/u</div>
                 </td>
-                <td style="text-align: right; font-weight: bold; white-space: nowrap;">$${(price * qty).toFixed(2)}</td>
+                <td style="text-align: right; white-space: nowrap;">$${(price * qty).toFixed(2)}</td>
             </tr>
         `;
     });
@@ -42,15 +42,15 @@ export const generateTicketHTML = (ticketData) => {
             paymentsHtml += `
                 <div style="margin-bottom: 2px;">
                     <div style="font-weight: bold;">${p.method}</div>
-                    <div style="display: flex; justify-content: space-between; padding-left: 8px; font-size: 12pt;">
+                    <div style="display: flex; justify-content: space-between; padding-left: 8px;">
                         <span>Recibido:</span>
                         <span>$${received.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; padding-left: 8px; font-size: 12pt;">
+                    <div style="display: flex; justify-content: space-between; padding-left: 8px;">
                         <span>Abonado:</span>
                         <span>$${abonado.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; padding-left: 8px; font-size: 12pt;">
+                    <div style="display: flex; justify-content: space-between; padding-left: 8px;">
                         <span>Cambio:</span>
                         <span>$${cambio.toFixed(2)}</span>
                     </div>
@@ -77,58 +77,58 @@ export const generateTicketHTML = (ticketData) => {
                     font-family: 'Courier New', Courier, monospace;
                     width: 76mm;
                     padding: 0mm 1mm;
-                    font-size: 14pt;
-                    line-height: 1.35;
+                    font-size: 8pt;
+                    line-height: 1.15;
                     color: #000;
                     background: #fff;
                 }
-                .line { border-top: 1px dashed #000; margin: 4px 0; }
+                .line { border-top: 1px dashed #000; margin: 2px 0; }
                 .row { display: flex; justify-content: space-between; align-items: center; }
                 .col { display: flex; flex-direction: column; }
                 .bold { font-weight: bold; }
                 .upper { text-transform: uppercase; }
                 .center { text-align: center; }
-                .small { font-size: 11pt; }
-                .xsmall { font-size: 10pt; font-style: italic; }
-                table { width: 100%; border-collapse: collapse; font-size: 13pt; }
-                td { padding: 3px 0; vertical-align: top; }
-                .audit { font-size: 11pt; text-transform: uppercase; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000; }
+                .small { font-size: 7pt; }
+                .xsmall { font-size: 6.5pt; font-style: italic; }
+                table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+                td { padding: 1px 0; vertical-align: top; }
+                .audit { font-size: 7pt; text-transform: uppercase; margin-top: 3px; padding-top: 2px; border-top: 1px dashed #000; }
             </style>
         </head>
         <body>
             <!-- ENCABEZADO: logo grande con pixel rendering nativo + nombre -->
-            <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 2px; margin-bottom: 4px;">
-                <img src="/assets/logo.png" alt="Logo" style="width: 50px; height: 50px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0;" />
-                <div class="bold upper" style="font-size: 18pt; letter-spacing: 1px; line-height: 1;">R DE RICO</div>
+            <div style="display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 1px; margin-bottom: 2px;">
+                <img src="/assets/logo.png" alt="Logo" style="width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0;" />
+                <div class="bold upper" style="font-size: 12pt; letter-spacing: 0.5px; line-height: 1;">R DE RICO</div>
             </div>
 
             <!-- Fecha, Hora y Número de cuenta al CENTRO  -->
-            <div class="col bold center" style="font-size: 12pt; margin-bottom: 4px; align-items: center;">
+            <div class="col bold center" style="margin-bottom: 2px; align-items: center;">
                 <div>CTA: ${ticketData.account_num || '---'}</div>
-                <div style="font-weight: normal; margin-top: 2px;">${printDate} ${printTime}</div>
+                <div style="font-weight: normal; margin-top: 1px;">${printDate} ${printTime}</div>
             </div>
 
             <div class="line"></div>
 
-            <table style="margin: 4px 0;">
+            <table style="margin: 2px 0;">
                 <tbody>${itemsHtml}</tbody>
             </table>
 
             <div class="line"></div>
 
-            <div class="row bold" style="font-size: 11pt; margin: 4px 0;">
+            <div class="row bold" style="margin: 2px 0;">
                 <span>TOTAL DE ARTICULOS:</span>
                 <span>${totalQty}</span>
             </div>
 
             <div class="line"></div>
 
-            <div class="row bold" style="font-size: 16pt; margin: 4px 0;">
+            <div class="row bold" style="font-size: 10pt; margin: 2px 0;">
                 <span>TOTAL</span>
                 <span>$${(ticketData.total || 0).toFixed(2)}</span>
             </div>
 
-            <div style="margin: 4px 0; font-size: 12pt;">
+            <div style="margin: 3px 0;">
                 ${paymentsHtml}
             </div>
 
@@ -138,7 +138,7 @@ export const generateTicketHTML = (ticketData) => {
                 <div class="row xsmall"><span>Terminal:</span><span>${ticketData.terminal_id || 'T1'}</span></div>
             </div>
 
-            <div class="center xsmall" style="margin-top: 6px; padding-top: 3px; border-top: 1px solid #ccc;">
+            <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; border-top: 1px solid #ccc;">
                 *** Disfrute su pan ***
             </div>
         </body>
