@@ -14,6 +14,7 @@ import { CheckoutScreen } from './components/CheckoutScreen';
 import { TicketTemplate } from './components/TicketTemplate';
 import { GestorDeCaja } from './components/GestorDeCaja';
 import { TerminalSelector } from './components/TerminalSelector';
+import { ProgramacionPedidoModal } from './components/ProgramacionPedidoModal';
 import { cashService } from './services/cashService';
 
 import { INITIAL_CATEGORIES, getProductEmoji, terminals } from './utils/posConstants';
@@ -43,6 +44,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const [isCashEnabled, setIsCashEnabled] = useState(false);
     const [showGestorCaja, setShowGestorCaja] = useState(false);
     const [cashSessionId, setCashSessionId] = useState(null);
+
+    // --- Estado de Tipo de Venta (Venta Directa vs Pedido) ---
+    const [orderType, setOrderType] = useState('VENTA_DIRECTA'); // 'VENTA_DIRECTA' | 'PEDIDO'
+    const [showProgramacion, setShowProgramacion] = useState(false);
+    const [orderData, setOrderData] = useState(null); // datos del pedido una vez guardado
 
     // --- Hooks Personalizados ---
     const PRODUCTS = useMemo(() => initialProducts.map(p => ({
@@ -452,10 +458,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
     return (
         <div className="flex flex-col h-full bg-transparent text-white overflow-hidden">
-            {/* Header */}
+            {/* Header: 3 zonas - Terminal | Cuenta+Tipo | Caja+Pizarron */}
             <div className="p-4 pb-2 z-20">
                 <div className="flex justify-between items-center mb-3">
-                    <div className="w-1/3 flex justify-start">
+                    {/* IZQUIERDA: Terminal */}
+                    <div className="flex-shrink-0">
                         <button onClick={async () => {
                             try {
                                 await posService.unlockTerminal(selectedTerminal, currentUser?.id);
@@ -472,16 +479,70 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                             </div>
                         </button>
                     </div>
-                    <div className="w-1/3 flex items-center justify-center">
-                        <div className="bg-black border border-white/10 px-8 py-2 rounded-3xl shadow-2x flex flex-col items-center">
+
+                    {/* CENTRO: Cuenta + Toggle Tipo + Botón Programación */}
+                    <div className="flex items-center gap-3 flex-1 justify-center">
+                        {/* Número de cuenta */}
+                        <div className="bg-black border border-white/10 px-8 py-2 rounded-3xl shadow-2xl flex flex-col items-center">
                             <span className="text-[7px] font-black uppercase text-white tracking-[0.5em] mb-0.5">ESTADO DE TRANSACCION</span>
-                            <span className={`text-4xl font-black uppercase tracking-tighter italic drop-shadow-[0_0_12px_rgba(193,215,46,0.4)] ${currentAccountNum ? 'text-[#c1d72e]' : 'text-orange-500 animate-pulse'}`}>
-                                {currentAccountNum ? `CUENTA #${currentAccountNum.slice(-3)}` : 'NUEVA VENTA'}
+                            <span className={`text-4xl font-black uppercase tracking-tighter italic drop-shadow-[0_0_12px_rgba(193,215,46,0.4)] ${
+                                currentAccountNum
+                                    ? orderData ? 'text-orange-400' : 'text-[#c1d72e]'
+                                    : 'text-orange-500 animate-pulse'
+                            }`}>
+                                {currentAccountNum
+                                    ? `CUENTA #${currentAccountNum.slice(-3)}`
+                                    : 'NUEVA VENTA'}
                             </span>
+                            {orderData && (
+                                <span className="text-[8px] font-black text-orange-400 uppercase tracking-widest animate-pulse mt-0.5">📦 PEDIDO TENTATIVO</span>
+                            )}
                         </div>
+
+                        {/* Toggle: Venta Directa / Pedido */}
+                        <div className="flex bg-black/60 border border-white/10 rounded-2xl p-1 gap-1">
+                            <button
+                                id="btn-venta-directa"
+                                onClick={() => { setOrderType('VENTA_DIRECTA'); setOrderData(null); }}
+                                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                                    orderType === 'VENTA_DIRECTA'
+                                        ? 'bg-[#c1d72e] text-black shadow-lg'
+                                        : 'text-white/50 hover:text-white'
+                                }`}
+                            >
+                                Venta Directa
+                            </button>
+                            <button
+                                id="btn-pedido"
+                                onClick={() => setOrderType('PEDIDO')}
+                                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                                    orderType === 'PEDIDO'
+                                        ? 'bg-orange-500 text-white shadow-lg'
+                                        : 'text-white/50 hover:text-white'
+                                }`}
+                            >
+                                📦 Pedido
+                            </button>
+                        </div>
+
+                        {/* Botón Programación del Pedido — solo visible en modo PEDIDO */}
+                        {orderType === 'PEDIDO' && (
+                            <button
+                                id="btn-programacion-pedido"
+                                onClick={() => setShowProgramacion(true)}
+                                className="bg-orange-500/20 border border-orange-500/60 px-5 py-2 rounded-xl flex items-center gap-2 hover:bg-orange-500/30 hover:border-orange-400 transition-all shadow-xl animate-in fade-in duration-300"
+                            >
+                                <div className="text-left">
+                                    <p className="text-[13px] font-black uppercase text-white tracking-widest leading-none mb-0.5">Programación</p>
+                                    <p className="text-[11px] font-black text-orange-400 uppercase tracking-tighter leading-none">del Pedido</p>
+                                </div>
+                                <span className="text-xl">🗓️</span>
+                            </button>
+                        )}
                     </div>
-                    <div className="w-1/3 flex justify-end gap-2">
-                        {/* Botón CAJA — uso infrecuente, estilo discreto */}
+
+                    {/* DERECHA: Caja + Pizarron */}
+                    <div className="flex-shrink-0 flex gap-2">
                         <button
                             onClick={() => setShowGestorCaja(true)}
                             className="bg-black/60 border border-[#c1d72e]/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#c1d72e]/20 hover:border-[#c1d72e] transition-all shadow-xl"
@@ -495,9 +556,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                             </div>
                         </button>
 
-                        {/* Botón Pizarrón — uso frecuente, estilo prominente */}
-                        <button 
-                            onClick={() => setShowCorkboard(true)} 
+                        <button
+                            onClick={() => setShowCorkboard(true)}
                             className="bg-[#2d1e13] border border-orange-900/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#3d2b1f] hover:border-orange-500/50 transition-all group shadow-xl"
                         >
                             <div className="text-left">
@@ -602,6 +662,19 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 />
             )}
 
+
+            {/* Modal: Programación del Pedido */}
+            {showProgramacion && (
+                <ProgramacionPedidoModal
+                    cart={cart}
+                    currentAccountNum={currentAccountNum}
+                    onClose={() => setShowProgramacion(false)}
+                    onSave={(data) => {
+                        setOrderData(data);
+                        setShowProgramacion(false);
+                    }}
+                />
+            )}
 
             {/* Contenedor Principal (Fin) */}
             {/* Modal de Auto-Expulsión (Polling Remoto) */}

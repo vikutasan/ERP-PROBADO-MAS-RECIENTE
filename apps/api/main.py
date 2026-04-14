@@ -7,6 +7,8 @@ from modules.security.router import router as security_router
 from modules.cash.router import router as cash_router
 from modules.settings.router import router as settings_router
 from modules.production.router import router as production_router
+from modules.orders.router import router as orders_router
+from modules.delivery_settings.router import router as delivery_settings_router
 from core.database import AsyncSessionLocal, engine, Base
 from modules.catalog.models import Category
 from modules.security.models import SecurityProfile, Employee
@@ -18,6 +20,8 @@ from modules.pos.models import Ticket, TerminalSession
 from modules.cash.models import CashSession, CashMovement
 from modules.settings.models import SystemSetting
 from modules.production.models import Dough, DoughBatchConfig, DoughIngredient, DoughProcedureStep, DoughProductRelation
+from modules.orders.models import Order
+from modules.delivery_settings.models import DeliverySettings
 
 app = FastAPI(
     title="R de Rico ERP API",
@@ -172,6 +176,8 @@ app.include_router(security_router, prefix="/api/v1/security", tags=["Security"]
 app.include_router(cash_router, prefix="/api/v1/cash", tags=["Cash"])
 app.include_router(settings_router, prefix="/api/v1/settings", tags=["Settings"])
 app.include_router(production_router, prefix="/api/v1/production", tags=["Production"])
+app.include_router(orders_router, prefix="/api/v1/orders", tags=["Orders"])
+app.include_router(delivery_settings_router, prefix="/api/v1/delivery-settings", tags=["DeliverySettings"])
 
 # Montar carpetas de archivos estáticos
 app.mount("/static/catalog", StaticFiles(directory="static/catalog"), name="catalog")
