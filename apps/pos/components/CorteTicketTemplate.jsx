@@ -20,7 +20,7 @@ export const CorteTicketTemplate = forwardRef(({ resumen, sesion, capturado }, r
     const ticketsPagados = (sesion.tickets || []);
 
     return (
-        <div ref={ref} className="print-ticket-corte bg-white text-black w-[80mm] font-mono leading-[1.1]">
+        <div ref={ref} className="print-ticket-corte bg-white text-black w-[80mm] font-mono font-bold leading-[1.1]">
             <style>
                 {`
                     @media print {

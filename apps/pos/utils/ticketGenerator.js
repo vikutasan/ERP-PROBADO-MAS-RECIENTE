@@ -81,6 +81,7 @@ export const generateTicketHTML = (ticketData) => {
                     line-height: 1.15;
                     color: #000;
                     background: #fff;
+                    font-weight: bold;
                 }
                 .line { border-top: 1px dashed #000; margin: 2px 0; }
                 .row { display: flex; justify-content: space-between; align-items: center; }
@@ -89,8 +90,8 @@ export const generateTicketHTML = (ticketData) => {
                 .upper { text-transform: uppercase; }
                 .center { text-align: center; }
                 .small { font-size: 7pt; }
-                .xsmall { font-size: 6.5pt; font-style: italic; }
-                table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+                .xsmall { font-size: 6.5pt; }
+                table { width: 100%; border-collapse: collapse; font-size: 8pt; font-weight: bold; }
                 td { padding: 1px 0; vertical-align: top; }
                 .audit { font-size: 7pt; text-transform: uppercase; margin-top: 3px; padding-top: 2px; border-top: 1px dashed #000; }
             </style>
@@ -105,7 +106,7 @@ export const generateTicketHTML = (ticketData) => {
             <!-- Fecha, Hora y Número de cuenta al CENTRO  -->
             <div class="col bold center" style="margin-bottom: 2px; align-items: center;">
                 <div>CTA: ${ticketData.account_num || '---'}</div>
-                <div style="font-weight: normal; margin-top: 1px;">${printDate} ${printTime}</div>
+                <div style="margin-top: 1px;">${printDate} ${printTime}</div>
             </div>
 
             <div class="line"></div>

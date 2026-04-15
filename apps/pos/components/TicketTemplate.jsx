@@ -4,7 +4,7 @@ export const TicketTemplate = forwardRef(({ ticket, cart, total, payments }, ref
     const today = new Date().toLocaleString();
     
     return (
-        <div ref={ref} className="print-ticket bg-white text-black w-[80mm] font-mono text-[9px] leading-[1.1]">
+        <div ref={ref} className="print-ticket bg-white text-black w-[80mm] font-mono font-bold text-[9px] leading-[1.1]">
             <style>
                 {`
                     @media print {

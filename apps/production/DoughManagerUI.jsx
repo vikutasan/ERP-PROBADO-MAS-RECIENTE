@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
     ArrowLeft, Plus, Search, Filter, Loader2, ChefHat, Info, 
     Save, X, ChevronRight, ChevronLeft, Beaker, Zap, Timer, 
-    Scale, Trash2, ListOrdered, Settings2, Package, ArrowRight, Edit2, GripVertical
+    Scale, Trash2, ListOrdered, Settings2, Package, ArrowRight, Edit2, GripVertical, ClipboardList
 } from 'lucide-react';
+import { PedidosPendientesUI } from './PedidosPendientesUI';
 
 /**
  * DOUGH MANAGER UI (INDUSTRIAL EDITION)
@@ -46,6 +47,7 @@ export const DoughManagerUI = ({ onBack }) => {
     const [doughs, setDoughs] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [draggedIdx, setDraggedIdx] = useState(null);
+    const [view, setView] = useState('MAIN'); // 'MAIN' | 'PEDIDOS_PENDIENTES'
 
     const loadDoughs = async () => {
         try {
@@ -96,6 +98,10 @@ export const DoughManagerUI = ({ onBack }) => {
         } catch (e) { console.error("Error saving order:", e); }
     };
 
+    if (view === 'PEDIDOS_PENDIENTES') {
+        return <PedidosPendientesUI onBack={() => setView('MAIN')} />;
+    }
+
     return (
         <div 
             style={{ 
@@ -129,6 +135,12 @@ export const DoughManagerUI = ({ onBack }) => {
                 </div>
 
                 <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => setView('PEDIDOS_PENDIENTES')}
+                        className="bg-orange-500/10 border border-orange-500/30 text-orange-600 px-6 py-4 rounded-[30px] text-xs font-black uppercase tracking-widest hover:bg-orange-500/20 transition-all flex items-center gap-3"
+                    >
+                        <ClipboardList size={20} /> PEDIDOS PENDIENTES
+                    </button>
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30 group-focus-within:text-black transition-colors" size={16} />
                         <input 
