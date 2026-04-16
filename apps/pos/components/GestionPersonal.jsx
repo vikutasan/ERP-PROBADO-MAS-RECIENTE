@@ -50,7 +50,14 @@ export const GestionPersonal = ({ onClose, isSection = false }) => {
             setNumpadValue(emp.employee_code);
         } else {
             setEditingEmployee(null);
-            setFormData({ name: '', employee_code: '', role: 'CAJERO', profile_id: null });
+            // Pre-seleccionar el perfil CAJERO si existe
+            const defaultProfile = profiles.find(p => p.name === 'CAJERO');
+            setFormData({ 
+                name: '', 
+                employee_code: '', 
+                role: defaultProfile ? defaultProfile.name : 'CAJERO', 
+                profile_id: defaultProfile ? defaultProfile.id : null 
+            });
             setNumpadValue('');
         }
         setView('form');
@@ -67,6 +74,11 @@ export const GestionPersonal = ({ onClose, isSection = false }) => {
 
         if (!payload.name || !payload.employee_code) {
             setError("Nombre y PIN son obligatorios");
+            return;
+        }
+
+        if (!payload.profile_id) {
+            setError("Debes seleccionar un perfil (ej. CAJERO)");
             return;
         }
 
