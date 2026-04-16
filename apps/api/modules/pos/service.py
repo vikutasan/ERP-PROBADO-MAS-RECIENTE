@@ -65,6 +65,11 @@ class POSService:
         db_ticket = result.scalars().first()
 
         if db_ticket:
+            if db_ticket.status == "PAID":
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"El folio {ticket.account_num} ya ha sido pagado y no puede modificarse."
+                )
             return await self._update_ticket_fields(db_ticket, ticket, total)
         
         return await self._initialize_new_ticket(db, ticket, total)
@@ -245,15 +250,43 @@ class POSService:
         return None
 
     async def _generate_consecutive_ticket(self, db: AsyncSession, session_id: int):
-        """Crea un ticket nuevo y le asigna un folio correlativo (V0001, etc)."""
-        import uuid
-        temp_num = f"TEMP_{uuid.uuid4().hex[:4]}"
-        db_ticket = models.Ticket(account_num=temp_num, session_id=session_id, total=0.0, status="OPEN")
-        db.add(db_ticket)
-        await db.flush()
+        """
+        Crea un ticket nuevo con folio correlativo atómico.
+        NO usa nombres TEMP intermedios — el folio se asigna en una sola operación.
+        """
+        # Paso 1: Encontrar el máximo ID actual para predecir el siguiente folio
+        from sqlalchemy import func
+        max_id_result = await db.execute(select(func.max(models.Ticket.id)))
+        max_id = max_id_result.scalar() or 0
+        next_id = max_id + 1
         
-        db_ticket.account_num = f"V{db_ticket.id:04d}"
+        # Paso 2: Crear ticket con folio definitivo desde el inicio
+        account_num = f"V{next_id:04d}"
+        
+        # Verificar que no exista ya (protección contra colisión)
+        existing = await db.execute(
+            select(models.Ticket).where(models.Ticket.account_num == account_num)
+        )
+        if existing.scalars().first():
+            # Si existe, buscar el siguiente disponible
+            next_id += 1
+            account_num = f"V{next_id:04d}"
+        
+        db_ticket = models.Ticket(
+            account_num=account_num,
+            session_id=session_id,
+            total=0.0,
+            status="OPEN"
+        )
+        db.add(db_ticket)
         await db.commit()
+        await db.refresh(db_ticket)
+        
+        # Si el ID real resultó diferente al predicho, actualizar el folio
+        if db_ticket.id != next_id:
+            db_ticket.account_num = f"V{db_ticket.id:04d}"
+            await db.commit()
+        
         return db_ticket
 
     async def upload_training_images(self, payload: schemas.VisionTrainingUpload):

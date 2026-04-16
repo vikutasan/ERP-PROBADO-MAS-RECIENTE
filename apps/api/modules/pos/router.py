@@ -51,22 +51,28 @@ async def get_open_tickets(db: AsyncSession = Depends(get_db)):
 
 @router.get("/terminals/status")
 async def get_terminals_status(db: AsyncSession = Depends(get_db)):
+    """
+    Fuente de verdad UNIFICADA:
+    1. Lee candados persistentes de la tabla terminal_locks (DB)
+    2. Complementa con sesiones de caja abiertas (CashSession)
+    No depende de RAM volátil.
+    """
     try:
         ttl_setting = await get_setting_by_key(db, "pos_terminal_lock_ttl_m")
         ttl = int(ttl_setting.value)
     except Exception:
         ttl = 15
-    locks = get_all_locks(ttl_minutes=ttl)
     
+    # Fuente 1: Candados persistentes (reemplaza _locks en RAM)
+    locks = await get_all_locks(db, ttl_minutes=ttl)
+    
+    # Fuente 2: Sesiones de caja activas (persisten incluso sin lock)
     from modules.cash.models import CashSession
     from sqlalchemy.future import select
     result = await db.execute(select(CashSession).where(CashSession.status == "OPEN"))
     active_cash = result.scalars().all()
     
-    if active_cash:
-        print(f"DEBUG: Found {len(active_cash)} open cash sessions in DB: {[c.terminal_id for c in active_cash]}")
-    
-    # Combinar locks efímeros en memoria y sesiones de caja reales (que persisten a reinicios)
+    # Combinar: locks de DB + caja abierta
     res = dict(locks)
     for c in active_cash:
         tid = c.terminal_id.strip() if c.terminal_id else ""
@@ -89,45 +95,34 @@ async def take_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSessio
         ttl = int(ttl_setting.value)
     except Exception:
         ttl = 15
-    success = lock_terminal(tid, req.occupier_id, req.occupier_name, ttl_minutes=ttl)
+    success = await lock_terminal(db, tid, req.occupier_id, req.occupier_name, ttl_minutes=ttl)
     if not success:
         raise HTTPException(status_code=400, detail="Terminal ocupada por otra persona.")
     return {"status": "locked", "terminal_id": tid}
 
 @router.post("/terminals/{terminal_id}/unlock")
-async def release_terminal_lock(terminal_id: str, req: LockRequest):
+async def release_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
     tid = terminal_id.strip()
-    success = unlock_terminal(tid, req.occupier_id)
+    success = await unlock_terminal(db, tid, req.occupier_id)
     if not success:
         raise HTTPException(status_code=403, detail="No tienes permiso para liberar esta terminal.")
     return {"status": "unlocked", "terminal_id": tid}
 
 @router.post("/terminals/{terminal_id}/force_unlock")
 async def force_terminal_unlock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
-    from .occupancy import force_unlock
-    from modules.cash.models import CashSession
-    from sqlalchemy import update, func
-    
-    # 1. Limpiar bloqueo en memoria para permitir acceso a la UI
+    """
+    Fuerza la liberación de una terminal bloqueada.
+    SOLO libera el candado — ya NO transfiere la propiedad de la CashSession,
+    porque eso causaba efectos secundarios inesperados (cierre de caja ajeno).
+    """
     tid = terminal_id.strip()
-    force_unlock(tid)
-    
-    # IMPORTANTE: Transferimos la propiedad de la CashSession al administrador
-    # De este modo, la interfaz detectará que la terminal es SUYA y le permitirá entrar,
-    # manteniendo los fondos originales intactos.
-    await db.execute(
-        update(CashSession)
-        .where(func.trim(CashSession.terminal_id) == tid, CashSession.status == "OPEN")
-        .values(employee_id=req.occupier_id, employee_name=req.occupier_name)
-    )
-    await db.commit()
-    
+    await force_unlock(db, tid)
     return {"status": "unlocked", "terminal_id": terminal_id}
 
 @router.post("/terminals/{terminal_id}/heartbeat")
-async def heartbeat_terminal_lock(terminal_id: str, req: LockRequest):
+async def heartbeat_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
     tid = terminal_id.strip()
-    success = heartbeat(tid, req.occupier_id)
+    success = await heartbeat(db, tid, req.occupier_id)
     if not success:
         raise HTTPException(status_code=404, detail="No active lock found for this terminal/user.")
     return {"status": "alive", "terminal_id": terminal_id}

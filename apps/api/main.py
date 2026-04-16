@@ -16,7 +16,7 @@ from sqlalchemy import select
 from modules.settings.service import seed_settings as seed_system_settings
 
 # Importar TODOS los modelos para que Base.metadata los conozca
-from modules.pos.models import Ticket, TerminalSession
+from modules.pos.models import Ticket, TerminalSession, TerminalLock
 from modules.cash.models import CashSession, CashMovement
 from modules.settings.models import SystemSetting
 from modules.production.models import Dough, DoughBatchConfig, DoughIngredient, DoughProcedureStep, DoughProductRelation

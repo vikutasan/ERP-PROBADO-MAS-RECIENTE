@@ -3,6 +3,16 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from core.database import Base
 
+class TerminalLock(Base):
+    """Candado persistente de terminal. Reemplaza el diccionario en RAM que se perdía con reinicios."""
+    __tablename__ = "terminal_locks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    terminal_id = Column(String, unique=True, index=True, nullable=False)
+    occupier_id = Column(Integer, nullable=False)
+    occupier_name = Column(String, nullable=False)
+    locked_at = Column(DateTime, default=datetime.utcnow)
+
 class TerminalSession(Base):
     __tablename__ = "terminal_sessions"
 

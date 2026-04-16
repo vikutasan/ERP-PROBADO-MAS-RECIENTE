@@ -63,6 +63,59 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const { cart, setCart, total, addToCart, updateQuantity, removeFromCart, clearCart } = useCart(PRODUCTS, selectedTerminal);
     const { isScanning, setIsScanning } = useVision();
 
+    // --- Persistencia de Metadatos de Sesión ---
+    useEffect(() => {
+        if (!selectedTerminal) return;
+        const sessionKey = `pos_session_${selectedTerminal}`;
+        try {
+            const saved = localStorage.getItem(sessionKey);
+            if (saved) {
+                const data = JSON.parse(saved);
+                
+                // VALIDACIÓN POST-RESTORE: Solo confiar si el número de cuenta parece válido
+                if (data.currentAccountNum && data.currentAccountNum.startsWith('V')) {
+                    // PROTECCIÓN ANTI-ZOMBIE: 
+                    // Si restauramos un numero pero el carrito está vacío, 
+                    // es mejor descartarlo para evitar sobreescribir tickets viejos accidentalmente.
+                    if (cart.length === 0) {
+                        console.log("Descartando folio zombie recuperado (carrito vacío)");
+                        setCurrentAccountNum('');
+                        setOriginalCapturer(null);
+                    } else {
+                        setCurrentAccountNum(data.currentAccountNum);
+                        if (data.originalCapturer && typeof data.originalCapturer === 'object') {
+                            setOriginalCapturer(data.originalCapturer);
+                        }
+                    }
+                }
+                
+                if (data.orderType) setOrderType(data.orderType);
+                if (data.orderData) setOrderData(data.orderData);
+                
+                console.log("Sesión recuperada para terminal:", selectedTerminal);
+            }
+        } catch (e) { console.warn("Error al restaurar metadatos de sesión", e); }
+    }, [selectedTerminal, cart.length]); // Re-evaluar si el carrito termina de cargarse
+
+    useEffect(() => {
+        if (!selectedTerminal) return;
+        const sessionKey = `pos_session_${selectedTerminal}`;
+        try {
+            // Sanitización extrema para evitar el "Cuadro Rojo" por objetos no-serializables
+            const sessionData = { 
+                currentAccountNum, 
+                orderType, 
+                orderData: (orderData && typeof orderData === 'object') ? orderData : null, 
+                originalCapturer: (originalCapturer && typeof originalCapturer === 'object') 
+                    ? { id: originalCapturer.id, name: originalCapturer.name } 
+                    : null 
+            };
+            localStorage.setItem(sessionKey, JSON.stringify(sessionData));
+        } catch (e) { 
+            console.warn("No se pudo guardar la persistencia de sesión:", e); 
+        }
+    }, [selectedTerminal, currentAccountNum, orderType, orderData, originalCapturer]);
+
 
     // --- Efectos de Carga ---
     useEffect(() => {
@@ -98,27 +151,35 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         if (accountGenPromise.current) return accountGenPromise.current;
         
         const promise = (async () => {
-            try {
-                const terminalId = selectedTerminal || 'T1';
-                const ticket = await posService.reserveTicket(terminalId);
-                setCurrentAccountNum(ticket.account_num);
-                if (ticket.captured_by) {
-                    setOriginalCapturer({
-                        id: ticket.captured_by.id,
-                        name: ticket.captured_by.name
-                    });
-                } else {
-                    setOriginalCapturer(currentUser);
+            const terminalId = selectedTerminal || 'T1';
+            
+            // Intentar hasta 3 veces con delay antes de fallar
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    const ticket = await posService.reserveTicket(terminalId);
+                    setCurrentAccountNum(ticket.account_num);
+                    if (ticket.captured_by) {
+                        setOriginalCapturer({
+                            id: ticket.captured_by.id,
+                            name: ticket.captured_by.name
+                        });
+                    } else {
+                        setOriginalCapturer(currentUser);
+                    }
+                    return ticket.account_num;
+                } catch (error) {
+                    console.error(`Error reservando cuenta (intento ${attempt}/3):`, error);
+                    if (attempt < 3) {
+                        // Esperar 1 segundo antes de reintentar
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
                 }
-                return ticket.account_num;
-            } catch (error) {
-                console.error("Error reservando cuenta oficial, usando fallback:", error);
-                const num = Math.floor(1000 + Math.random() * 9000);
-                const fallbackNum = `V${num}`;
-                setCurrentAccountNum(fallbackNum);
-                setOriginalCapturer(currentUser);
-                return fallbackNum;
             }
+            
+            // Si después de 3 intentos sigue fallando, NO generar número aleatorio.
+            // Mostrar error al usuario para que lo resuelva.
+            alert("⚠️ Error de conexión con el servidor. No se pudo reservar un número de cuenta. Verifique que el servidor esté activo.");
+            throw new Error("No se pudo reservar cuenta después de 3 intentos");
         })();
 
         accountGenPromise.current = promise;
@@ -269,7 +330,12 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 }
                 clearCart();
                 setOriginalCapturer(null);
-                setCurrentAccountNum(''); // <--- LIMPIAR DESENCADENA UNA NUEVA SOLA VEZ AL AGREGAR
+                setCurrentAccountNum('');
+                setOrderData(null);
+                setOrderType('VENTA_DIRECTA');
+                try {
+                    if (selectedTerminal) localStorage.removeItem(`pos_session_${selectedTerminal}`);
+                } catch (e) { console.warn("Error al limpiar persistencia:", e); }
                 setShowCheckout(false);
                 setPaymentsHistory([]);
                 if (status === 'PAID') {
