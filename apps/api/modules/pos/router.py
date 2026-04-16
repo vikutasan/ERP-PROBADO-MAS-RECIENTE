@@ -112,11 +112,27 @@ async def release_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSes
 async def force_terminal_unlock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
     """
     Fuerza la liberación de una terminal bloqueada.
-    SOLO libera el candado — ya NO transfiere la propiedad de la CashSession,
-    porque eso causaba efectos secundarios inesperados (cierre de caja ajeno).
+    Transfiere la propiedad de la CashSession activa al administrador que fuerza el desbloqueo,
+    según la Regla de Negocio "TRASPUESTA DE TITULARIDAD DE CAJA".
     """
     tid = terminal_id.strip()
     await force_unlock(db, tid)
+    
+    # TRASPUESTA DE TITULARIDAD DE CAJA
+    from modules.cash.models import CashSession
+    from sqlalchemy.future import select
+    
+    result = await db.execute(select(CashSession).where(
+        CashSession.terminal_id == tid,
+        CashSession.status == "OPEN"
+    ))
+    cash_session = result.scalars().first()
+    
+    if cash_session:
+        cash_session.employee_id = req.occupier_id
+        cash_session.employee_name = req.occupier_name
+        await db.commit()
+
     return {"status": "unlocked", "terminal_id": terminal_id}
 
 @router.post("/terminals/{terminal_id}/heartbeat")
