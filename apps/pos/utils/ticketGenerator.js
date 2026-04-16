@@ -133,6 +133,43 @@ export const generateTicketHTML = (ticketData) => {
                 ${paymentsHtml}
             </div>
 
+            <!-- SECCIÓN OMS: Detalles del Pedido -->
+            ${ticketData.order_type === 'PEDIDO' ? `
+                <div style="margin-top: 4px; border: 1.5px solid #000; padding: 4px; position: relative;">
+                    <div class="center bold upper" style="font-size: 9pt; margin-bottom: 4px; background: #000; color: #fff; padding: 2px 0;">
+                        *** DATOS DEL PEDIDO ***
+                    </div>
+                    
+                    <div class="row"><span class="small">CLIENTE:</span> <span class="upper">${ticketData.customer_name || '---'}</span></div>
+                    <div class="row"><span class="small">TIPO:</span> <span class="upper">${ticketData.delivery_type === 'PICKUP' ? '🏪 RECOLECCIÓN (PICKUP)' : '🚗 ENTREGA A DOMICILIO'}</span></div>
+                    
+                    <div class="row" style="margin-top: 2px;">
+                        <span class="small">ENTREGA:</span>
+                        <span class="upper">${ticketData.committed_at ? 
+                            new Date(ticketData.committed_at).toLocaleString('es-MX', { 
+                                weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' 
+                            }) : '---'}
+                        </span>
+                    </div>
+
+                    <div class="row" style="margin-top: 2px;">
+                        <span class="small">EMPAQUE:</span>
+                        <span class="upper">${ticketData.packaging_type === 'PROPIO' ? '🛍️ TRAE SU EMPAQUE' : '📦 EMPAQUE PAGADO'}</span>
+                    </div>
+
+                    ${ticketData.delivery_address ? `
+                        <div style="margin-top: 4px; padding-top: 2px; border-top: 1px dashed #000;">
+                            <div class="small bold">DIRECCIÓN:</div>
+                            <div class="xsmall upper" style="line-height: 1.2;">${ticketData.delivery_address}</div>
+                        </div>
+                    ` : ''}
+
+                    <div class="center bold upper" style="margin-top: 6px; font-size: 8.5pt; border-top: 1.5px solid #000; pt: 3px;">
+                        ${ticketData.delivery_type === 'PICKUP' ? 'PAGADO - PENDIENTE DE RECOLECCION' : 'PAGADO - PENDIENTE DE ENTREGA'}
+                    </div>
+                </div>
+            ` : ''}
+
             <div class="audit">
                 <div class="row bold"><span>CAPTURÓ:</span><span>${capturedBy}</span></div>
                 <div class="row bold"><span>COBRÓ:</span><span>${cashedBy}</span></div>

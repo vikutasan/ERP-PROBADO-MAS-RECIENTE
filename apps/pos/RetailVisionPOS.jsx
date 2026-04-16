@@ -95,7 +95,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 console.log("Sesión recuperada para terminal:", selectedTerminal);
             }
         } catch (e) { console.warn("Error al restaurar metadatos de sesión", e); }
-    }, [selectedTerminal, cart.length]); // Re-evaluar si el carrito termina de cargarse
+    }, [selectedTerminal]); // EJECUTAR SOLO AL CAMBIAR DE TERMINAL para evitar colisión con el Pizarrón
 
     useEffect(() => {
         if (!selectedTerminal) return;
@@ -309,7 +309,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             let session = await posService.getActiveSession(terminalId);
             if (!session) session = await posService.createSession(terminalId);
 
-            const payload = {
+            let payload = {
                 account_num: targetAccountNum,
                 session_id: session.id,
                 items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
@@ -317,8 +317,14 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 payment_details: paymentData,
                 cash_session_id: cashSessionId,
                 captured_by_id: originalCapturer?.id || currentUser?.id || null,
-                cashed_by_id: status === 'PAID' ? (currentUser?.id || null) : null
+                cashed_by_id: status === 'PAID' ? (currentUser?.id || null) : null,
+                order_type: orderType
             };
+
+            // Inyectar data del OMS si es pedido
+            if (orderType === 'PEDIDO' && orderData) {
+                payload = { ...payload, ...orderData };
+            }
 
             const savedTicket = await posService.createTicket(payload);
             setPrintTicketData(savedTicket); // Actualizar datos de impresión con la respuesta oficial del servidor
@@ -351,13 +357,17 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
     const handleRecoverAccount = (account) => {
         if (!account.rawItems?.length) return alert("Cuenta vacia.");
-        const recovered = account.rawItems.map(i => ({
-            id: i.product.id,
-            name: i.product.name,
-            price: i.product.price,
-            quantity: i.quantity,
-            category: i.product.category?.name || 'OTROS'
-        }));
+        const recovered = account.rawItems.map(i => {
+            const originalProd = initialProducts.find(p => p.id === i.product.id) || {};
+            return {
+                id: i.product.id,
+                name: i.product.name,
+                price: i.product.price,
+                quantity: i.quantity,
+                category: i.product.category?.name || 'OTROS',
+                nature: i.product.nature || originalProd.nature || 'PRODUCTO'
+            };
+        });
         setCart(recovered);
         setCurrentAccountNum(account.accountNum);
         // Guardar también quién la capturó originalmente para que persista en el ticket final
@@ -367,8 +377,27 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             name: account.capturedByName 
         } : null;
         
-        console.log("Recovering account. Original capturer recovered from corkboard:", capturer);
-        setOriginalCapturer(capturer || currentUser); // Si no hay capturador en DB, el actual se vuelve el capturador
+        console.log("Recovering account. Original capturer:", capturer);
+        setOriginalCapturer(capturer || currentUser); 
+        
+        // --- Restaurar Order Data si la cuenta es un PEDIDO ---
+        if (account.orderType === 'PEDIDO') {
+            setOrderType('PEDIDO');
+            setOrderData({
+                order_type: account.orderType,
+                delivery_type: account.deliveryType,
+                customer_name: account.clientName,
+                customer_phone: account.customerPhone,
+                committed_at: account.committedAt,
+                packaging_type: account.packagingType,
+                delivery_address: account.deliveryAddress,
+                notes: account.orderNotes
+            });
+        } else {
+            setOrderType('VENTA_DIRECTA');
+            setOrderData(null);
+        }
+
         setShowCorkboard(false);
     };
 
@@ -389,7 +418,16 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     capturedById: t.captured_by_id,
                     capturedByName: t.captured_by_name || t.captured_by?.name || 'Desconocido',
                     cashierName: t.cashed_by_name || t.cashed_by?.name || '---',
-                    clientName: 'Público General'
+                    clientName: t.customer_name || 'Público General',
+                    // --- Mapeo OMS ---
+                    orderType: t.order_type,
+                    orderStatus: t.order_status,
+                    deliveryType: t.delivery_type,
+                    customerPhone: t.customer_phone,
+                    committedAt: t.committed_at,
+                    packagingType: t.packaging_type,
+                    deliveryAddress: t.delivery_address,
+                    orderNotes: t.order_notes
                 })));
             }).catch(console.error);
         };
@@ -680,6 +718,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
             {showCheckout && (
                 <CheckoutScreen 
+                    cart={cart}
                     total={total}
                     orderData={orderData}
                     onConfirm={async (method) => {
@@ -738,8 +777,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             {showProgramacion && (
                 <ProgramacionPedidoModal
                     cart={cart}
+                    allProducts={initialProducts}
                     currentAccountNum={currentAccountNum}
+                    initialData={orderData}
                     onClose={() => setShowProgramacion(false)}
+                    onAddToCart={addToCart}
                     onSave={(data) => {
                         setOrderData(data);
                         setShowProgramacion(false);

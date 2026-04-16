@@ -81,6 +81,16 @@ class POSService:
         db_ticket.payment_details = ticket.payment_details
         db_ticket.cash_session_id = ticket.cash_session_id
         
+        db_ticket.order_type = ticket.order_type
+        db_ticket.order_status = ticket.order_status
+        db_ticket.delivery_type = ticket.delivery_type
+        db_ticket.customer_name = ticket.customer_name
+        db_ticket.customer_phone = ticket.customer_phone
+        db_ticket.committed_at = ticket.committed_at.replace(tzinfo=None) if ticket.committed_at else None
+        db_ticket.packaging_type = ticket.packaging_type
+        db_ticket.delivery_address = ticket.delivery_address
+        db_ticket.order_notes = ticket.order_notes
+        
         if ticket.status == "PAID" and ticket.cashed_by_id:
             db_ticket.cashed_by_id = ticket.cashed_by_id
         
@@ -102,7 +112,16 @@ class POSService:
             status=ticket.status or "OPEN",
             payment_details=ticket.payment_details,
             cash_session_id=ticket.cash_session_id,
-            captured_by_id=ticket.captured_by_id
+            captured_by_id=ticket.captured_by_id,
+            order_type=ticket.order_type,
+            order_status=ticket.order_status,
+            delivery_type=ticket.delivery_type,
+            customer_name=ticket.customer_name,
+            customer_phone=ticket.customer_phone,
+            committed_at=ticket.committed_at.replace(tzinfo=None) if ticket.committed_at else None,
+            packaging_type=ticket.packaging_type,
+            delivery_address=ticket.delivery_address,
+            order_notes=ticket.order_notes
         )
         db.add(db_ticket)
         await db.flush()

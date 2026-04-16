@@ -23,6 +23,15 @@ class TicketItemResponse(TicketItemBase):
 class TicketBase(BaseModel):
     account_num: str
     session_id: int
+    order_type: Optional[str] = "VENTA_DIRECTA"
+    order_status: Optional[str] = "PROGRAMADO PARA SER PREPARADO"
+    delivery_type: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    committed_at: Optional[datetime] = None
+    packaging_type: Optional[str] = None
+    delivery_address: Optional[str] = None
+    order_notes: Optional[str] = None
 
 class TicketCreate(TicketBase):
     items: List[TicketItemCreate]

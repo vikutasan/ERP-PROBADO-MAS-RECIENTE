@@ -153,6 +153,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                 baking_temp_bottom: rawTD.baking_temp_bottom && rawTD.baking_temp_bottom !== '' ? parseFloat(rawTD.baking_temp_bottom) : null,
                 baking_time_min: rawTD.baking_time_min && rawTD.baking_time_min !== '' ? parseInt(rawTD.baking_time_min) : null,
                 preparation_time_min: rawTD.preparation_time_min && rawTD.preparation_time_min !== '' ? parseInt(rawTD.preparation_time_min) : null,
+                order_lead_time_hours: rawTD.order_lead_time_hours && rawTD.order_lead_time_hours !== '' ? parseInt(rawTD.order_lead_time_hours) : null,
                 
                 // Garantizar strings o nulls para textos
                 recipe_procedure: rawTD.recipe_procedure || null,
@@ -683,6 +684,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                                         <option value="MANUFACTURADO">🏭 MANUFACTURADO</option>
                                         <option value="PREPARADO AL MOMENTO">🧉 PREPARADO AL MOMENTO</option>
                                         <option value="REVENTA">🏷️ REVENTA</option>
+                                        <option value="EMPAQUE">📦 EMPAQUE</option>
                                     </select>
                                 </div>
                                 <div className="col-span-2">
@@ -920,6 +922,19 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                                                 onChange={(e) => setEditingProduct({...editingProduct, technical_data: {...editingProduct.technical_data, baking_time_min: e.target.value}})}
                                             />
                                         </div>
+                                    </div>
+
+                                    {/* Tiempo para Pedidos */}
+                                    <div className="bg-purple-900/10 p-5 rounded-[24px] border border-purple-900/30">
+                                        <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest block mb-2">⏱️ Tiempo para Pedidos (Horas)</label>
+                                        <p className="text-[8px] font-bold text-gray-600 uppercase tracking-wide mb-3">Horas de anticipación necesarias desde que se pide hasta que es posible su entrega</p>
+                                        <input 
+                                            type="number"
+                                            placeholder="Ej: 12"
+                                            className="w-full max-w-[200px] bg-black/40 border border-purple-900/50 p-3 rounded-xl text-sm font-bold text-purple-200 outline-none focus:border-purple-400"
+                                            value={editingProduct.technical_data?.order_lead_time_hours || ''}
+                                            onChange={(e) => setEditingProduct({...editingProduct, technical_data: {...editingProduct.technical_data, order_lead_time_hours: e.target.value}})}
+                                        />
                                     </div>
 
                                     <div>

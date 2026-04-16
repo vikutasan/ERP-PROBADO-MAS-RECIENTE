@@ -78,25 +78,41 @@ export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose }
                             </div>
 
                             {/* Contenido del Post-it */}
-                            <div className="text-[#3d2b1f]">
+                            <div className="text-[#3d2b1f] flex flex-col">
                                 <div className="flex justify-between items-start mb-4">
                                     <span className="text-5xl font-black font-mono">#{acc.id.slice(-3)}</span>
                                     <span className="text-sm font-black bg-black/5 px-2 py-1 rounded-md uppercase tracking-widest opacity-60">{acc.terminal}</span>
                                 </div>
-                                <h4 className="text-lg font-black uppercase tracking-tight leading-tight mb-2 opacity-35">
-                                    {acc.clientName || 'Cliente General'}
-                                </h4>
-                                <div className="space-y-1 opacity-50">
-                                    <p className="text-sm font-black uppercase flex items-center gap-2" title="Colaborador que capturó los productos">
+                                
+                                {acc.orderType === 'PEDIDO' ? (
+                                    <div className="mb-4">
+                                        <span className="inline-block bg-orange-600 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded shadow-sm mb-1">
+                                            📦 PEDIDO TENTATIVO
+                                        </span>
+                                        <h4 className="text-xl font-black uppercase tracking-tighter leading-none mb-1 text-black">
+                                            {acc.clientName}
+                                        </h4>
+                                        <p className="text-[10px] font-bold text-orange-900 uppercase">
+                                            {acc.deliveryType === 'DOMICILIO' ? '🚗 DOMICILIO' : '🏪 PICK UP'}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <h4 className="text-lg font-black uppercase tracking-tight leading-tight mb-4 opacity-35">
+                                        CLIENTE LOCAL
+                                    </h4>
+                                )}
+
+                                <div className="space-y-1 opacity-50 mt-auto">
+                                    <p className="text-[11px] font-black uppercase flex items-center gap-2">
                                         📝 {acc.capturedByName}
                                     </p>
-                                    <p className="text-sm font-bold italic uppercase flex items-center gap-2">
+                                    <p className="text-[11px] font-bold italic uppercase flex items-center gap-2">
                                         🕒 {new Date(acc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="mt-auto pt-4 border-t border-[#3d2b1f]/10 flex justify-between items-end">
+                            <div className="mt-4 pt-4 border-t border-[#3d2b1f]/10 flex justify-between items-end">
                                 <span className="text-xl font-black font-mono tracking-tighter text-[#3d2b1f] opacity-45">${acc.total.toFixed(2)}</span>
                                 <span className="text-[8px] font-black uppercase tracking-widest opacity-30">Ver Cuenta →</span>
                             </div>

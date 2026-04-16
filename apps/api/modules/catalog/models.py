@@ -64,6 +64,7 @@ class ProductTechnicalSheet(Base):
     bom_extra = Column(JSON, nullable=True)
 
     preparation_time_min = Column(Integer, nullable=True)
+    order_lead_time_hours = Column(Integer, nullable=True)  # Tiempo para Pedidos: horas desde que se pide hasta que es posible su entrega
     recipe_procedure = Column(Text, nullable=True)
     modifiers = Column(JSON, nullable=True)
 

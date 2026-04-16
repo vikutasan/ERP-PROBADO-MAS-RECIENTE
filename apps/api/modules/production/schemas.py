@@ -99,6 +99,7 @@ class TechnicalSheetBase(BaseModel):
     bom_extra: Optional[List[Dict[str, Any]]] = None
 
     preparation_time_min: Optional[int] = None
+    order_lead_time_hours: Optional[int] = None  # Tiempo para Pedidos (horas)
     recipe_procedure: Optional[str] = None
     modifiers: Optional[List[Dict[str, Any]]] = None
 

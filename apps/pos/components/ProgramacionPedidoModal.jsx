@@ -8,31 +8,37 @@ const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
  * SRP: Solo maneja la captura de datos del pedido (Pick Up o Domicilio).
  * No modifica la lógica del carrito ni del cobro.
  */
-export const ProgramacionPedidoModal = ({ cart, currentAccountNum, onClose, onSave }) => {
-    const [deliveryType, setDeliveryType] = useState('PICKUP'); // 'PICKUP' | 'DOMICILIO'
+export const ProgramacionPedidoModal = ({ cart, allProducts, currentAccountNum, onClose, onSave, onAddToCart, initialData }) => {
+    const [deliveryType, setDeliveryType] = useState(initialData?.delivery_type || 'PICKUP'); // 'PICKUP' | 'DOMICILIO'
     const [earliestReady, setEarliestReady] = useState(null);
     const [formData, setFormData] = useState({
-        customer_name: '',
-        customer_phone: '',
-        committed_at: '',
-        packaging_type: 'PROPIO',
-        delivery_address: '',
-        notes: '',
+        customer_name: initialData?.customer_name || '',
+        customer_phone: initialData?.customer_phone || '',
+        committed_at: initialData?.committed_at ? toLocalIsoString(new Date(initialData.committed_at)) : '',
+        packaging_type: initialData?.packaging_type || 'PROPIO',
+        delivery_address: initialData?.delivery_address || '',
+        notes: initialData?.notes || '',
     });
     const [saving, setSaving] = useState(false);
     const [confirmed, setConfirmed] = useState(false);
+    const [addedEmpaque, setAddedEmpaque] = useState(null); // feedback visual
 
-    // Calcular fecha más próxima de entrega basándose en preparation_time_min de cada producto
+    // Filtrar productos tipo EMPAQUE del catálogo completo
+    const empaqueProducts = (allProducts || []).filter(p => p.nature === 'EMPAQUE' && p.active !== false);
+
+    // Calcular fecha más próxima de entrega basándose en order_lead_time_hours de cada producto
     useEffect(() => {
         if (!cart?.length) return;
-        const maxPrepMin = calcMaxPrepTime(cart);
-        const ready = new Date(Date.now() + maxPrepMin * 60 * 1000);
+        const maxLeadHours = calcMaxLeadTime(cart);
+        const ready = new Date(Date.now() + maxLeadHours * 60 * 60 * 1000);
         setEarliestReady(ready);
 
-        // Pre-llenar la fecha compromiso con la más próxima disponible
+        // Pre-llenar la fecha compromiso con la más próxima disponible SOLO si no hay una previa
         const localIso = toLocalIsoString(ready);
-        setFormData(prev => ({ ...prev, committed_at: localIso }));
-    }, [cart]);
+        if (!initialData?.committed_at) {
+            setFormData(prev => ({ ...prev, committed_at: localIso }));
+        }
+    }, [cart, initialData]);
 
     const canSave = formData.customer_name.trim() && formData.customer_phone.trim() && formData.committed_at;
 
@@ -193,9 +199,77 @@ export const ProgramacionPedidoModal = ({ cart, currentAccountNum, onClose, onSa
                             ))}
                         </div>
                         {formData.packaging_type === 'VENTA' && (
-                            <p className="text-[10px] text-orange-400/70 mt-2 pl-2">
-                                💡 Agrega el empaque al carrito como producto de la categoría EMPAQUES antes de programar.
-                            </p>
+                            <div className="mt-3 bg-white/5 border border-white/10 rounded-2xl p-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                                <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-3">Selecciona el empaque a cobrar</p>
+                                {empaqueProducts.length === 0 ? (
+                                    <p className="text-[10px] text-white/30 italic">No hay productos con naturaleza EMPAQUE registrados en el catálogo.</p>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                                        {empaqueProducts.map(emp => (
+                                            <button
+                                                key={emp.id}
+                                                onClick={() => {
+                                                    if (onAddToCart) {
+                                                        // PASAR EL OBJETO COMPLETO, NO SOLO EL ID
+                                                        onAddToCart(emp);
+                                                        setAddedEmpaque(emp.name);
+                                                        setTimeout(() => setAddedEmpaque(null), 2000);
+                                                    }
+                                                }}
+                                                className="flex items-center gap-3 bg-black/40 hover:bg-orange-500/20 border border-white/5 hover:border-orange-500/40 rounded-xl px-3 py-2.5 transition-all group text-left"
+                                            >
+                                                <span className="text-lg">📦</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[11px] font-black text-white truncate group-hover:text-orange-300 transition-colors">{emp.name}</p>
+                                                    <p className="text-[10px] font-bold text-orange-400/60">${emp.price?.toFixed(2)}</p>
+                                                </div>
+                                                <span className="text-[9px] font-black text-white/20 group-hover:text-orange-400 transition-colors">+ AGREGAR</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                {/* Feedback Temporal */}
+                                {addedEmpaque && (
+                                    <div className="mt-2 bg-green-500/20 border border-green-500/30 rounded-xl px-4 py-2 text-[10px] font-black text-green-400 uppercase tracking-widest animate-in fade-in duration-300">
+                                        ✅ {addedEmpaque} agregado a la cuenta
+                                    </div>
+                                )}
+
+                                {/* Resumen de Empaques en el Carrito */}
+                                {(() => {
+                                    // Filtramos lo que hay en el carrito que sea estrictamente EMPAQUE
+                                    const empaquesInCart = (cart || []).filter(item => item.nature === 'EMPAQUE');
+                                    if (empaquesInCart.length === 0) return null;
+
+                                    // Agrupamos por id/nombre para mostrar las cantidades sumadas
+                                    const grouped = empaquesInCart.reduce((acc, current) => {
+                                        const key = current.id || current.sku;
+                                        if (!acc[key]) acc[key] = { ...current, qty: 0 };
+                                        acc[key].qty += current.quantity || 1;
+                                        return acc;
+                                    }, {});
+
+                                    return (
+                                        <div className="mt-4 pt-4 border-t border-white/10">
+                                            <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                🛒 Empaques en la cuenta del pedido:
+                                            </p>
+                                            <div className="space-y-1">
+                                                {Object.values(grouped).map(emp => (
+                                                    <div key={emp.id} className="flex items-center justify-between bg-black/30 rounded-lg px-3 py-2 border border-white/5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-black text-orange-400 bg-orange-500/20 px-2 rounded-md">{emp.qty}x</span>
+                                                            <span className="text-[11px] font-bold text-white/80">{emp.name}</span>
+                                                        </div>
+                                                        <span className="text-[11px] font-bold text-white/50">${((emp.price || 0) * emp.qty).toFixed(2)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
                         )}
                     </div>
 
@@ -248,14 +322,18 @@ export const ProgramacionPedidoModal = ({ cart, currentAccountNum, onClose, onSa
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Calcula el tiempo máximo de preparación entre todos los ítems del carrito (en minutos). */
-function calcMaxPrepTime(cart) {
-    const DEFAULT_PREP_MIN = 60; // 1 hora por defecto si el producto no tiene ficha técnica
+/** 
+ * Calcula el tiempo máximo de anticipación entre todos los ítems del carrito (en horas).
+ * Usa order_lead_time_hours de la ficha técnica de cada producto.
+ * Si hay varios productos con diferentes plazos, se toma el más largo.
+ */
+function calcMaxLeadTime(cart) {
+    const DEFAULT_LEAD_HOURS = 4; // 4 horas por defecto si el producto no tiene el campo configurado
     const max = cart.reduce((acc, item) => {
-        const prepMin = item.technical_sheet?.preparation_time_min ?? DEFAULT_PREP_MIN;
-        return Math.max(acc, prepMin);
-    }, DEFAULT_PREP_MIN);
-    return max;
+        const leadHours = item.technical_sheet?.order_lead_time_hours ?? DEFAULT_LEAD_HOURS;
+        return Math.max(acc, leadHours);
+    }, 0);
+    return max || DEFAULT_LEAD_HOURS;
 }
 
 /** Convierte un Date a string datetime-local (ISO sin zona horaria) para un input. */

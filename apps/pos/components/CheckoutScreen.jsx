@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint, orderData = null }) => {
+export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish, onPrint, orderData = null }) => {
     const [payments, setPayments] = useState([]);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('EFECTIVO');
@@ -341,8 +341,35 @@ export const CheckoutScreen = ({ total, onConfirm, onClose, onFinish, onPrint, o
                                     highlight
                                 />
                                 <OrderDetailRow
+                                    label="Contenido del Pedido"
+                                    value={
+                                        <div className="flex flex-col items-end text-xs space-y-1">
+                                            {cart.filter(i => i.nature !== 'EMPAQUE').length > 0 ? (
+                                                cart.filter(i => i.nature !== 'EMPAQUE').map((i, idx) => (
+                                                    <span key={idx} className="text-white/80"><span className="text-[#c1d72e] font-black">{i.quantity}x</span> {i.name}</span>
+                                                ))
+                                            ) : (
+                                                <span className="text-white/40">Sin productos principales</span>
+                                            )}
+                                        </div>
+                                    }
+                                />
+                                <OrderDetailRow
                                     label="Empaque"
-                                    value={orderData.packaging_type === 'PROPIO' ? '🛍️ Empaque del Cliente' : '📦 Se Vende Empaque'}
+                                    value={
+                                        orderData.packaging_type === 'PROPIO' 
+                                            ? '🛍️ Empaque del Cliente' 
+                                            : (<div className="flex flex-col items-end text-xs space-y-1">
+                                                <span className="text-orange-400 font-black mb-1">📦 Se Vende Empaque:</span>
+                                                {cart.filter(i => i.nature === 'EMPAQUE').length > 0 ? (
+                                                    cart.filter(i => i.nature === 'EMPAQUE').map((i, idx) => (
+                                                        <span key={idx} className="text-white/80"><span className="text-orange-500">{i.quantity}x</span> {i.name}</span>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-white/60">Se cobran según captura adicional</span>
+                                                )}
+                                               </div>)
+                                    }
                                 />
                                 {orderData.delivery_type === 'DOMICILIO' && orderData.delivery_address && (
                                     <OrderDetailRow label="Dirección" value={orderData.delivery_address} />

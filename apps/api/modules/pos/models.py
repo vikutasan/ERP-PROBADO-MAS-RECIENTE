@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, JSON, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from core.database import Base
@@ -33,6 +33,18 @@ class Ticket(Base):
     payment_details = Column(JSON, nullable=True) # Almacena lista de pagos mixtos
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="OPEN") # OPEN, PAID, CANCELLED
+    
+    # --- Data del OMS (Order Management System) ---
+    order_type = Column(String, default="VENTA_DIRECTA") # VENTA_DIRECTA, PEDIDO
+    order_status = Column(String, default="PROGRAMADO PARA SER PREPARADO")
+    delivery_type = Column(String, nullable=True) # PICKUP, DOMICILIO
+    customer_name = Column(String, nullable=True)
+    customer_phone = Column(String, nullable=True)
+    committed_at = Column(DateTime, nullable=True)
+    packaging_type = Column(String, nullable=True) # PROPIO, VENTA
+    delivery_address = Column(String, nullable=True)
+    order_notes = Column(Text, nullable=True)
+
     session_id = Column(Integer, ForeignKey("terminal_sessions.id"))
     cash_session_id = Column(Integer, ForeignKey("cash_sessions.id"), nullable=True)
     
