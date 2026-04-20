@@ -180,7 +180,7 @@ export const generateTicketHTML = (ticketData) => {
                 *** Disfrute su pan ***
             </div>
             <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; font-weight: bold; line-height: 1.2;">
-                cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion respecto a su cobro, gracias por su compra
+                cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion
             </div>
         </body>
         </html>

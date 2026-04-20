@@ -158,7 +158,7 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
             {/* Leyenda de aclaraciones */}
             <div className="mt-6 pt-4 border-t border-gray-200">
                 <p className="text-[9px] text-black/60 text-center leading-relaxed uppercase font-black">
-                    cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion respecto a su cobro, gracias por su compra
+                    cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion
                 </p>
             </div>
 

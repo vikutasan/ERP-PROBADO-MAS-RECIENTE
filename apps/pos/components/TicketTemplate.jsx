@@ -95,7 +95,7 @@ export const TicketTemplate = forwardRef(({ ticket, cart, total, payments }, ref
                 *** Disfrute su pan ***
             </div>
             <div className="text-center text-[7px] mt-1 font-bold leading-tight uppercase">
-                cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion respecto a su cobro, gracias por su compra
+                cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion
             </div>
         </div>
     );
