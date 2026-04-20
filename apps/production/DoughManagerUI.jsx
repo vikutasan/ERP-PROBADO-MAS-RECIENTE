@@ -5,6 +5,7 @@ import {
     Scale, Trash2, ListOrdered, Settings2, Package, ArrowRight, Edit2, GripVertical, ClipboardList
 } from 'lucide-react';
 import { PedidosPendientesUI } from './PedidosPendientesUI';
+import { ProcesoProduccionMasaUI } from './ProcesoProduccionMasaUI';
 
 /**
  * DOUGH MANAGER UI (INDUSTRIAL EDITION)
@@ -228,6 +229,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [editingColumnId, setEditingColumnId] = useState(null);
+    const [isConfiguringProduction, setIsConfiguringProduction] = useState(false);
 
     const _baseMatrix = {
         columns: [
@@ -298,6 +300,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
         ingredients: [], 
         procedure_steps: [],
         batches: [], 
+        pasosProduccion: initialData?.production_process || [],
         recipe_matrix: initialMatrix,
         product_relations: [],
         dough_relations: [],
@@ -428,6 +431,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
 
             const payload = {
                 ...formData,
+                production_process: formData.pasosProduccion,
                 batches: derivedBatches,
                 ingredients: [], // Empty to phase out the old linear config
                 dough_relations: formData.dough_relations.map(r => ({
@@ -472,7 +476,18 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
     const theme = getTheme(formData.themeIdx ?? 0);
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8">
+        <>
+        {isConfiguringProduction && (
+            <ProcesoProduccionMasaUI 
+                masaId={formData.code || initialData?.id} 
+                masaNombre={formData.name} 
+                theme={theme}
+                initialData={formData.pasosProduccion}
+                onSave={(pasos) => setFormData({...formData, pasosProduccion: pasos})}
+                onClose={() => setIsConfiguringProduction(false)} 
+            />
+        )}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8" style={{ display: isConfiguringProduction ? 'none' : 'flex' }}>
             <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={onClose} />
 
             <div
@@ -516,7 +531,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
                 </div>
 
                 {/* Form Content - Truly Centered Distribution */}
-                <div className="flex-1 overflow-auto px-10 relative flex flex-col justify-center min-h-0 custom-scrollbar py-6">
+                <div className="flex-1 overflow-auto px-10 relative flex flex-col justify-start min-h-0 custom-scrollbar py-6">
                     <div className="max-w-5xl mx-auto w-full">
                         {step === 1 && (
                             <div className="grid grid-cols-2 gap-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -813,81 +828,70 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
 
                         {step === 3 && (
                             <div className="space-y-4 animate-in fade-in duration-500">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 style={{ color: theme.text }} className="text-2xl font-black italic uppercase border-b border-black/10 pb-2 flex-1">Instrucciones de <span className="opacity-40 text-sm ml-2">Revoltura</span></h3>
-                                    <button onClick={addStep} style={{ backgroundColor: theme.text, color: theme.bg }} className="px-6 py-4 rounded-2xl text-[12px] font-black uppercase tracking-widest hover:scale-105 transition-all gap-2 flex items-center ml-4">
-                                        <Plus size={14}/> Agregar Paso
-                                    </button>
-                                </div>
-                                <div className="space-y-4 relative">
-                                    {formData.procedure_steps.map((st, idx) => (
-                                        <div key={idx} className="flex gap-4 items-center">
-                                            <div style={{ backgroundColor: theme.text, color: theme.bg }} className="w-10 h-10 rounded-xl flex items-center justify-center font-black italic shrink-0">
-                                                {st.step_number}
-                                            </div>
-                                            <div style={{ backgroundColor: theme.input }} className="flex-1 p-4 rounded-2xl border border-black/5 flex items-center gap-4 group hover:shadow-lg transition-all">
-                                                <input
-                                                    placeholder="Tarea (Ej: INTEGRAR HARINA)"
-                                                    value={st.task}
-                                                    onChange={e => {
-                                                        const newSteps = [...formData.procedure_steps];
-                                                        newSteps[idx].task = e.target.value.toUpperCase();
-                                                        setFormData({...formData, procedure_steps: newSteps});
-                                                    }}
-                                                    style={{ backgroundColor: theme.bg, color: theme.text }}
-                                                    className="flex-1 border border-black/5 rounded-xl p-3 text-xs font-black outline-none transition-all placeholder-black/30"
-                                                />
-                                                <input
-                                                    placeholder="Equipo"
-                                                    value={st.equipment}
-                                                    onChange={e => {
-                                                        const newSteps = [...formData.procedure_steps];
-                                                        newSteps[idx].equipment = e.target.value.toUpperCase();
-                                                        setFormData({...formData, procedure_steps: newSteps});
-                                                    }}
-                                                    style={{ backgroundColor: theme.bg, color: theme.text }}
-                                                    className="w-40 border border-black/5 rounded-xl p-3 text-xs font-black outline-none placeholder-black/30"
-                                                />
-                                                <select
-                                                    value={st.speed}
-                                                    onChange={e => {
-                                                        const newSteps = [...formData.procedure_steps];
-                                                        newSteps[idx].speed = e.target.value;
-                                                        setFormData({...formData, procedure_steps: newSteps});
-                                                    }}
-                                                    style={{ backgroundColor: theme.bg, color: theme.text }}
-                                                    className="w-24 border border-black/5 rounded-xl p-3 text-xs font-black outline-none appearance-none"
-                                                >
-                                                    <option value="1">VEL 1</option>
-                                                    <option value="2">VEL 2</option>
-                                                    <option value="OFF">OFF</option>
-                                                </select>
-                                                <div style={{ backgroundColor: theme.bg }} className="flex items-center gap-2 border border-black/5 rounded-xl px-3 py-2">
-                                                    <input
-                                                        type="number"
-                                                        value={st.time_minutes}
-                                                        onChange={e => {
-                                                            const newSteps = [...formData.procedure_steps];
-                                                            newSteps[idx].time_minutes = Number(e.target.value);
-                                                            setFormData({...formData, procedure_steps: newSteps});
-                                                        }}
-                                                        style={{ color: theme.text }}
-                                                        className="bg-transparent text-xs font-mono font-black text-center w-12 outline-none"
-                                                    />
-                                                    <span style={{ color: theme.text }} className="text-[10px] font-black opacity-40 uppercase">Min</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        const newSteps = formData.procedure_steps.filter((_, i) => i !== idx);
-                                                        setFormData({...formData, procedure_steps: newSteps});
-                                                    }}
-                                                    className="p-2 text-gray-700 hover:text-red-500 transition-colors"
-                                                >
-                                                    <Trash2 size={16}/>
-                                                </button>
-                                            </div>
+                                <div className="flex flex-col items-center justify-center py-10">
+                                    <div className="flex flex-col items-center gap-6">
+                                        <button 
+                                            onClick={() => setIsConfiguringProduction(true)} 
+                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
+                                            className="px-10 py-6 rounded-[30px] text-xs font-black uppercase tracking-[0.2em] hover:scale-105 transition-all flex items-center gap-4 shadow-2xl"
+                                        >
+                                            <Settings2 size={20}/>
+                                            Establecer Proceso de Producción
+                                        </button>
+                                        <div className="text-center max-w-md">
+                                            <h3 style={{ color: theme.text }} className="text-xl font-black italic uppercase">Pasos y Subpasos</h3>
+                                            <p style={{ color: theme.text }} className="text-[10px] font-bold uppercase tracking-widest opacity-60 mt-1">Configuración avanzada para Agente de Voz y Coaching</p>
                                         </div>
-                                    ))}
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-6 max-w-4xl mx-auto pb-10">
+                                    {(formData.pasosProduccion || []).length === 0 ? (
+                                        <div style={{ backgroundColor: theme.input }} className="p-12 rounded-[40px] border border-dashed border-black/20 text-center">
+                                            <ClipboardList size={48} className="mx-auto mb-4 opacity-20" style={{ color: theme.text }}/>
+                                            <p style={{ color: theme.text }} className="text-xs font-black uppercase tracking-widest opacity-40">No se ha definido el proceso de producción detallado</p>
+                                        </div>
+                                    ) : (
+                                        formData.pasosProduccion.map((p, pIdx) => (
+                                            <div key={p.id} style={{ backgroundColor: theme.input }} className="p-8 rounded-[40px] border border-black/5 shadow-sm">
+                                                <div className="flex items-center gap-4 mb-4">
+                                                    <div style={{ backgroundColor: theme.text, color: theme.bg }} className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black italic">
+                                                        {pIdx + 1}
+                                                    </div>
+                                                    <h4 style={{ color: theme.text }} className="text-lg font-black uppercase italic">{p.nombre}</h4>
+                                                    <div className="ml-auto px-4 py-1.5 rounded-full bg-black/5 border border-black/5 text-[10px] font-black uppercase tracking-widest opacity-60">
+                                                        {p.idBloque}
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-1 gap-3 pl-12">
+                                                    {(p.subpasos || []).map((s, sIdx) => (
+                                                        <div key={s.id} className="flex items-center justify-between p-4 bg-white/40 rounded-2xl border border-black/5">
+                                                            <div className="flex-1 flex flex-col gap-1">
+                                                                <div className="flex items-center gap-4">
+                                                                    <span style={{ color: theme.text }} className="text-[10px] font-black opacity-30">{pIdx + 1}.{sIdx + 1}</span>
+                                                                    <span style={{ color: theme.text }} className="text-xs font-black uppercase">{s.nombre}</span>
+                                                                </div>
+                                                                {s.instruccionVoz && (
+                                                                    <p style={{ color: theme.text }} className="text-[10px] font-bold opacity-50 italic pl-7 leading-tight">{s.instruccionVoz}</p>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-6">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Timer size={14} className="opacity-40" style={{ color: theme.text }}/>
+                                                                    <span style={{ color: theme.text }} className="text-[10px] font-black">{s.tHumano + s.tAutonomo}m</span>
+                                                                </div>
+                                                                {s.confirmacionVoz && (
+                                                                    <div className="w-5 h-5 rounded-lg bg-green-500/20 flex items-center justify-center text-green-600">
+                                                                        <Zap size={10} fill="currentColor"/>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1155,5 +1159,6 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
                 )}
             </div>
         </div>
+        </>
     );
 };

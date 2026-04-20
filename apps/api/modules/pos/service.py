@@ -2,11 +2,12 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from fastapi import HTTPException
 from . import models, schemas
 from modules.catalog.models import Product
 from modules.security.models import Employee, SecurityProfile
+from modules.orders.models import Order
 
 class POSService:
     async def create_session(self, db: AsyncSession, session: schemas.TerminalSessionCreate):
@@ -36,6 +37,11 @@ class POSService:
         await self._sync_ticket_items(db, db_ticket.id, db_items)
         
         await db.commit()
+
+        # 4. PUENTE POS → PRODUCCIÓN: Si es un PEDIDO pagado, crear Order en PostgreSQL
+        if db_ticket.order_type == "PEDIDO" and db_ticket.status == "PAID":
+            await self._create_order_from_ticket(db, db_ticket)
+
         return await self._get_full_ticket(db, db_ticket.id)
 
     async def _get_items_and_total(self, db: AsyncSession, items: List[schemas.TicketItemCreate]):
@@ -128,11 +134,37 @@ class POSService:
         return db_ticket
 
     async def _sync_ticket_items(self, db: AsyncSession, ticket_id: int, db_items: List[models.TicketItem]):
-        """Reemplaza items previos por la nueva ráfaga de artículos."""
-        await db.execute(delete(models.TicketItem).where(models.TicketItem.ticket_id == ticket_id))
-        for item in db_items:
-            item.ticket_id = ticket_id
-            db.add(item)
+        """
+        Sincronización inteligente de items: preserva IDs existentes.
+        - Productos que ya estaban → actualiza qty/precio
+        - Productos nuevos → inserta
+        - Productos que ya no están → elimina
+        """
+        # Obtener items actuales del ticket
+        existing_result = await db.execute(
+            select(models.TicketItem).where(models.TicketItem.ticket_id == ticket_id)
+        )
+        existing_items = {item.product_id: item for item in existing_result.scalars().all()}
+        
+        new_product_ids = set()
+        for new_item in db_items:
+            new_product_ids.add(new_item.product_id)
+            
+            if new_item.product_id in existing_items:
+                # Actualizar item existente (preserva su ID)
+                old = existing_items[new_item.product_id]
+                old.quantity = new_item.quantity
+                old.unit_price = new_item.unit_price
+                old.subtotal = new_item.subtotal
+            else:
+                # Insertar item nuevo
+                new_item.ticket_id = ticket_id
+                db.add(new_item)
+        
+        # Eliminar items que ya no están en el carrito
+        for pid, old_item in existing_items.items():
+            if pid not in new_product_ids:
+                await db.delete(old_item)
 
     async def _get_full_ticket(self, db: AsyncSession, ticket_id: int):
         """Recupera un ticket con CARGA ANSIOSA de todas las relaciones para evitar MissingGreenlet."""
@@ -157,6 +189,34 @@ class POSService:
         ticket_obj.cashed_by_name = ticket_obj.cashed_by.name if ticket_obj.cashed_by else "SISTEMA/AUTO"
         return ticket_obj
 
+    async def _create_order_from_ticket(self, db: AsyncSession, ticket: models.Ticket):
+        """
+        PUENTE POS → PRODUCCIÓN (PostgreSQL, NO RAM).
+        Crea un registro en la tabla 'orders' cuando se paga un pedido.
+        Protección de idempotencia: si ya existe un Order para este ticket, no duplica.
+        """
+        # Verificar que no exista ya (idempotencia)
+        existing = await db.execute(
+            select(Order).where(Order.ticket_id == ticket.id)
+        )
+        if existing.scalar_one_or_none():
+            return  # Ya existe, no duplicar
+
+        order = Order(
+            ticket_id=ticket.id,
+            delivery_type=ticket.delivery_type or "PICKUP",
+            status="PAGADO",  # Primer estado de producción
+            customer_name=ticket.customer_name,
+            customer_phone=ticket.customer_phone,
+            committed_at=ticket.committed_at,
+            packaging_type=ticket.packaging_type or "PROPIO",
+            delivery_address=ticket.delivery_address,
+            notes=ticket.order_notes,
+        )
+        db.add(order)
+        await db.commit()
+
+
     async def get_open_tickets(self, db: AsyncSession):
         """Obtiene todos los tickets en estado OPEN."""
         result = await db.execute(
@@ -177,7 +237,7 @@ class POSService:
 
     async def get_tickets(self, db: AsyncSession, terminal_id: str = None, status: str = None, search: str = None, limit: int = 100):
         query = select(models.Ticket).options(
-            selectinload(models.Ticket.items).selectinload(models.TicketItem.product),
+            selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
             selectinload(models.Ticket.session),
             selectinload(models.Ticket.captured_by),
             selectinload(models.Ticket.cashed_by)
@@ -198,7 +258,8 @@ class POSService:
         response_data = []
         for t in tickets:
             try:
-                # Construcción manual del diccionario para evitar LazyLoad en la serialización de FastAPI
+                # Construcción manual COMPLETA del diccionario para evitar LazyLoad
+                # IMPORTANTE: Incluir TODOS los campos que el frontend necesita
                 ticket_dict = {
                     "id": t.id,
                     "account_num": t.account_num,
@@ -212,6 +273,19 @@ class POSService:
                     "terminal_id": t.session.terminal_id if t.session else "UNKNOWN",
                     "captured_by_name": t.captured_by.name if t.captured_by else "SISTEMA",
                     "cashed_by_name": t.cashed_by.name if t.cashed_by else "SISTEMA/AUTO",
+                    # --- Campos de Pago (críticos para Auditoría y Reimpresión) ---
+                    "payment_details": t.payment_details,
+                    # --- Campos OMS (Order Management System) ---
+                    "order_type": t.order_type,
+                    "order_status": t.order_status,
+                    "delivery_type": t.delivery_type,
+                    "customer_name": t.customer_name,
+                    "customer_phone": t.customer_phone,
+                    "committed_at": t.committed_at,
+                    "packaging_type": t.packaging_type,
+                    "delivery_address": t.delivery_address,
+                    "order_notes": t.order_notes,
+                    # --- Items con Product completo ---
                     "items": [
                         {
                             "id": item.id,
@@ -224,7 +298,11 @@ class POSService:
                                 "sku": item.product.sku,
                                 "name": item.product.name,
                                 "price": item.product.price,
-                                "category_id": item.product.category_id
+                                "category_id": item.product.category_id,
+                                "category": {
+                                    "id": item.product.category.id,
+                                    "name": item.product.category.name
+                                } if item.product.category else None
                             } if item.product else None
                         }
                         for item in t.items
@@ -233,6 +311,8 @@ class POSService:
                 response_data.append(ticket_dict)
             except Exception as e:
                 print(f"CRITICAL: Error serializing ticket {t.account_num}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue # Omitir ticket corrupto para no tumbar toda la lista
                 
         return response_data
@@ -253,60 +333,93 @@ class POSService:
         return await self._get_full_ticket(db, new_ticket.id)
 
     async def _find_empty_ticket(self, db: AsyncSession, session_id: int):
-        """Busca un ticket abierto sin items ni monto."""
+        """
+        Busca un ticket abierto sin items ni monto.
+        Usa FOR UPDATE SKIP LOCKED para evitar que dos terminales reciclen el mismo ticket.
+        """
         result = await db.execute(
             select(models.Ticket)
             .options(selectinload(models.Ticket.items))
             .where(models.Ticket.session_id == session_id)
             .where(models.Ticket.status == "OPEN")
             .where(models.Ticket.total == 0.0)
+            .with_for_update(skip_locked=True)
+            .limit(5)  # Limitar para no escanear toda la tabla
         )
         tickets = result.scalars().all()
-        # Verificación manual de items para asegurar limpieza total
         for t in tickets:
             if len(t.items) == 0:
                 return t
         return None
 
+    async def _ensure_folio_sequence(self, db: AsyncSession):
+        """
+        Crea la secuencia PostgreSQL 'ticket_folio_seq' si no existe.
+        La inicializa con el folio más alto actualmente en la tabla tickets.
+        Esta secuencia es ATÓMICA a nivel de base de datos:
+        incluso 100 terminales pidiendo folio al mismo instante recibirán valores únicos.
+        """
+        try:
+            # Verificar si la secuencia ya existe
+            check = await db.execute(text("SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'ticket_folio_seq'"))
+            if check.scalar():
+                return  # Ya existe, no hacer nada
+            
+            # Encontrar el folio numérico más alto para inicializar la secuencia
+            all_tickets = await db.execute(select(models.Ticket.account_num))
+            all_nums = all_tickets.scalars().all()
+            max_num = 0
+            for acn in all_nums:
+                if acn and acn.startswith('V'):
+                    try:
+                        num = int(acn[1:])
+                        if num > max_num:
+                            max_num = num
+                    except ValueError:
+                        continue
+            
+            start_val = max_num + 1
+            await db.execute(text(f"CREATE SEQUENCE ticket_folio_seq START WITH {start_val}"))
+            await db.commit()
+            print(f"✅ Secuencia ticket_folio_seq creada, iniciando en {start_val}")
+        except Exception as e:
+            print(f"⚠️ Error creando secuencia (puede que ya exista): {e}")
+            await db.rollback()
+
     async def _generate_consecutive_ticket(self, db: AsyncSession, session_id: int):
         """
-        Crea un ticket nuevo con folio correlativo atómico.
-        NO usa nombres TEMP intermedios — el folio se asigna en una sola operación.
+        Crea un ticket nuevo con folio atómico usando SECUENCIA de PostgreSQL.
+        Garantía: NUNCA dos terminales obtendrán el mismo folio, sin importar la concurrencia.
         """
-        # Paso 1: Encontrar el máximo ID actual para predecir el siguiente folio
-        from sqlalchemy import func
-        max_id_result = await db.execute(select(func.max(models.Ticket.id)))
-        max_id = max_id_result.scalar() or 0
-        next_id = max_id + 1
+        # Asegurar que la secuencia existe (solo la crea la primera vez)
+        await self._ensure_folio_sequence(db)
         
-        # Paso 2: Crear ticket con folio definitivo desde el inicio
-        account_num = f"V{next_id:04d}"
+        # Obtener siguiente folio atómicamente (PostgreSQL garantiza unicidad)
+        for attempt in range(3):
+            try:
+                result = await db.execute(text("SELECT nextval('ticket_folio_seq')"))
+                next_num = result.scalar()
+                account_num = f"V{next_num:04d}"
+                
+                db_ticket = models.Ticket(
+                    account_num=account_num,
+                    session_id=session_id,
+                    total=0.0,
+                    status="OPEN"
+                )
+                db.add(db_ticket)
+                await db.commit()
+                await db.refresh(db_ticket)
+                return db_ticket
+            except Exception as e:
+                await db.rollback()
+                error_msg = str(e).lower()
+                if "unique" in error_msg or "duplicate" in error_msg:
+                    print(f"⚠️ Colisión en folio {account_num} (intento {attempt+1}/3). Avanzando secuencia...")
+                    continue  # nextval ya avanzó, el siguiente intento usará un número nuevo
+                raise  # Otro tipo de error, propagar
         
-        # Verificar que no exista ya (protección contra colisión)
-        existing = await db.execute(
-            select(models.Ticket).where(models.Ticket.account_num == account_num)
-        )
-        if existing.scalars().first():
-            # Si existe, buscar el siguiente disponible
-            next_id += 1
-            account_num = f"V{next_id:04d}"
-        
-        db_ticket = models.Ticket(
-            account_num=account_num,
-            session_id=session_id,
-            total=0.0,
-            status="OPEN"
-        )
-        db.add(db_ticket)
-        await db.commit()
-        await db.refresh(db_ticket)
-        
-        # Si el ID real resultó diferente al predicho, actualizar el folio
-        if db_ticket.id != next_id:
-            db_ticket.account_num = f"V{db_ticket.id:04d}"
-            await db.commit()
-        
-        return db_ticket
+        raise HTTPException(status_code=500, detail="No se pudo generar un folio único después de 3 intentos")
 
     async def upload_training_images(self, payload: schemas.VisionTrainingUpload):
         import os

@@ -1,0 +1,59 @@
+from fastapi import APIRouter, Depends, Query, Body, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+from datetime import date, timedelta
+
+from core.database import get_db
+from modules.analytics import schemas, service
+
+router = APIRouter(prefix="/analytics", tags=["Analytics"])
+
+@router.get("/context", response_model=schemas.DailyContextRead)
+async def get_context(target_date: date = Query(...), db: AsyncSession = Depends(get_db)):
+    """Obtiene el contexto de eventualidades para un día específico"""
+    return await service.get_or_create_daily_context(db, target_date)
+
+@router.put("/context", response_model=schemas.DailyContextRead)
+async def update_context(target_date: date, data: schemas.DailyContextCreate, db: AsyncSession = Depends(get_db)):
+    """Guarda/actualiza el contexto de eventualidades (Lluvia, festivo, atípico)"""
+    return await service.update_daily_context(db, target_date, data)
+
+@router.get("/rankings")
+async def get_rankings(
+    days: int = Query(30, description="Días hacia atrás a analizar"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retorna el top/bottom de productos según volumen y margen.
+    """
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days)
+    
+    rankings = await service.get_product_rankings(db, start_date, end_date)
+    
+    # Calcular top/bottom de Volumen
+    by_volume_desc = sorted(rankings, key=lambda x: x["total_quantity"], reverse=True)
+    by_volume_asc = sorted([r for r in rankings if r["total_quantity"] > 0], key=lambda x: x["total_quantity"])
+    
+    # Calcular top/bottom de Margen (%)
+    by_margin_desc = sorted(rankings, key=lambda x: x["margin_percentage"], reverse=True)
+    by_margin_asc = sorted(rankings, key=lambda x: x["margin_percentage"])
+    
+    return {
+        "period": {"start": start_date, "end": end_date},
+        "top_volume": by_volume_desc[:10],
+        "bottom_volume": by_volume_asc[:10],
+        "top_margin": by_margin_desc[:10],
+        "bottom_margin": by_margin_asc[:10],
+        "all": rankings
+    }
+
+@router.post("/query")
+async def custom_query(
+    payload: schemas.CustomQueryPayload = Body(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Motor de consultas personalizadas. Ejemplo: Todos los Churros vendidos los viernes de este mes.
+    """
+    return await service.execute_custom_query(db, payload)

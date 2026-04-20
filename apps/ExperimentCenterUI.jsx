@@ -6,12 +6,15 @@ import { CakeConfiguratorUI } from './ecommerce/CakeConfiguratorUI';
 import { LogisticsDashboardUI } from './logistics/LogisticsDashboardUI';
 import { DriverAppUI } from './driver-app/DriverAppUI';
 import { ProductionManagementUI } from "./production/ProductionManagementUI";
+import { GestorPickupUI } from "./production/GestorPickupUI";
+import { GestorRepartosUI } from "./production/GestorRepartosUI";
 import { WaiterAppUI } from './waiter-app/WaiterAppUI';
 import { LoginUI } from './auth/LoginUI';
 import { SeguridadAccesoUI } from './auth/SeguridadAccesoUI';
 import { FinancialHubUI } from './financials/FinancialHubUI';
 import { InvoicingHubUI } from './financials/InvoicingHubUI';
 import { CustomerInvoicingPortal } from './financials/CustomerInvoicingPortal';
+import { EstadisticasVentasUI } from './analytics/EstadisticasVentasUI';
 import { WarehouseHubUI } from './inventory/WarehouseHubUI';
 import { PurchasingHubUI } from './inventory/PurchasingHubUI';
 import { TableServicePOS } from './pos/TableServicePOS';
@@ -87,7 +90,10 @@ export const ExperimentCenterUI = () => {
         { id: 'warehouse', name: 'Gestión de Almacenes', color: 'bg-slate-700', icon: '🏬', access: ['ADMIN', 'MANAGER'] },
         { id: 'vision_train', name: 'Entrenamiento IA', color: 'bg-[#c1d72e]', icon: '👁️', access: ['ADMIN', 'MANAGER'] },
         { id: 'production', name: 'Gestión de la Producción', color: 'bg-amber-800', icon: '🥣', access: ['ADMIN', 'BAKER'] },
+        { id: 'pickup', name: 'Gestión de Pickup', color: 'bg-orange-600', icon: '🏪', access: ['ADMIN', 'MANAGER', 'BAKER'] },
+        { id: 'repartos', name: 'Gestión de Repartos', color: 'bg-blue-700', icon: '🚗', access: ['ADMIN', 'MANAGER', 'LOGISTICS'] },
         { id: 'financials', name: 'Módulo Financiero', color: 'bg-emerald-800', icon: '📈', access: ['ADMIN', 'MANAGER'] },
+        { id: 'analytics', name: 'Estadísticas de Ventas', color: 'bg-indigo-700', icon: '📊', access: ['ADMIN', 'MANAGER'] },
         { id: 'invoicing', name: 'Facturación CFDI', color: 'bg-blue-600', icon: '🧾', access: ['ADMIN', 'MANAGER', 'CASHIER'] },
         { id: 'purchasing', name: 'Gestión de Compras', color: 'bg-indigo-900', icon: '🛒', access: ['ADMIN', 'MANAGER'] },
         { id: 'procurement', name: 'B2B Procurement', color: 'bg-blue-900', icon: '🤝', access: ['ADMIN', 'MANAGER'] },
@@ -255,6 +261,7 @@ export const ExperimentCenterUI = () => {
                     {/* Area de Experiencia real */}
                     <div className="h-full">
                         {activeModule === 'financials' && <FinancialHubUI />}
+                        {activeModule === 'analytics' && <EstadisticasVentasUI userPermissions={userPermissions} />}
                         {activeModule === 'invoicing' && <InvoicingHubUI />}
                         {activeModule === 'portal' && <CustomerInvoicingPortal />}
                         {activeModule === 'pos_tables' && <div className="h-full"><TableServicePOS /></div>}
@@ -279,6 +286,8 @@ export const ExperimentCenterUI = () => {
                         )}
                         {activeModule === 'ecommerce' && <CakeConfiguratorUI />}
                         {activeModule === 'production' && <ProductionManagementUI dailyPlan={mockData.dailyPlan} />}
+                        {activeModule === 'pickup' && <GestorPickupUI onBack={() => setActiveModule('overview')} />}
+                        {activeModule === 'repartos' && <GestorRepartosUI onBack={() => setActiveModule('overview')} />}
                         {activeModule === 'b2b' && <B2BManagerUI clients={mockData.clients} products={[]} />}
                         {activeModule === 'inventory' && <ProductCatalogUI userPermissions={userPermissions} />}
                         {activeModule === 'warehouse' && <WarehouseManagerUI />}

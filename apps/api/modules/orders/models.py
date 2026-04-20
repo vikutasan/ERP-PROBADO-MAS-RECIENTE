@@ -22,7 +22,12 @@ class Order(Base):
 
     # Estado del pedido
     status = Column(String, nullable=False, default="TENTATIVO")
-    # TENTATIVO → PAGADO → EN_PRODUCCION → LISTO → ENTREGADO | CANCELADO
+    # ── Ciclo de vida completo (14 estados) ──
+    # Producción: PAGADO → TURNO_ASIGNADO → EN_PREPARACION → PREPARADO_ENFRIAMIENTO → PREPARADO_REPOSO → LISTO_EMPAQUE
+    # Pickup:     EN_EMPAQUE_PICKUP → LISTO_PICKUP_SIN_EMPAQUE → LISTO_PICKUP_EMPACADO
+    # Reparto:    EN_EMPAQUE_REPARTO → LISTO_REPARTO_EMPACADO → EN_RUTA
+    # Final:      ENTREGADO | CANCELADO
+
 
     # --- Datos del cliente ---
     customer_name = Column(String, nullable=True)

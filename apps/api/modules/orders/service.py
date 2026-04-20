@@ -10,6 +10,8 @@ from datetime import datetime
 
 from .models import Order
 from .schemas import OrderCreate, OrderUpdate
+from modules.pos.models import Ticket, TicketItem
+from modules.catalog.models import Product
 
 
 async def create_order(db: AsyncSession, data: OrderCreate) -> Order:
@@ -31,12 +33,24 @@ async def get_order_by_ticket(db: AsyncSession, ticket_id: int) -> Order | None:
 
 async def get_pending_orders(db: AsyncSession) -> list[Order]:
     """
-    Retorna pedidos en estado TENTATIVO, PAGADO o EN_PRODUCCION.
-    Usado por la suite 'Pedidos Pendientes' en Gestión de Producción.
+    Retorna pedidos activos desde el pago hasta estar listos para entrega.
+    Carga el ticket y sus items → producto para la vista de detalles.
+    Usa PostgreSQL (disco), NO RAM.
     """
+    production_statuses = [
+        "PAGADO", "TURNO_ASIGNADO", "EN_PREPARACION", 
+        "PREPARADO_ENFRIAMIENTO", "PREPARADO_REPOSO", "LISTO_EMPAQUE",
+        "EN_EMPAQUE_PICKUP", "LISTO_PICKUP_SIN_EMPAQUE", "LISTO_PICKUP_EMPACADO",
+        "EN_EMPAQUE_REPARTO", "LISTO_REPARTO_EMPACADO", "EN_RUTA"
+    ]
     result = await db.execute(
         select(Order)
-        .where(Order.status.in_(["TENTATIVO", "PAGADO", "EN_PRODUCCION"]))
+        .options(
+            selectinload(Order.ticket)
+            .selectinload(Ticket.items)
+            .selectinload(TicketItem.product)
+        )
+        .where(Order.status.in_(production_statuses))
         .order_by(Order.committed_at.asc())
     )
     return result.scalars().all()
@@ -44,14 +58,42 @@ async def get_pending_orders(db: AsyncSession) -> list[Order]:
 
 async def get_pickup_orders(db: AsyncSession) -> list[Order]:
     """
-    Retorna pedidos PICKUP listos o en producción.
-    Usado por el módulo 'Gestor de Entregas de Pickup'.
+    Retorna pedidos PICKUP en zona de despacho.
+    Usado por el módulo 'Gestor de Pickup'.
     """
+    pickup_statuses = ["EN_EMPAQUE_PICKUP", "LISTO_PICKUP_SIN_EMPAQUE", "LISTO_PICKUP_EMPACADO"]
     result = await db.execute(
         select(Order)
+        .options(
+            selectinload(Order.ticket)
+            .selectinload(Ticket.items)
+            .selectinload(TicketItem.product)
+        )
         .where(
             Order.delivery_type == "PICKUP",
-            Order.status.in_(["PAGADO", "EN_PRODUCCION", "LISTO"])
+            Order.status.in_(pickup_statuses)
+        )
+        .order_by(Order.committed_at.asc())
+    )
+    return result.scalars().all()
+
+
+async def get_reparto_orders(db: AsyncSession) -> list[Order]:
+    """
+    Retorna pedidos DOMICILIO en zona de despacho.
+    Usado por el módulo 'Gestor de Repartos'.
+    """
+    reparto_statuses = ["EN_EMPAQUE_REPARTO", "LISTO_REPARTO_EMPACADO", "EN_RUTA"]
+    result = await db.execute(
+        select(Order)
+        .options(
+            selectinload(Order.ticket)
+            .selectinload(Ticket.items)
+            .selectinload(TicketItem.product)
+        )
+        .where(
+            Order.delivery_type == "DOMICILIO",
+            Order.status.in_(reparto_statuses)
         )
         .order_by(Order.committed_at.asc())
     )

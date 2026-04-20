@@ -134,6 +134,7 @@ class DoughBase(BaseModel):
     theoretical_yield: Optional[float] = None
     expected_waste: float = 0.0
     recipe_matrix: Optional[Dict[str, Any]] = None
+    production_process: Optional[List[Dict[str, Any]]] = None
     position: int = 0
 
 class DoughCreate(DoughBase):

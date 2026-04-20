@@ -23,6 +23,7 @@ const SYSTEM_MODULES = [
     { id: 'procurement', name: 'B2B Procurement', icon: '📦🏢' },
     { id: 'seguridad_acceso', name: 'Seguridad y Acceso', icon: '🔑' },
     { id: 'auditoria', name: 'Auditoría y Control', icon: '📋' },
+    { id: 'analytics_financial_data', name: 'Cifras Monetarias', icon: '💰' },
 ];
 
 export const PerfilesAccessSuite = ({ onClose, onPermissionsUpdate }) => {

@@ -33,10 +33,16 @@ async def get_pending(db: AsyncSession = Depends(get_db)):
     return await service.get_pending_orders(db)
 
 
-@router.get("/pickup", response_model=list[OrderRead])
-async def get_pickup(db: AsyncSession = Depends(get_db)):
-    """Módulo 'Gestor de Entregas de Pickup'."""
+@router.get("/pickup-despacho", response_model=list[OrderRead])
+async def get_pickup_despacho(db: AsyncSession = Depends(get_db)):
+    """Módulo 'Gestor de Pickup' — pedidos en zona de despacho por recolección."""
     return await service.get_pickup_orders(db)
+
+
+@router.get("/repartos", response_model=list[OrderRead])
+async def get_repartos(db: AsyncSession = Depends(get_db)):
+    """Módulo 'Gestor de Repartos' — pedidos en zona de despacho por domicilio."""
+    return await service.get_reparto_orders(db)
 
 
 @router.patch("/{order_id}", response_model=OrderRead)

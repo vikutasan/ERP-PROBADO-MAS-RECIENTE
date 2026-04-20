@@ -1,0 +1,182 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, func, desc, asc, extract, and_
+from datetime import date
+from typing import List, Optional
+
+from modules.analytics.models import DailyContext
+from modules.analytics.schemas import DailyContextCreate, CustomQueryPayload
+from modules.pos.models import Ticket, TicketItem
+from modules.catalog.models import Product, Category
+
+async def get_or_create_daily_context(db: AsyncSession, target_date: date) -> DailyContext:
+    result = await db.execute(select(DailyContext).where(DailyContext.target_date == target_date))
+    context = result.scalar_one_or_none()
+    if not context:
+        context = DailyContext(target_date=target_date)
+        db.add(context)
+        await db.commit()
+        await db.refresh(context)
+    return context
+
+async def update_daily_context(db: AsyncSession, target_date: date, data: DailyContextCreate) -> DailyContext:
+    context = await get_or_create_daily_context(db, target_date)
+    context.is_atypical = data.is_atypical
+    context.weather_condition = data.weather_condition
+    context.holiday_name = data.holiday_name
+    context.notes = data.notes
+    context.temperature_c = data.temperature_c
+    await db.commit()
+    await db.refresh(context)
+    return context
+
+async def get_product_rankings(db: AsyncSession, start_date: date, end_date: date):
+    """
+    Lista todos los productos vendidos en el periodo, ordenados por métricas 
+    para poder sacar Top/Bottom Volumen y Top/Bottom Margen.
+    """
+    # En PostgreSQL y SQLite podemos usar func.sum()
+    query = (
+        select(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Category.name.label("category_name"),
+            Product.price,
+            Product.cost,
+            func.sum(TicketItem.quantity).label("total_quantity"),
+            func.sum(TicketItem.subtotal).label("total_revenue")
+        )
+        .join(TicketItem, TicketItem.product_id == Product.id)
+        .join(Ticket, Ticket.id == TicketItem.ticket_id)
+        .outerjoin(Category, Product.category_id == Category.id)
+        .where(
+            Ticket.status == "PAID",
+            func.date(Ticket.created_at) >= start_date,
+            func.date(Ticket.created_at) <= end_date
+        )
+        .group_by(Product.id, Product.name, Category.name, Product.price, Product.cost)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    rankings = []
+    for row in rows:
+        price = row.price or 0.0
+        cost = row.cost or 0.0
+        margin_abs = price - cost
+        margin_perc = (margin_abs / price * 100) if price > 0 else 0.0
+        
+        rankings.append({
+            "product_id": row.product_id,
+            "product_name": row.product_name,
+            "category_name": row.category_name,
+            "total_quantity": row.total_quantity or 0,
+            "total_revenue": row.total_revenue or 0.0,
+            "margin_absolute": margin_abs,
+            "margin_percentage": margin_perc
+        })
+
+    return rankings
+
+async def execute_custom_query(db: AsyncSession, payload: CustomQueryPayload):
+    """
+    Resuelve preguntas como: "¿Cuántos churros hemos vendido los viernes de este mes?"
+    Si exclude_atypical=True, omite los días marcados en DailyContext.
+    """
+    conditions = [Ticket.status == "PAID"]
+
+    if payload.start_date:
+        conditions.append(func.date(Ticket.created_at) >= payload.start_date)
+    if payload.end_date:
+        conditions.append(func.date(Ticket.created_at) <= payload.end_date)
+        
+    if payload.product_ids and len(payload.product_ids) > 0:
+        conditions.append(TicketItem.product_id.in_(payload.product_ids))
+        
+    query = (
+        select(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            func.sum(TicketItem.quantity).label("total_quantity"),
+            func.sum(TicketItem.subtotal).label("total_revenue"),
+            func.count(func.distinct(Ticket.id)).label("tickets_count")
+        )
+        .join(TicketItem, TicketItem.product_id == Product.id)
+        .join(Ticket, Ticket.id == TicketItem.ticket_id)
+        .outerjoin(Category, Product.category_id == Category.id)
+    )
+
+    if payload.category_ids and len(payload.category_ids) > 0:
+        conditions.append(Category.id.in_(payload.category_ids))
+
+    query = query.where(and_(*conditions))
+    query = query.group_by(Product.id, Product.name)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Post-filtrado en Python (para compatibilidad con SQLite/Postgres en weekday)
+    # y para excluir días atípicos si es necesario.
+    # NOTA: En un sistema gigante con millones de filas, esto se debe hacer puramente en SQL.
+    # Dado que los TicketItems que retorna son agregaciones, para filtrar por dia/atipico DEBE
+    # hacerse a nivel ticket antes de agrupar. Lo reescribimos cargando tickets o haciendo joinedload.
+    
+    # RE-ENFOQUE: En lugar de agrupar en SQL que es difícil filtrar el dow y atípicos en dialecto mixto,
+    # vamos a traer los items puros y sumar con un pase de Python, ideal para "Dataframes" rápidos.
+    
+    raw_query = (
+        select(Ticket, TicketItem, Product)
+        .join(TicketItem, TicketItem.ticket_id == Ticket.id)
+        .join(Product, Product.id == TicketItem.product_id)
+        .outerjoin(Category, Product.category_id == Category.id)
+        .where(and_(*conditions))
+    )
+    
+    raw_result = await db.execute(raw_query)
+    records = raw_result.all()
+
+    # Si necesitamos excluir atípicos, cargamos los contextos
+    atypical_dates = set()
+    if payload.exclude_atypical:
+        ctx_query = select(DailyContext.target_date).where(DailyContext.is_atypical == True)
+        ctx_res = await db.execute(ctx_query)
+        atypical_dates = {row[0] for row in ctx_res.all()}
+
+    summary = {}
+    total_sales = 0
+    total_tickets = set()
+
+    for ticket, item, product in records:
+        t_date = ticket.created_at.date()
+        t_weekday = ticket.created_at.weekday() # 0-6 (Lunes a Domingo)
+
+        if payload.weekdays and t_weekday not in payload.weekdays:
+            continue
+            
+        if payload.exclude_atypical and t_date in atypical_dates:
+            continue
+            
+        if product.id not in summary:
+            summary[product.id] = {
+                "product_name": product.name,
+                "quantity": 0,
+                "revenue": 0.0
+            }
+        
+        summary[product.id]["quantity"] += item.quantity
+        summary[product.id]["revenue"] += item.subtotal
+        total_sales += item.subtotal
+        total_tickets.add(ticket.id)
+
+    return {
+        "filtered_total_revenue": total_sales,
+        "filtered_total_tickets": len(total_tickets),
+        "products": [
+            {
+                "product_id": pid,
+                "product_name": data["product_name"],
+                "quantity": data["quantity"],
+                "revenue": data["revenue"]
+            }
+            for pid, data in summary.items()
+        ]
+    }

@@ -3,8 +3,9 @@ MÓDULO: orders/schemas.py
 MISIÓN: Contratos de datos (Pydantic) para crear y leer pedidos.
 """
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+from modules.pos.schemas import TicketResponse
 
 
 class OrderCreate(BaseModel):
@@ -54,6 +55,8 @@ class OrderRead(BaseModel):
     delivery_fee: Optional[float]
     created_at: datetime
     notes: Optional[str]
+
+    ticket: Optional[TicketResponse] = None
 
     class Config:
         from_attributes = True

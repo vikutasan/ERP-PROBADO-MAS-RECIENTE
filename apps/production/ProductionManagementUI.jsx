@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChefHat, ArrowRight } from 'lucide-react';
 import { DoughManagerUI } from './DoughManagerUI';
+import { PedidosProduccionUI } from './PedidosProduccionUI';
 
 /**
  * GESTOR DE PRODUCCIÓN
@@ -14,6 +15,10 @@ export const ProductionManagementUI = () => {
 
     if (view === 'dough-manager') {
         return <DoughManagerUI onBack={() => setView('dashboard')} />;
+    }
+
+    if (view === 'pedidos-produccion') {
+        return <PedidosProduccionUI onBack={() => setView('dashboard')} />;
     }
 
     return (
@@ -64,6 +69,29 @@ export const ProductionManagementUI = () => {
                     </div>
 
                     <div className="w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-white group-hover:bg-black group-hover:text-[#c1d72e] group-hover:border-transparent transition-all duration-500">
+                        <ArrowRight size={16} />
+                    </div>
+                </button>
+
+                <button 
+                    onClick={() => setView('pedidos-produccion')}
+                    className="w-full group relative flex items-center justify-between bg-white/5 border border-white/10 p-5 rounded-3xl hover:bg-orange-500 hover:border-orange-500 transition-all duration-500 text-left overflow-hidden shadow-xl"
+                >
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-orange-500 group-hover:text-black group-hover:bg-black/10 transition-all duration-500">
+                            <ChefHat size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-white italic uppercase tracking-tight group-hover:text-black transition-colors">
+                                PEDIDOS EN <span className="text-orange-500 group-hover:text-black">PRODUCCIÓN</span>
+                            </h2>
+                            <p className="text-[8px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-0.5 group-hover:text-black/60 transition-colors">
+                                Seguimiento de Planta y Despacho
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-white group-hover:bg-black group-hover:text-orange-500 group-hover:border-transparent transition-all duration-500">
                         <ArrowRight size={16} />
                     </div>
                 </button>

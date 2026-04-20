@@ -24,6 +24,7 @@ class Dough(Base):
     theoretical_yield = Column(Float, nullable=True) # Peso total esperado
     expected_waste = Column(Float, default=0.0)
     recipe_matrix = Column(JSON, nullable=True)
+    production_process = Column(JSON, nullable=True) # Pasos y Subpasos (ADN Producción)
     position = Column(Integer, default=0)
 
     # Relaciones

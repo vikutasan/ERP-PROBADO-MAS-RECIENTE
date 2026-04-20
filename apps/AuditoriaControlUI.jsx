@@ -133,10 +133,10 @@ export const AuditoriaUI = () => {
                                                 <td className="px-6 py-4 font-bold text-gray-500">{t.terminal_id}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-gray-400">{new Date(t.created_at + 'Z').toLocaleString()}</td>
                                                 <td className="px-6 py-4">
-                                                    <span className="text-[10px] font-black uppercase text-gray-600 truncate max-w-[80px] block">{t.captured_by?.name || '---'}</span>
+                                                    <span className="text-[10px] font-black uppercase text-gray-600 truncate max-w-[80px] block">{t.captured_by_name || '---'}</span>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className="text-[10px] font-black uppercase text-gray-600 truncate max-w-[80px] block">{t.cashed_by?.name || '---'}</span>
+                                                    <span className="text-[10px] font-black uppercase text-gray-600 truncate max-w-[80px] block">{t.cashed_by_name || '---'}</span>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${t.status === 'PAID' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-orange-50 text-orange-600 border-orange-100'}`}>
@@ -224,8 +224,8 @@ export const AuditoriaUI = () => {
                                             <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-xl">👤</div>
                                             <div>
                                                 <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Capturado por</p>
-                                                <p className="text-xs font-black uppercase">{selectedTicket.captured_by?.name || 'SISTEMA'}</p>
-                                                <p className="text-[9px] font-bold text-gray-400">Rol: {selectedTicket.captured_by?.role || '---'}</p>
+                                                <p className="text-xs font-black uppercase">{selectedTicket.captured_by_name || 'SISTEMA'}</p>
+                                                <p className="text-[9px] font-bold text-gray-400">Rol: ---</p>
                                             </div>
                                         </div>
                                         {selectedTicket.status === 'PAID' && (
@@ -233,8 +233,8 @@ export const AuditoriaUI = () => {
                                                 <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-xl text-orange-600">💰</div>
                                                 <div>
                                                     <p className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Cobrado por</p>
-                                                    <p className="text-xs font-black uppercase">{selectedTicket.cashed_by?.name || 'ADMIN'}</p>
-                                                    <p className="text-[9px] font-bold text-gray-400">Rol: {selectedTicket.cashed_by?.role || '---'}</p>
+                                                    <p className="text-xs font-black uppercase">{selectedTicket.cashed_by_name || 'ADMIN'}</p>
+                                                    <p className="text-[9px] font-bold text-gray-400">Rol: ---</p>
                                                 </div>
                                             </div>
                                         )}

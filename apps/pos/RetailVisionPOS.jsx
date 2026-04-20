@@ -35,7 +35,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const [paymentsHistory, setPaymentsHistory] = useState([]);
     const [printTicketData, setPrintTicketData] = useState(null);
     const [originalCapturer, setOriginalCapturer] = useState(null);
+    const [toastMessage, setToastMessage] = useState(null);
     const printRef = React.useRef();
+    const savedTicketRef = React.useRef(null); // Ref inmediata para datos de impresión (no depende de re-render)
 
     // --- Estado de Ocupación de Terminales (Custom Hook) ---
     const { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal } = useTerminalLocking(selectedTerminal, currentUser);
@@ -221,6 +223,18 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
     }, [selectedTerminal, currentAccountNum, generateNewAccountNum]);
 
+    // --- Auto-Guardado en Pizarrón (Garantizar captura) ---
+    useEffect(() => {
+        if (!currentAccountNum || cart.length === 0 || showCheckout) return;
+
+        const autoSaveTimer = setInterval(() => {
+            console.log("⏱️ Auto-guardando ticket en Pizarrón...");
+            handleTicketAction('OPEN', null, false).catch(e => console.warn("Auto-save failed:", e));
+        }, 30000); // Cada 30 segundos
+
+        return () => clearInterval(autoSaveTimer);
+    }, [currentAccountNum, cart.length, showCheckout]);
+
     // --- Teclado (Barcode) ---
     useEffect(() => {
         let buffer = '';
@@ -326,8 +340,26 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 payload = { ...payload, ...orderData };
             }
 
-            const savedTicket = await posService.createTicket(payload);
+            let savedTicket = null;
+            try {
+                savedTicket = await posService.createTicket(payload);
+            } catch (err) {
+                // El error viene como un objeto Error cuyo mensaje es el 'detail' del servidor
+                const errorMessage = err.message || "";
+                if (errorMessage.includes("ya ha sido pagado")) {
+                    console.warn("⚠️ Colisión de folio detectada en servidor. Autogenerando nuevo folio y reintentando...");
+                    const newAccountNum = await generateNewAccountNum();
+                    targetAccountNum = newAccountNum;
+                    setCurrentAccountNum(newAccountNum);
+                    payload.account_num = newAccountNum;
+                    savedTicket = await posService.createTicket(payload);
+                } else {
+                    throw err;
+                }
+            }
+            
             setPrintTicketData(savedTicket); // Actualizar datos de impresión con la respuesta oficial del servidor
+            savedTicketRef.current = savedTicket; // Ref inmediata — disponible sin esperar re-render
             
             if (finalizeUI) {
                 if (status === 'PAID') {
@@ -345,12 +377,14 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 setShowCheckout(false);
                 setPaymentsHistory([]);
                 if (status === 'PAID') {
-                    alert(`Venta finalizada exitosamente. Ticket impreso.`);
+                    // Toast no-bloqueante en lugar de alert() que interfería con la impresión
+                    setToastMessage('✅ Venta finalizada exitosamente. Ticket impreso.');
+                    setTimeout(() => setToastMessage(null), 4000);
                 }
             }
         } catch (error) {
             console.error("Ticket action error:", error);
-            alert(error.message);
+            alert(error.detail || error.message || "Error al procesar el ticket. Intente de nuevo.");
             throw error;
         }
     };
@@ -737,13 +771,16 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     }}
                     onPrint={() => {
                         console.log("Manual print from CheckoutScreen requested.");
-                        handlePrintTicket(printTicketData);
+                        // Usar ref inmediata para garantizar datos actualizados del servidor
+                        const ticketToPrint = savedTicketRef.current || printTicketData;
+                        handlePrintTicket(ticketToPrint);
                         clearCart();
                         setCurrentAccountNum('');
                         setShowCheckout(false);
                         setPaymentsHistory([]);
                         setOrderData(null);
                         setOrderType('VENTA_DIRECTA');
+                        savedTicketRef.current = null; // Limpiar ref después de imprimir
                     }}
                 />
             )}
@@ -812,6 +849,15 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                 SALIR AL LOGIN
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toast de confirmación no-bloqueante */}
+            {toastMessage && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-4 fade-in duration-500">
+                    <div className="bg-[#c1d72e] text-black px-10 py-4 rounded-2xl shadow-[0_20px_60px_rgba(193,215,46,0.4)] font-black text-sm uppercase tracking-wider flex items-center gap-3">
+                        {toastMessage}
                     </div>
                 </div>
             )}
