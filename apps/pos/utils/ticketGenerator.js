@@ -176,11 +176,11 @@ export const generateTicketHTML = (ticketData) => {
                 <div class="row xsmall"><span>Terminal:</span><span>${ticketData.terminal_id || 'T1'}</span></div>
             </div>
 
-            <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; border-top: 1px solid #ccc;">
-                *** Disfrute su pan ***
-            </div>
-            <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; font-weight: bold; line-height: 1.2;">
+            <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; border-top: 1px solid #ccc; font-weight: bold; line-height: 1.2;">
                 cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion
+            </div>
+            <div class="center xsmall" style="margin-top: 2px; font-weight: bold;">
+                Gracias por su compra , disfrute su pan
             </div>
         </body>
         </html>

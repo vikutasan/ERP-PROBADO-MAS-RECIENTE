@@ -91,11 +91,11 @@ export const TicketTemplate = forwardRef(({ ticket, cart, total, payments }, ref
                 </div>
             </div>
  
-            <div className="text-center text-[7px] italic mt-1 border-t pt-0.5">
-                *** Disfrute su pan ***
-            </div>
-            <div className="text-center text-[7px] mt-1 font-bold leading-tight uppercase">
+            <div className="text-center text-[7px] mt-1 font-bold leading-tight uppercase border-t pt-1">
                 cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion
+            </div>
+            <div className="text-center text-[7.5px] mt-1 font-bold uppercase">
+                Gracias por su compra , disfrute su pan
             </div>
         </div>
     );

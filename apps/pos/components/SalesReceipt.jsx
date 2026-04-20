@@ -160,6 +160,9 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                 <p className="text-[9px] text-black/60 text-center leading-relaxed uppercase font-black">
                     cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion
                 </p>
+                <p className="text-[10px] text-black text-center mt-2 font-black uppercase">
+                    Gracias por su compra , disfrute su pan
+                </p>
             </div>
 
             {/* Modal de Edición de Cantidad */}
