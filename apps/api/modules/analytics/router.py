@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Body, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from datetime import date, timedelta
 
 from core.database import get_db
@@ -21,13 +21,19 @@ async def update_context(target_date: date, data: schemas.DailyContextCreate, db
 @router.get("/rankings")
 async def get_rankings(
     days: int = Query(30, description="Días hacia atrás a analizar"),
+    start: Optional[date] = Query(None, description="Fecha inicio YYYY-MM-DD"),
+    end: Optional[date] = Query(None, description="Fecha fin YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Retorna el top/bottom de productos según volumen y margen.
     """
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days)
+    if start and end:
+        start_date = start
+        end_date = end
+    else:
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
     
     rankings = await service.get_product_rankings(db, start_date, end_date)
     

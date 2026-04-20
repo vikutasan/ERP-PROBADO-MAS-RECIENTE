@@ -4,7 +4,7 @@ import {
   Lock, Eye, EyeOff, Settings, Plus, Trash2, Edit3, Copy,
   ChevronUp, ChevronDown, ArrowLeft, TrendingUp, TrendingDown,
   List, Table, Zap, Target, DollarSign, Package, Percent, X, Check,
-  LayoutDashboard, Sparkles
+  LayoutDashboard, Sparkles, Calendar
 } from 'lucide-react';
 
 const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
@@ -487,7 +487,7 @@ const SectionEditorModal = ({ section, onSave, onClose, allData }) => {
 
 // ── SALES KPIs VIEW ───────────────────────────────────────
 
-const SalesKPIsView = ({ allData, showMonetary, ticketMetrics, timeSeriesMetrics }) => {
+const SalesKPIsView = ({ allData, showMonetary, ticketMetrics, timeSeriesMetrics, period, onEditPeriod }) => {
   const totalRev = allData.reduce((a, d) => a + (d.total_revenue||0), 0);
   const totalUnits = allData.reduce((a, d) => a + (d.total_quantity||0), 0);
   const validMargins = allData.filter(p => typeof p.margin_percentage === 'number' && p.margin_percentage > 0);
@@ -495,14 +495,18 @@ const SalesKPIsView = ({ allData, showMonetary, ticketMetrics, timeSeriesMetrics
   const totalTickets = ticketMetrics?.total_tickets || 0;
   const ticketAvg = totalTickets > 0 ? totalRev / totalTickets : 0;
   
-  // Procesar Time Series (Día de la semana)
-  const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-  const byDow = timeSeriesMetrics?.by_day_of_week || [];
-  const maxDowRev = Math.max(...byDow.map(d => d.revenue), 1);
-  // Asegurar que todos los días existan
-  const dowChartData = daysOfWeek.map((name, i) => {
-    const found = byDow.find(d => d.day_index === i);
-    return { name, revenue: found ? found.revenue : 0 };
+  // Procesar Time Series (Fechas Cronológicas)
+  const byDate = timeSeriesMetrics?.by_date || [];
+  const maxDowRev = Math.max(...byDate.map(d => d.revenue), 1);
+  const dowChartData = byDate.map(d => {
+    const dateObj = new Date(d.date + "T12:00:00"); 
+    const dayName = dateObj.toLocaleDateString('es-MX', { weekday: 'short' });
+    const dayNum = dateObj.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit' });
+    return { 
+       name: `${dayName} ${dayNum}`, 
+       revenue: d.revenue, 
+       quantity: d.quantity || 0
+    };
   });
   const totalCost = allData.reduce((a,d) => a + ((d.total_revenue||0) * (1 - (d.margin_percentage||0)/100)), 0);
 
@@ -542,6 +546,21 @@ const SalesKPIsView = ({ allData, showMonetary, ticketMetrics, timeSeriesMetrics
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8">
+      {/* Period Indicator */}
+      {period && (
+        <div className="flex justify-end -mt-4 mb-2">
+          <button 
+            onClick={onEditPeriod}
+            className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-100 transition-colors shadow-sm cursor-pointer group"
+            title="Cambiar periodo de análisis"
+          >
+            <Calendar size={14} className="group-hover:scale-110 transition-transform" />
+            <span>{new Date(period.start).toLocaleDateString()} — {new Date(period.end).toLocaleDateString()}</span>
+            <Edit3 size={12} className="opacity-50 ml-1 group-hover:opacity-100" />
+          </button>
+        </div>
+      )}
+
       {/* KPI Cards Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <KPICard label="Ingreso Bruto Total" value={`$${totalRev.toLocaleString()}`} subtitle={`${allData.length} productos activos`} color="#10B981" icon={DollarSign} />
@@ -670,22 +689,43 @@ const SalesKPIsView = ({ allData, showMonetary, ticketMetrics, timeSeriesMetrics
       {timeSeriesMetrics && (
         <div className="bg-white rounded-2xl p-6 shadow-[0_5px_20px_rgba(0,0,0,0.03)] border border-slate-100 dashboard-section-enter" style={{animationDelay:'500ms'}}>
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-slate-800">Ventas por Día de la Semana</h3>
+            <h3 className="font-bold text-slate-800">Ventas Diarias (Tendencia Cronológica)</h3>
             <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full uppercase tracking-wide">Tendencias</span>
           </div>
-          <div className="flex items-end justify-between gap-2 h-48 w-full pt-4">
+          <div className="flex items-end justify-start gap-3 h-64 w-full pt-4 overflow-x-auto pb-4 custom-scrollbar-light">
             {dowChartData.map((d, i) => {
               const h = (d.revenue / maxDowRev) * 100;
               return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-2 group relative min-w-0">
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap z-10 shadow-lg pointer-events-none">
-                    {showMonetary ? `$${d.revenue.toLocaleString(undefined,{maximumFractionDigits:0})}` : '•••'}
+                <div key={i} className="flex flex-col items-center justify-end gap-2 group relative h-full min-w-[60px]">
+                  {/* Tooltip Hover */}
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-10 bg-slate-800 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap z-10 shadow-lg pointer-events-none flex flex-col items-center">
+                    <span>{showMonetary ? `$${d.revenue.toLocaleString(undefined,{maximumFractionDigits:0})}` : '•••'}</span>
+                    <span className="text-white/70 text-[9px]">{d.quantity} uds</span>
                   </div>
-                  <div className="w-full rounded-t-xl transition-all duration-700 ease-out group-hover:brightness-110 bg-gradient-to-t from-purple-600 to-indigo-400" style={{height:`${Math.max(4,h)}%`}} />
-                  <span className="text-xs text-slate-500 font-bold w-full text-center">{d.name}</span>
+                  
+                  {/* Bar */}
+                  <div 
+                    className="w-full rounded-t-xl transition-all duration-700 ease-out group-hover:brightness-110 bg-gradient-to-t from-purple-600 to-indigo-400 flex flex-col justify-start items-center pt-2 overflow-hidden" 
+                    style={{height:`${Math.max(10,h)}%`}}
+                  >
+                    {/* Inner Text (Revenue) */}
+                    {h > 15 && (
+                        <span className="text-white text-[10px] font-black tracking-tighter opacity-90 truncate w-full text-center px-1">
+                            {showMonetary ? `$${d.revenue > 999 ? (d.revenue/1000).toFixed(1)+'k' : d.revenue.toFixed(0)}` : '•••'}
+                        </span>
+                    )}
+                    {/* Inner Text (Units) */}
+                    {h > 25 && (
+                        <span className="text-white/70 text-[9px] font-bold mt-1">
+                            {d.quantity} u.
+                        </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold w-full text-center whitespace-nowrap leading-tight">{d.name.split(' ')[0]}<br/>{d.name.split(' ')[1]}</span>
                 </div>
               );
             })}
+            {dowChartData.length === 0 && <p className="text-slate-400 text-sm italic w-full text-center py-6">Sin datos cronológicos en este periodo</p>}
           </div>
         </div>
       )}
@@ -704,9 +744,12 @@ export const EstadisticasVentasUI = ({ userPermissions = {} }) => {
   const [allData, setAllData] = useState([]);
   const [ticketMetrics, setTicketMetrics] = useState(null);
   const [timeSeriesMetrics, setTimeSeriesMetrics] = useState(null);
+  const [period, setPeriod] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [editingSection, setEditingSection] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [customDateRange, setCustomDateRange] = useState(null);
+  const [showDateModal, setShowDateModal] = useState(false);
 
   const updateSections = (newSections) => { setSections(newSections); saveSections(newSections); };
 
@@ -714,20 +757,28 @@ export const EstadisticasVentasUI = ({ userPermissions = {} }) => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const temps = [...new Set(sections.map(s => s.temporality))];
-        const maxTemp = Math.max(...temps, 30);
-        const resp = await fetch(`${API_BASE}/analytics/rankings?days=${maxTemp}`);
+        let url = `${API_BASE}/analytics/rankings?`;
+        if (customDateRange) {
+          url += `start=${customDateRange.start}&end=${customDateRange.end}`;
+        } else {
+          const temps = [...new Set(sections.map(s => s.temporality))];
+          const maxTemp = Math.max(...temps, 30);
+          url += `days=${maxTemp}`;
+        }
+        
+        const resp = await fetch(url);
         if (resp.ok) { 
           const d = await resp.json(); 
           setAllData(d.all || []); 
           setTicketMetrics(d.ticket_metrics || null);
           setTimeSeriesMetrics(d.time_series_metrics || null);
+          setPeriod(d.period || null);
         }
       } catch(e) { console.error(e); }
       finally { setIsLoading(false); }
     };
     fetchData();
-  }, [sections.map(s=>s.temporality).join(',')]);
+  }, [sections.map(s=>s.temporality).join(','), customDateRange]);
 
   const addSection = (config) => {
     const newSec = { ...config, id: config.id || generateId(), order: sections.length };
@@ -792,7 +843,7 @@ export const EstadisticasVentasUI = ({ userPermissions = {} }) => {
         {isLoading ? (
           <div className="flex items-center justify-center h-full"><Activity className="animate-spin text-blue-500" size={40}/></div>
         ) : dashboardTab === 'kpis' ? (
-          <SalesKPIsView allData={allData} showMonetary={showMonetary} ticketMetrics={ticketMetrics} timeSeriesMetrics={timeSeriesMetrics} />
+          <SalesKPIsView allData={allData} showMonetary={showMonetary} ticketMetrics={ticketMetrics} timeSeriesMetrics={timeSeriesMetrics} period={period} onEditPeriod={() => setShowDateModal(true)} />
         ) : sortedSections.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-6">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center animate-pulse">
@@ -816,6 +867,45 @@ export const EstadisticasVentasUI = ({ userPermissions = {} }) => {
           </div>
         )}
       </div>
+
+      {/* Date Range Modal */}
+      {showDateModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in slide-in-from-bottom-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Calendar size={20} className="text-blue-500"/> Rango de Análisis</h2>
+              <button onClick={() => setShowDateModal(false)} className="text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl p-2 transition-colors"><X size={20}/></button>
+            </div>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.target);
+              const s = fd.get('start');
+              const ed = fd.get('end');
+              if(s && ed) {
+                setCustomDateRange({start: s, end: ed});
+                setShowDateModal(false);
+              }
+            }} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Fecha Inicial</label>
+                  <input type="date" name="start" required defaultValue={customDateRange?.start || period?.start} className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-bold rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Fecha Final</label>
+                  <input type="date" name="end" required defaultValue={customDateRange?.end || period?.end} className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-bold rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" />
+                </div>
+              </div>
+              <div className="pt-4 flex items-center gap-3">
+                <button type="button" onClick={() => { setCustomDateRange(null); setShowDateModal(false); }} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition-colors">Usar Automático</button>
+                <button type="submit" className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl text-sm hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all">Aplicar Filtro</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <style>{STYLES_CSS}</style>
     </div>
   );
@@ -891,6 +981,45 @@ export const EstadisticasVentasUI = ({ userPermissions = {} }) => {
       </div>
 
       {showEditor && <SectionEditorModal section={editingSection} onSave={saveEditedSection} onClose={()=>{setShowEditor(false);setEditingSection(null);}} allData={allData} timeSeriesMetrics={timeSeriesMetrics}/>}
+      
+      {/* Date Range Modal */}
+      {showDateModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in slide-in-from-bottom-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Calendar size={20} className="text-blue-500"/> Rango de Análisis</h2>
+              <button onClick={() => setShowDateModal(false)} className="text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl p-2 transition-colors"><X size={20}/></button>
+            </div>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.target);
+              const s = fd.get('start');
+              const ed = fd.get('end');
+              if(s && ed) {
+                setCustomDateRange({start: s, end: ed});
+                setShowDateModal(false);
+              }
+            }} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Fecha Inicial</label>
+                  <input type="date" name="start" required defaultValue={customDateRange?.start || period?.start} className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-bold rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Fecha Final</label>
+                  <input type="date" name="end" required defaultValue={customDateRange?.end || period?.end} className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-bold rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" />
+                </div>
+              </div>
+              <div className="pt-4 flex items-center gap-3">
+                <button type="button" onClick={() => { setCustomDateRange(null); setShowDateModal(false); }} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition-colors">Usar Automático (Dashboard)</button>
+                <button type="submit" className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl text-sm hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all">Aplicar Filtro</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <style>{STYLES_CSS}</style>
     </div>
   );

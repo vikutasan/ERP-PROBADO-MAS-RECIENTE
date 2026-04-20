@@ -97,18 +97,21 @@ async def get_time_series_metrics(db: AsyncSession, start_date: date, end_date: 
     """
     Retorna métricas agrupadas por día de la semana y por hora del día.
     """
-    # Ventas por día de la semana (0=Domingo, 6=Sábado en PostgreSQL)
-    dow_query = (
+    # Ventas por fecha exacta cronológica
+    date_query = (
         select(
-            func.extract('dow', Ticket.created_at).label("dow"),
-            func.sum(Ticket.total).label("revenue")
+            func.date(Ticket.created_at).label("exact_date"),
+            func.sum(TicketItem.subtotal).label("revenue"),
+            func.sum(TicketItem.quantity).label("quantity")
         )
+        .join(Ticket, Ticket.id == TicketItem.ticket_id)
         .where(
             Ticket.status == "PAID",
             func.date(Ticket.created_at) >= start_date,
             func.date(Ticket.created_at) <= end_date
         )
-        .group_by("dow")
+        .group_by(func.date(Ticket.created_at))
+        .order_by(func.date(Ticket.created_at))
     )
     
     # Ventas por hora del día (0-23)
@@ -125,14 +128,19 @@ async def get_time_series_metrics(db: AsyncSession, start_date: date, end_date: 
         .group_by("hour")
     )
     
-    dow_result = await db.execute(dow_query)
+    date_result = await db.execute(date_query)
     hour_result = await db.execute(hour_query)
     
-    by_dow = [{"day_index": int(r.dow), "revenue": float(r.revenue or 0)} for r in dow_result.all()]
+    by_date = [{
+        "date": r.exact_date.isoformat() if hasattr(r.exact_date, 'isoformat') else str(r.exact_date),
+        "revenue": float(r.revenue or 0),
+        "quantity": int(r.quantity or 0)
+    } for r in date_result.all()]
+    
     by_hour = [{"hour": int(r.hour), "revenue": float(r.revenue or 0)} for r in hour_result.all()]
     
     return {
-        "by_day_of_week": by_dow,
+        "by_date": by_date,
         "by_hour": by_hour
     }
 
