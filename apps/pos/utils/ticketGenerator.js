@@ -179,6 +179,9 @@ export const generateTicketHTML = (ticketData) => {
             <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; border-top: 1px solid #ccc;">
                 *** Disfrute su pan ***
             </div>
+            <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; font-weight: bold; line-height: 1.2;">
+                cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion respecto a su cobro, gracias por su compra
+            </div>
         </body>
         </html>
     `;

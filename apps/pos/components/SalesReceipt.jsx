@@ -155,6 +155,13 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                 </div>
             </div>
 
+            {/* Leyenda de aclaraciones */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+                <p className="text-[9px] text-black/60 text-center leading-relaxed uppercase font-black">
+                    cuenta con 3 dias a partir de la fecha de compra para realizar alguna aclaracion respecto a su cobro, gracias por su compra
+                </p>
+            </div>
+
             {/* Modal de Edición de Cantidad */}
             {editMode && editingItem && (
                 <div style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh', zIndex: 99999 }} className="flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
