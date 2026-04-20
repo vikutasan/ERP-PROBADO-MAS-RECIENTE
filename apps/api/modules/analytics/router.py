@@ -39,12 +39,18 @@ async def get_rankings(
     by_margin_desc = sorted(rankings, key=lambda x: x["margin_percentage"], reverse=True)
     by_margin_asc = sorted(rankings, key=lambda x: x["margin_percentage"])
     
+    # Get ticket metrics (e.g. total distinct tickets)
+    ticket_metrics = await service.get_ticket_metrics(db, start_date, end_date)
+    time_series_metrics = await service.get_time_series_metrics(db, start_date, end_date)
+    
     return {
         "period": {"start": start_date, "end": end_date},
         "top_volume": by_volume_desc[:10],
         "bottom_volume": by_volume_asc[:10],
         "top_margin": by_margin_desc[:10],
         "bottom_margin": by_margin_asc[:10],
+        "ticket_metrics": ticket_metrics,
+        "time_series_metrics": time_series_metrics,
         "all": rankings
     }
 

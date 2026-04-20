@@ -77,6 +77,65 @@ async def get_product_rankings(db: AsyncSession, start_date: date, end_date: dat
 
     return rankings
 
+async def get_ticket_metrics(db: AsyncSession, start_date: date, end_date: date):
+    """
+    Retorna métricas generales de tickets para el periodo (total tickets, etc).
+    """
+    query = (
+        select(func.count(func.distinct(Ticket.id)))
+        .where(
+            Ticket.status == "PAID",
+            func.date(Ticket.created_at) >= start_date,
+            func.date(Ticket.created_at) <= end_date
+        )
+    )
+    result = await db.execute(query)
+    total_tickets = result.scalar() or 0
+    return {"total_tickets": total_tickets}
+
+async def get_time_series_metrics(db: AsyncSession, start_date: date, end_date: date):
+    """
+    Retorna métricas agrupadas por día de la semana y por hora del día.
+    """
+    # Ventas por día de la semana (0=Domingo, 6=Sábado en PostgreSQL)
+    dow_query = (
+        select(
+            func.extract('dow', Ticket.created_at).label("dow"),
+            func.sum(Ticket.total).label("revenue")
+        )
+        .where(
+            Ticket.status == "PAID",
+            func.date(Ticket.created_at) >= start_date,
+            func.date(Ticket.created_at) <= end_date
+        )
+        .group_by("dow")
+    )
+    
+    # Ventas por hora del día (0-23)
+    hour_query = (
+        select(
+            func.extract('hour', Ticket.created_at).label("hour"),
+            func.sum(Ticket.total).label("revenue")
+        )
+        .where(
+            Ticket.status == "PAID",
+            func.date(Ticket.created_at) >= start_date,
+            func.date(Ticket.created_at) <= end_date
+        )
+        .group_by("hour")
+    )
+    
+    dow_result = await db.execute(dow_query)
+    hour_result = await db.execute(hour_query)
+    
+    by_dow = [{"day_index": int(r.dow), "revenue": float(r.revenue or 0)} for r in dow_result.all()]
+    by_hour = [{"hour": int(r.hour), "revenue": float(r.revenue or 0)} for r in hour_result.all()]
+    
+    return {
+        "by_day_of_week": by_dow,
+        "by_hour": by_hour
+    }
+
 async def execute_custom_query(db: AsyncSession, payload: CustomQueryPayload):
     """
     Resuelve preguntas como: "¿Cuántos churros hemos vendido los viernes de este mes?"
