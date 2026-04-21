@@ -1,4 +1,5 @@
 from typing import Optional, List
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -10,6 +11,7 @@ from modules.security.models import Employee, SecurityProfile
 from modules.orders.models import Order
 
 class POSService:
+    _last_gc_time = None  # Throttle para garbage collection (1x por minuto máximo)
     async def create_session(self, db: AsyncSession, session: schemas.TerminalSessionCreate):
         db_session = models.TerminalSession(**session.model_dump())
         db.add(db_session)
@@ -66,8 +68,13 @@ class POSService:
         return db_items, total
 
     async def _upsert_ticket_header(self, db: AsyncSession, ticket: schemas.TicketCreate, total: float):
-        """Encuentra un ticket existente o inicializa uno nuevo."""
-        result = await db.execute(select(models.Ticket).where(models.Ticket.account_num == ticket.account_num))
+        """Encuentra un ticket existente o inicializa uno nuevo.
+        Usa FOR UPDATE para bloquear la fila y evitar race conditions entre auto-save y cobro."""
+        result = await db.execute(
+            select(models.Ticket)
+            .where(models.Ticket.account_num == ticket.account_num)
+            .with_for_update()
+        )
         db_ticket = result.scalars().first()
 
         if db_ticket:
@@ -76,11 +83,11 @@ class POSService:
                     status_code=400, 
                     detail=f"El folio {ticket.account_num} ya ha sido pagado y no puede modificarse."
                 )
-            return await self._update_ticket_fields(db_ticket, ticket, total)
+            return await self._update_ticket_fields(db, db_ticket, ticket, total)
         
         return await self._initialize_new_ticket(db, ticket, total)
 
-    async def _update_ticket_fields(self, db_ticket: models.Ticket, ticket: schemas.TicketCreate, total: float):
+    async def _update_ticket_fields(self, db: AsyncSession, db_ticket: models.Ticket, ticket: schemas.TicketCreate, total: float):
         """Actualiza campos de un ticket existente."""
         db_ticket.total = total
         db_ticket.status = ticket.status
@@ -102,6 +109,12 @@ class POSService:
         
         if ticket.captured_by_id:
             db_ticket.captured_by_id = ticket.captured_by_id
+
+        # Asegurar terminal_id directo siempre esté poblado
+        if not db_ticket.terminal_id and db_ticket.session_id:
+            session = await db.get(models.TerminalSession, db_ticket.session_id)
+            if session:
+                db_ticket.terminal_id = session.terminal_id
             
         return db_ticket
 
@@ -114,6 +127,7 @@ class POSService:
         db_ticket = models.Ticket(
             account_num=ticket.account_num,
             session_id=ticket.session_id,
+            terminal_id=session.terminal_id,  # Campo directo — nunca más depender de la relación
             total=total,
             status=ticket.status or "OPEN",
             payment_details=ticket.payment_details,
@@ -184,7 +198,9 @@ class POSService:
 
     def _populate_flat_fields(self, ticket_obj: models.Ticket):
         """Puebla campos calculados o nombres planos para el frontend."""
-        ticket_obj.terminal_id = ticket_obj.session.terminal_id if ticket_obj.session else "UNKNOWN"
+        # Prioridad: campo directo > relación > fallback
+        if not ticket_obj.terminal_id:
+            ticket_obj.terminal_id = ticket_obj.session.terminal_id if ticket_obj.session else "UNKNOWN"
         ticket_obj.captured_by_name = ticket_obj.captured_by.name if ticket_obj.captured_by else "SISTEMA"
         ticket_obj.cashed_by_name = ticket_obj.cashed_by.name if ticket_obj.cashed_by else "SISTEMA/AUTO"
         return ticket_obj
@@ -236,15 +252,22 @@ class POSService:
         return [self._populate_flat_fields(t) for t in tickets]
 
     async def get_tickets(self, db: AsyncSession, terminal_id: str = None, status: str = None, search: str = None, limit: int = 100):
+        """
+        SERIALIZACIÓN UNIFICADA: Usa el MISMO patrón de carga ansiosa y
+        _populate_flat_fields() que _get_full_ticket() para garantizar
+        paridad absoluta entre Crear Ticket y Listar en Auditoría.
+        """
         query = select(models.Ticket).options(
             selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
+            selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
             selectinload(models.Ticket.session),
-            selectinload(models.Ticket.captured_by),
-            selectinload(models.Ticket.cashed_by)
+            selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+            selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
         )
         
         if terminal_id:
-            query = query.join(models.TerminalSession).where(models.TerminalSession.terminal_id == terminal_id)
+            # Usar campo directo si existe, sino fallback a join
+            query = query.where(models.Ticket.terminal_id == terminal_id)
         if status:
             query = query.where(models.Ticket.status == status)
         if search:
@@ -255,102 +278,82 @@ class POSService:
         result = await db.execute(query)
         tickets = result.scalars().all()
         
-        response_data = []
-        for t in tickets:
-            try:
-                # Construcción manual COMPLETA del diccionario para evitar LazyLoad
-                # IMPORTANTE: Incluir TODOS los campos que el frontend necesita
-                ticket_dict = {
-                    "id": t.id,
-                    "account_num": t.account_num,
-                    "total": t.total,
-                    "status": t.status,
-                    "created_at": t.created_at,
-                    "session_id": t.session_id,
-                    "cash_session_id": t.cash_session_id,
-                    "captured_by_id": t.captured_by_id,
-                    "cashed_by_id": t.cashed_by_id,
-                    "terminal_id": t.session.terminal_id if t.session else "UNKNOWN",
-                    "captured_by_name": t.captured_by.name if t.captured_by else "SISTEMA",
-                    "cashed_by_name": t.cashed_by.name if t.cashed_by else "SISTEMA/AUTO",
-                    # --- Campos de Pago (críticos para Auditoría y Reimpresión) ---
-                    "payment_details": t.payment_details,
-                    # --- Campos OMS (Order Management System) ---
-                    "order_type": t.order_type,
-                    "order_status": t.order_status,
-                    "delivery_type": t.delivery_type,
-                    "customer_name": t.customer_name,
-                    "customer_phone": t.customer_phone,
-                    "committed_at": t.committed_at,
-                    "packaging_type": t.packaging_type,
-                    "delivery_address": t.delivery_address,
-                    "order_notes": t.order_notes,
-                    # --- Items con Product completo ---
-                    "items": [
-                        {
-                            "id": item.id,
-                            "product_id": item.product_id,
-                            "quantity": item.quantity,
-                            "unit_price": item.unit_price,
-                            "subtotal": item.subtotal,
-                            "product": {
-                                "id": item.product.id,
-                                "sku": item.product.sku,
-                                "name": item.product.name,
-                                "price": item.product.price,
-                                "category_id": item.product.category_id,
-                                "category": {
-                                    "id": item.product.category.id,
-                                    "name": item.product.category.name
-                                } if item.product.category else None
-                            } if item.product else None
-                        }
-                        for item in t.items
-                    ]
-                }
-                response_data.append(ticket_dict)
-            except Exception as e:
-                print(f"CRITICAL: Error serializing ticket {t.account_num}: {e}")
-                import traceback
-                traceback.print_exc()
-                continue # Omitir ticket corrupto para no tumbar toda la lista
-                
-        return response_data
+        # Usar la MISMA función de población que _get_full_ticket
+        return [self._populate_flat_fields(t) for t in tickets]
 
-    async def reserve_ticket(self, db: AsyncSession, terminal_id: str):
-        """Reserva un ticket vacío o genera uno nuevo con ID correlativo."""
+    async def reserve_ticket(self, db: AsyncSession, terminal_id: str, captured_by_id: int = None):
+        """Reserva un ticket vacío o genera uno nuevo con ID correlativo.
+        Ahora acepta captured_by_id para trazabilidad desde el primer instante."""
         session = await self.get_active_session(db, terminal_id)
         if not session:
             raise HTTPException(status_code=400, detail="No active session for terminal")
 
-        # 1. Intentar reciclar un ticket vacío
-        recycled = await self._find_empty_ticket(db, session.id)
+        # 0. Garbage Collection de tickets huérfanos (throttled a 1x por minuto)
+        await self._cleanup_stale_empty_tickets(db, terminal_id)
+
+        # 1. Intentar reciclar un ticket vacío (cross-session para el mismo terminal)
+        recycled = await self._find_empty_ticket(db, terminal_id)
         if recycled:
+            # Asignar capturista desde el momento de la reserva
+            if captured_by_id and not recycled.captured_by_id:
+                recycled.captured_by_id = captured_by_id
+                await db.flush()
             return await self._get_full_ticket(db, recycled.id)
 
         # 2. Generar ticket nuevo con folio automático
-        new_ticket = await self._generate_consecutive_ticket(db, session.id)
+        new_ticket = await self._generate_consecutive_ticket(db, session.id, terminal_id, captured_by_id)
         return await self._get_full_ticket(db, new_ticket.id)
 
-    async def _find_empty_ticket(self, db: AsyncSession, session_id: int):
+    async def _find_empty_ticket(self, db: AsyncSession, terminal_id: str):
         """
-        Busca un ticket abierto sin items ni monto.
+        Busca un ticket abierto sin items ni monto para el MISMO TERMINAL (cross-session).
         Usa FOR UPDATE SKIP LOCKED para evitar que dos terminales reciclen el mismo ticket.
         """
         result = await db.execute(
             select(models.Ticket)
             .options(selectinload(models.Ticket.items))
-            .where(models.Ticket.session_id == session_id)
+            .where(models.Ticket.terminal_id == terminal_id)
             .where(models.Ticket.status == "OPEN")
             .where(models.Ticket.total == 0.0)
             .with_for_update(skip_locked=True)
-            .limit(5)  # Limitar para no escanear toda la tabla
+            .limit(5)
         )
         tickets = result.scalars().all()
         for t in tickets:
             if len(t.items) == 0:
                 return t
         return None
+
+    async def _cleanup_stale_empty_tickets(self, db: AsyncSession, terminal_id: str):
+        """
+        Garbage Collector: elimina tickets vacíos huérfanos con más de 24 horas.
+        Throttled a máximo 1 ejecución por minuto para no degradar rendimiento.
+        """
+        now = datetime.utcnow()
+        if POSService._last_gc_time and (now - POSService._last_gc_time) < timedelta(minutes=1):
+            return  # Throttle: no ejecutar más de 1x por minuto
+        POSService._last_gc_time = now
+
+        try:
+            cutoff = now - timedelta(hours=24)
+            stale = await db.execute(
+                select(models.Ticket)
+                .options(selectinload(models.Ticket.items))
+                .where(models.Ticket.status == "OPEN")
+                .where(models.Ticket.total == 0.0)
+                .where(models.Ticket.created_at < cutoff)
+                .limit(20)
+            )
+            deleted_count = 0
+            for t in stale.scalars().all():
+                if len(t.items) == 0:
+                    await db.delete(t)
+                    deleted_count += 1
+            if deleted_count > 0:
+                await db.flush()
+                print(f"🧹 GC: Eliminados {deleted_count} tickets vacíos huérfanos (>24h)")
+        except Exception as e:
+            print(f"⚠️ GC: Error limpiando tickets vacíos: {e}")
 
     async def _ensure_folio_sequence(self, db: AsyncSession):
         """
@@ -386,15 +389,14 @@ class POSService:
             print(f"⚠️ Error creando secuencia (puede que ya exista): {e}")
             await db.rollback()
 
-    async def _generate_consecutive_ticket(self, db: AsyncSession, session_id: int):
+    async def _generate_consecutive_ticket(self, db: AsyncSession, session_id: int, terminal_id: str = None, captured_by_id: int = None):
         """
         Crea un ticket nuevo con folio atómico usando SECUENCIA de PostgreSQL.
         Garantía: NUNCA dos terminales obtendrán el mismo folio, sin importar la concurrencia.
+        Ahora incluye terminal_id directo y captured_by_id desde la creación.
         """
-        # Asegurar que la secuencia existe (solo la crea la primera vez)
         await self._ensure_folio_sequence(db)
         
-        # Obtener siguiente folio atómicamente (PostgreSQL garantiza unicidad)
         for attempt in range(3):
             try:
                 result = await db.execute(text("SELECT nextval('ticket_folio_seq')"))
@@ -404,6 +406,8 @@ class POSService:
                 db_ticket = models.Ticket(
                     account_num=account_num,
                     session_id=session_id,
+                    terminal_id=terminal_id,
+                    captured_by_id=captured_by_id,
                     total=0.0,
                     status="OPEN"
                 )
@@ -416,8 +420,8 @@ class POSService:
                 error_msg = str(e).lower()
                 if "unique" in error_msg or "duplicate" in error_msg:
                     print(f"⚠️ Colisión en folio {account_num} (intento {attempt+1}/3). Avanzando secuencia...")
-                    continue  # nextval ya avanzó, el siguiente intento usará un número nuevo
-                raise  # Otro tipo de error, propagar
+                    continue
+                raise
         
         raise HTTPException(status_code=500, detail="No se pudo generar un folio único después de 3 intentos")
 

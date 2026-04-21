@@ -28,8 +28,8 @@ async def get_active_session(terminal_id: str, db: AsyncSession = Depends(get_db
     return session
 
 @router.post("/tickets/reserve", response_model=schemas.TicketResponse)
-async def reserve_ticket(req: schemas.TerminalSessionBase, db: AsyncSession = Depends(get_db)):
-    return await pos_service.reserve_ticket(db, req.terminal_id)
+async def reserve_ticket(req: schemas.ReserveTicketRequest, db: AsyncSession = Depends(get_db)):
+    return await pos_service.reserve_ticket(db, req.terminal_id, req.captured_by_id)
 
 @router.post("/tickets", response_model=schemas.TicketResponse)
 async def create_ticket(ticket: schemas.TicketCreate, db: AsyncSession = Depends(get_db)):

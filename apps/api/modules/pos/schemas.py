@@ -65,6 +65,11 @@ class TerminalSessionBase(BaseModel):
 class TerminalSessionCreate(TerminalSessionBase):
     pass
 
+class ReserveTicketRequest(BaseModel):
+    """Schema para reservar ticket — incluye capturista desde el primer instante."""
+    terminal_id: str
+    captured_by_id: Optional[int] = None
+
 class TerminalSessionResponse(TerminalSessionBase):
     id: int
     opened_at: datetime

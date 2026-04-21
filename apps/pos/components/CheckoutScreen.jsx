@@ -8,6 +8,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
     const [isLiquidado, setIsLiquidado] = useState(false);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
     const [tempEditValue, setTempEditValue] = useState('');
+    const [errorMessage, setErrorMessage] = useState(null); // Toast no-bloqueante para errores
     
     const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
     const pendingAmount = Math.max(0, total - totalPaid);
@@ -111,10 +112,12 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
                 setIsLiquidado(true);
             } catch (error) {
                 console.error("Error liquidando:", error);
-                alert("Hubo un error al liquidar la cuenta. Intente de nuevo.");
+                setErrorMessage('Error al liquidar la cuenta. Intente de nuevo.');
+                setTimeout(() => setErrorMessage(null), 5000);
             }
         } else {
-            alert('Aún queda saldo pendiente por cubrir.');
+            setErrorMessage('Aún queda saldo pendiente por cubrir.');
+            setTimeout(() => setErrorMessage(null), 4000);
         }
     };
 
@@ -416,6 +419,15 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
                         </div>
                     )}
                 </div>
+
+                {/* Toast de error no-bloqueante */}
+                {errorMessage && (
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-4 fade-in duration-500">
+                        <div className="bg-red-600 text-white px-8 py-3 rounded-2xl shadow-[0_20px_60px_rgba(220,38,38,0.4)] font-black text-xs uppercase tracking-wider flex items-center gap-2">
+                            ⚠️ {errorMessage}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

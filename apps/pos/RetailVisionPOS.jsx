@@ -38,6 +38,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const [toastMessage, setToastMessage] = useState(null);
     const printRef = React.useRef();
     const savedTicketRef = React.useRef(null); // Ref inmediata para datos de impresión (no depende de re-render)
+    const cartRef = React.useRef([]);           // Ref para auto-save anti-stale-closure
+    const accountNumRef = React.useRef('');      // Ref para auto-save anti-stale-closure
+    const isGeneratingFolioRef = React.useRef(false); // Flag para bloquear auto-save durante generación
 
     // --- Estado de Ocupación de Terminales (Custom Hook) ---
     const { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal } = useTerminalLocking(selectedTerminal, currentUser);
@@ -64,6 +67,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
     const { cart, setCart, total, addToCart, updateQuantity, removeFromCart, clearCart } = useCart(PRODUCTS, selectedTerminal);
     const { isScanning, setIsScanning } = useVision();
+
+    // --- Mantener refs sincronizadas con state (anti-stale-closure) ---
+    React.useEffect(() => { cartRef.current = cart; }, [cart]);
+    React.useEffect(() => { accountNumRef.current = currentAccountNum; }, [currentAccountNum]);
 
     // --- Persistencia de Metadatos de Sesión ---
     useEffect(() => {
@@ -152,13 +159,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const generateNewAccountNum = useCallback(async () => {
         if (accountGenPromise.current) return accountGenPromise.current;
         
+        isGeneratingFolioRef.current = true; // Bloquear auto-save durante generación
         const promise = (async () => {
             const terminalId = selectedTerminal || 'T1';
             
-            // Intentar hasta 3 veces con delay antes de fallar
             for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
-                    const ticket = await posService.reserveTicket(terminalId);
+                    const ticket = await posService.reserveTicket(terminalId, currentUser?.id || null);
                     setCurrentAccountNum(ticket.account_num);
                     if (ticket.captured_by) {
                         setOriginalCapturer({
@@ -172,14 +179,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 } catch (error) {
                     console.error(`Error reservando cuenta (intento ${attempt}/3):`, error);
                     if (attempt < 3) {
-                        // Esperar 1 segundo antes de reintentar
                         await new Promise(r => setTimeout(r, 1000));
                     }
                 }
             }
             
-            // Si después de 3 intentos sigue fallando, NO generar número aleatorio.
-            // Mostrar error al usuario para que lo resuelva.
             alert("⚠️ Error de conexión con el servidor. No se pudo reservar un número de cuenta. Verifique que el servidor esté activo.");
             throw new Error("No se pudo reservar cuenta después de 3 intentos");
         })();
@@ -189,6 +193,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             return await promise;
         } finally {
             accountGenPromise.current = null;
+            isGeneratingFolioRef.current = false; // Desbloquear auto-save
         }
     }, [selectedTerminal, currentUser]);
 
@@ -228,6 +233,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         if (!currentAccountNum || cart.length === 0 || showCheckout) return;
 
         const autoSaveTimer = setInterval(() => {
+            // ANTI-STALE-CLOSURE: Leer valores actuales desde refs, no desde closures
+            if (isGeneratingFolioRef.current) return; // No guardar mientras se genera folio
+            if (!accountNumRef.current || cartRef.current.length === 0) return;
             console.log("⏱️ Auto-guardando ticket en Pizarrón...");
             handleTicketAction('OPEN', null, false).catch(e => console.warn("Auto-save failed:", e));
         }, 30000); // Cada 30 segundos

@@ -42,11 +42,11 @@ class POSService {
         return res.json();
     }
 
-    async reserveTicket(terminalId) {
+    async reserveTicket(terminalId, capturedById = null) {
         const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/reserve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ terminal_id: terminalId })
+            body: JSON.stringify({ terminal_id: terminalId, captured_by_id: capturedById })
         });
         if (!res.ok) throw new Error("Error reservando ticket. Verifique conexión ERP.");
         return res.json();

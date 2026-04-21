@@ -45,6 +45,8 @@ class Ticket(Base):
     delivery_address = Column(String, nullable=True)
     order_notes = Column(Text, nullable=True)
 
+    terminal_id = Column(String, nullable=True, index=True)  # Campo directo — elimina dependencia de session para obtener terminal
+
     session_id = Column(Integer, ForeignKey("terminal_sessions.id"))
     cash_session_id = Column(Integer, ForeignKey("cash_sessions.id"), nullable=True)
     
