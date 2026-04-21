@@ -98,10 +98,10 @@ export const AuditoriaUI = () => {
             </div>
 
             <div className="flex-1 overflow-hidden flex">
-                <div className="flex-1 flex flex-col p-8 overflow-y-auto">
+                <div className="flex-1 flex flex-col p-8 overflow-hidden">
                     {activeTab === 'ventas' ? (
-                        <>
-                            <form onSubmit={handleSearch} className="mb-8 flex gap-4">
+                        <div className="flex flex-col h-full min-h-0">
+                            <form onSubmit={handleSearch} className="mb-6 flex gap-4 shrink-0">
                                 <input 
                                     type="text" 
                                     value={searchTerm}
@@ -112,9 +112,9 @@ export const AuditoriaUI = () => {
                                 <button type="submit" className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-xs hover:bg-orange-600 transition-all shadow-lg active:scale-95">Buscar</button>
                             </form>
 
-                            <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
-                                <table className="w-full text-left">
-                                    <thead className="bg-gray-50/50 border-b border-gray-100">
+                            <div className="bg-white rounded-3xl border border-gray-100 shadow-xl flex-1 overflow-y-auto">
+                                <table className="w-full text-left relative">
+                                    <thead className="bg-gray-50/95 backdrop-blur-sm border-b border-gray-100 sticky top-0 z-10 shadow-[0_4px_10px_-4px_rgba(0,0,0,0.05)]">
                                         <tr className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
                                             <th className="px-6 py-4">Folio</th>
                                             <th className="px-6 py-4">Terminal</th>
@@ -152,37 +152,39 @@ export const AuditoriaUI = () => {
                                     </tbody>
                                 </table>
                             </div>
-                        </>
+                        </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {cortes.map(c => (
-                                <div key={c.id} onClick={() => setSelectedCorte(c)} className="bg-white border border-gray-100 p-6 rounded-3xl shadow-lg hover:shadow-2xl hover:border-orange-500/20 transition-all cursor-pointer group">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Corte #{c.id}</p>
-                                            <h3 className="text-xl font-black italic uppercase leading-tight tracking-tighter">Terminal {c.terminal_id}</h3>
+                        <div className="flex-1 overflow-y-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-8">
+                                {cortes.map(c => (
+                                    <div key={c.id} onClick={() => setSelectedCorte(c)} className="bg-white border border-gray-100 p-6 rounded-3xl shadow-lg hover:shadow-2xl hover:border-orange-500/20 transition-all cursor-pointer group">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Corte #{c.id}</p>
+                                                <h3 className="text-xl font-black italic uppercase leading-tight tracking-tighter">Terminal {c.terminal_id}</h3>
+                                            </div>
+                                            <div className="bg-orange-50 text-orange-600 p-2 rounded-xl border border-orange-100">📋</div>
                                         </div>
-                                        <div className="bg-orange-50 text-orange-600 p-2 rounded-xl border border-orange-100">📋</div>
+                                        <div className="space-y-2 mb-6">
+                                            <div className="flex justify-between text-xs font-bold text-gray-500">
+                                                <span>Responsable:</span>
+                                                <span className="text-black">{c.employee_name}</span>
+                                            </div>
+                                            <div className="flex justify-between text-xs font-bold text-gray-500">
+                                                <span>Cierre:</span>
+                                                <span className="text-black">{new Date(c.closed_at + 'Z').toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                        <div className="border-t border-dashed border-gray-100 pt-4 flex justify-between items-end">
+                                            <div>
+                                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Efectivo Real</p>
+                                                <p className="text-2xl font-black italic">${c.physical_cash?.toFixed(2)}</p>
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase text-orange-500 opacity-0 group-hover:opacity-100 transition-all">Ver Más →</span>
+                                        </div>
                                     </div>
-                                    <div className="space-y-2 mb-6">
-                                        <div className="flex justify-between text-xs font-bold text-gray-500">
-                                            <span>Responsable:</span>
-                                            <span className="text-black">{c.employee_name}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs font-bold text-gray-500">
-                                            <span>Cierre:</span>
-                                            <span className="text-black">{new Date(c.closed_at + 'Z').toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                    <div className="border-t border-dashed border-gray-100 pt-4 flex justify-between items-end">
-                                        <div>
-                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Efectivo Real</p>
-                                            <p className="text-2xl font-black italic">${c.physical_cash?.toFixed(2)}</p>
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase text-orange-500 opacity-0 group-hover:opacity-100 transition-all">Ver Más →</span>
-                                    </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>

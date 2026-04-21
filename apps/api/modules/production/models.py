@@ -26,6 +26,7 @@ class Dough(Base):
     recipe_matrix = Column(JSON, nullable=True)
     production_process = Column(JSON, nullable=True) # Pasos y Subpasos (ADN Producción)
     position = Column(Integer, default=0)
+    theme_id = Column(String, nullable=True) # Identidad de color fija de la masa
 
     # Relaciones
     batches = relationship("DoughBatchConfig", back_populates="dough", cascade="all, delete-orphan")

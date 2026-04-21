@@ -14,18 +14,67 @@ import { ProcesoProduccionMasaUI } from './ProcesoProduccionMasaUI';
  * Maneja MEP, Procedimientos y Rendimientos.
  */
 
-const getTheme = (idx) => {
-    // Generador de Color HSL Dinámico (Soft-Theme Edition)
-    const hue = (idx * 137.5) % 360;
+export const MASTER_PALETTE = {
+    'C01': { name: "Rojo Intenso", bg: "#FEE2E2", input: "#F7A6A6", text: "#3D0A0A", pure: "#EF4444" },
+    'C02': { name: "Carmesí", bg: "#FFF1F2", input: "#FEECEF", text: "#3F0716", pure: "#FB7185" },
+    'C03': { name: "Ladrillo", bg: "#FEF2F2", input: "#E87373", text: "#320B0B", pure: "#DC2626" },
+    'C04': { name: "Coral", bg: "#FFEDD5", input: "#FDCDA6", text: "#3D1407", pure: "#FB923C" },
+    'C05': { name: "Naranja Fuego", bg: "#FFF7ED", input: "#FBAA72", text: "#311207", pure: "#F97316" },
+    'C06': { name: "Ámbar", bg: "#FEF3C7", input: "#FCDB86", text: "#3A1905", pure: "#FBBF24" },
+    'C07': { name: "Ocre", bg: "#FFFBEB", input: "#F8C061", text: "#301506", pure: "#F59E0B" },
+    'C08': { name: "Amarillo Sol", bg: "#FEFCE8", input: "#FBE071", text: "#351E05", pure: "#FACC15" },
+    'C09': { name: "Lima", bg: "#F7FEE7", input: "#CBF08D", text: "#152108", pure: "#A3E635" },
+    'C10': { name: "Chartreuse", bg: "#ECFCCB", input: "#A9EB46", text: "#192707", pure: "#84CC16" },
+    'C11': { name: "Verde Bosque", bg: "#DCFCE7", input: "#56E189", text: "#082112", pure: "#22C55E" },
+    'C12': { name: "Esmeralda", bg: "#D1FAE5", input: "#23ECA9", text: "#021F17", pure: "#10B981" },
+    'C13': { name: "Turquesa", bg: "#CCFBF1", input: "#2BE7D3", text: "#062F2C", pure: "#14B8A6" },
+    'C14': { name: "Cian", bg: "#CFFAFE", input: "#2DDBF9", text: "#081F27", pure: "#06B6D4" },
+    'C15': { name: "Celeste", bg: "#E0F2FE", input: "#9EDFFB", text: "#022335", pure: "#38BDF8" },
+    'C16': { name: "Azul Real", bg: "#DBEAFE", input: "#A1C3FA", text: "#0C1946", pure: "#3B82F6" },
+    'C17': { name: "Azul Cobalto", bg: "#E0E7FF", input: "#D0D1FA", text: "#131233", pure: "#6366F1" },
+    'C18': { name: "Índigo", bg: "#EEF2FF", input: "#A6A1F1", text: "#161341", pure: "#4F46E5" },
+    'C19': { name: "Violeta", bg: "#EDE9FE", input: "#DACCFC", text: "#1E0B3B", pure: "#8B5CF6" },
+    'C20': { name: "Púrpura", bg: "#F5F3FF", input: "#E0C3FC", text: "#230B36", pure: "#A855F7" },
+    'C21': { name: "Fucsia", bg: "#FAE8FF", input: "#EDA9F7", text: "#2C0A2E", pure: "#D946EF" },
+    'C22': { name: "Rosa Neón", bg: "#FDF2F8", input: "#F6A9CF", text: "#34091A", pure: "#EC4899" },
+    'C23': { name: "Rosa Pastel", bg: "#FFF1F2", input: "#FEFFFF", text: "#3F0716", pure: "#FDA4AF" },
+    'C24': { name: "Vino", bg: "#FFE4E6", input: "#EB6A87", text: "#1E0109", pure: "#E11D48" },
+    'C25': { name: "Pizarra", bg: "#F1F5F9", input: "#929EB0", text: "#060910", pure: "#64748B" },
+    'C26': { name: "Gris Humo", bg: "#F8FAFC", input: "#D9DFE6", text: "#141A22", pure: "#94A3B8" },
+    'C27': { name: "Zinc", bg: "#F4F4F5", input: "#9A9AA2", text: "#09090A", pure: "#71717A" },
+    'C28': { name: "Piedra", bg: "#F5F5F4", input: "#9F9994", text: "#100E0E", pure: "#78716C" },
+    'C29': { name: "Bronce", bg: "#FFFAF0", input: "#F99D33", text: "#1B0A01", pure: "#D97706" },
+    'C30': { name: "Salvia", bg: "#F0FDF4", input: "#A1EDBD", text: "#082814", pure: "#4ADE80" },
+    'C31': { name: "Menta", bg: "#F0FDFA", input: "#77E3D5", text: "#062523", pure: "#2DD4BF" },
+    'C32': { name: "Cielo Profundo", bg: "#F0F9FF", input: "#58C4F4", text: "#041D2C", pure: "#0EA5E9" },
+    'C33': { name: "Lavanda", bg: "#F5F3FF", input: "#DACCFC", text: "#1A1551", pure: "#8B5CF6" },
+    'C34': { name: "Amatista", bg: "#FAF5FF", input: "#FFFFFF", text: "#2A0D43", pure: "#C084FC" },
+    'C35': { name: "Chocolate", bg: "#FAF7F5", input: "#D98409", text: "#1A0C02", pure: "#A16207" },
+    'C36': { name: "Canela", bg: "#FFF7ED", input: "#F68C55", text: "#311207", pure: "#EA580C" },
+    'C37': { name: "Oliva", bg: "#F7FEE7", input: "#88DC11", text: "#0A1202", pure: "#65A30D" },
+    'C38': { name: "Marino", bg: "#EFF6FF", input: "#7CA1F3", text: "#0C1737", pure: "#2563EB" },
+    'C39': { name: "Ciruela", bg: "#FDF4FF", input: "#D76BE4", text: "#1D011F", pure: "#C026D3" },
+    'C40': { name: "Carbón", bg: "#E2E8F0", input: "#5F728D", text: "#000209", pure: "#475569" },
+};
+
+export const getTheme = (theme_id) => {
+    if (theme_id && MASTER_PALETTE[theme_id]) {
+        const c = MASTER_PALETTE[theme_id];
+        return {
+            bg: c.bg,
+            input: c.input,
+            text: c.text,
+            pure: c.pure,
+            border: c.input
+        };
+    }
+    // Fallback default
     return {
-        // Fondo ultra-claro (96%) para evitar fatiga ocular
-        bg: `hsl(${hue}, 65%, 96%)`,
-        // Inputs con tono intermedio (88%) para resaltar áreas de captura
-        input: `hsl(${hue}, 65%, 88%)`,
-        // Texto alto contraste (15%)
-        text: `hsl(${hue}, 70%, 15%)`,
-        // Borde sutil
-        border: `hsl(${hue}, 65%, 82%)`
+        bg: '#f8fafc',
+        input: '#cbd5e1',
+        text: '#0f172a',
+        pure: '#94a3b8',
+        border: '#94a3b8'
     };
 };
 
@@ -136,12 +185,6 @@ export const DoughManagerUI = ({ onBack }) => {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => setView('PEDIDOS_PENDIENTES')}
-                        className="bg-orange-500/10 border border-orange-500/30 text-orange-600 px-6 py-4 rounded-[30px] text-xs font-black uppercase tracking-widest hover:bg-orange-500/20 transition-all flex items-center gap-3"
-                    >
-                        <ClipboardList size={20} /> PEDIDOS PENDIENTES
-                    </button>
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30 group-focus-within:text-black transition-colors" size={16} />
                         <input 
@@ -169,7 +212,7 @@ export const DoughManagerUI = ({ onBack }) => {
                 ) : (
                     <div className="flex flex-col gap-4 max-w-5xl mx-auto">
                         {doughs.map((dough, idx) => {
-                            const theme = getTheme(idx);
+                            const theme = getTheme(dough.theme_id);
                             return (
                                 <div
                                     key={dough.id}
@@ -177,7 +220,7 @@ export const DoughManagerUI = ({ onBack }) => {
                                     onDragStart={(e) => handleDragStart(e, idx)}
                                     onDragOver={(e) => handleDragOver(e, idx)}
                                     onDragEnd={handleDragEnd}
-                                    onClick={() => { setSelectedDough({...dough, themeIdx: idx}); setIsModalOpen(true); }}
+                                    onClick={() => { setSelectedDough({...dough}); setIsModalOpen(true); }}
                                     style={{ 
                                         backgroundColor: theme.bg,
                                         transform: draggedIdx === idx ? 'scale(0.98)' : 'scale(1)',
@@ -185,8 +228,14 @@ export const DoughManagerUI = ({ onBack }) => {
                                     }}
                                     className="group relative border border-black/5 rounded-2xl p-4 hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden flex items-center gap-6 active:cursor-grabbing"
                                 >
-                                    <div className="opacity-20 group-hover:opacity-60 transition-opacity">
-                                        <GripVertical size={20} style={{ color: theme.text }} />
+                                    <div className="flex items-center gap-3">
+                                        <div 
+                                            className="w-5 h-5 rounded-full border border-black/10 shadow-[0_0_10px_rgba(0,0,0,0.05)] shrink-0"
+                                            style={{ backgroundColor: theme.pure }}
+                                        />
+                                        <div className="opacity-20 group-hover:opacity-60 transition-opacity">
+                                            <GripVertical size={20} style={{ color: theme.text }} />
+                                        </div>
                                     </div>
                                     {/* Nombre de la Masa (Cromática Total) */}
                                     <div className="relative z-10 flex flex-1 items-center justify-between">
@@ -214,6 +263,7 @@ export const DoughManagerUI = ({ onBack }) => {
             {isModalOpen && (
                 <DoughWizardModal
                     initialData={selectedDough}
+                    allDoughs={doughs}
                     onClose={() => { setIsModalOpen(false); setSelectedDough(null); }}
                     onSuccess={() => { setIsModalOpen(false); setSelectedDough(null); loadDoughs(); }}
                 />
@@ -225,16 +275,20 @@ export const DoughManagerUI = ({ onBack }) => {
 /**
  * WIZARD MODAL: ADN PANADERO
  */
-const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
+const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) => {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [editingColumnId, setEditingColumnId] = useState(null);
     const [isConfiguringProduction, setIsConfiguringProduction] = useState(false);
+    const [showColorPicker, setShowColorPicker] = useState(false);
 
     const _baseMatrix = {
         columns: [
             { id: 'mep_polvos', name: 'MEP POLVOS', type: 'POLVOS' },
-            { id: 'mep_liquidos', name: 'MEP LÍQUIDOS', type: 'LIQUIDOS' }
+            { id: 'mep_granulados', name: 'MEP GRANULADOS', type: 'GRANULADOS' },
+            { id: 'mep_solidos', name: 'MEP SOLIDOS', type: 'SOLIDOS' },
+            { id: 'mep_liquidos', name: 'MEP LÍQUIDOS', type: 'LIQUIDOS' },
+            { id: 'mep_levadura', name: 'MEP LEVADURA', type: 'LEVADURA' }
         ],
         rows: [
             { id: 'row_base_reference', name: 'RECETA BASE', baston_qty: 1, unit: 'BST', values: {} }
@@ -246,7 +300,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
         // 1. Identify unique ingredients to create columns
         const legacyIngs = initialData.ingredients || [];
         legacyIngs.forEach(ing => {
-            const isStandardMEP = ing.mep_type === 'POLVOS' || ing.mep_type === 'LIQUIDOS';
+            const isStandardMEP = ['POLVOS', 'GRANULADOS', 'SOLIDOS', 'LIQUIDOS', 'LEVADURA'].includes(ing.mep_type);
             if (!isStandardMEP) {
                 const colId = `c_${ing.name.replace(/\s+/g, '_').toLowerCase()}`;
                 if (!_baseMatrix.columns.some(c => c.name === ing.name.toUpperCase())) {
@@ -291,21 +345,51 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
         });
     }
 
-    const initialMatrix = (initialData && initialData.recipe_matrix) ? initialData.recipe_matrix : _baseMatrix;
+    // Standard columns for upgrade/sync
+    const standardCols = [
+        { id: 'mep_polvos', name: 'MEP POLVOS', type: 'POLVOS' },
+        { id: 'mep_granulados', name: 'MEP GRANULADOS', type: 'GRANULADOS' },
+        { id: 'mep_solidos', name: 'MEP SOLIDOS', type: 'SOLIDOS' },
+        { id: 'mep_liquidos', name: 'MEP LÍQUIDOS', type: 'LIQUIDOS' },
+        { id: 'mep_levadura', name: 'MEP LEVADURA', type: 'LEVADURA' }
+    ];
+
+    let initialMatrix = (initialData && initialData.recipe_matrix) ? JSON.parse(JSON.stringify(initialData.recipe_matrix)) : JSON.parse(JSON.stringify(_baseMatrix));
+
+    // Ensure all standard columns exist (Upgrade Path)
+    standardCols.forEach((sCol, sIdx) => {
+        const existingIdx = initialMatrix.columns.findIndex(c => c.id === sCol.id);
+        if (existingIdx === -1) {
+            // Insert at the intended position
+            initialMatrix.columns.splice(sIdx, 0, sCol);
+            // Init values in all rows
+            initialMatrix.rows.forEach(r => {
+                if (!r.values) r.values = {};
+                if (!r.values[sCol.id]) r.values[sCol.id] = { qty: 0, unit: 'g' };
+            });
+        }
+    });
 
     const [formData, setFormData] = useState({
-        code: '', name: '', dough_type: 'MASA SALADA', description: '',
-        theoretical_yield: 0, expected_waste: 0,
-        requires_rest: false, rest_container: '', rest_warehouse: '', rest_time_min: 0,
-        ingredients: [], 
-        procedure_steps: [],
-        batches: [], 
+        ...initialData,
+        code: initialData?.code || '', 
+        name: initialData?.name || '', 
+        dough_type: initialData?.dough_type || 'MASA SALADA', 
+        description: initialData?.description || '',
+        theoretical_yield: initialData?.theoretical_yield || 0, 
+        expected_waste: initialData?.expected_waste || 0,
+        requires_rest: initialData?.requires_rest || false, 
+        rest_container: initialData?.rest_container || '', 
+        rest_warehouse: initialData?.rest_warehouse || '', 
+        rest_time_min: initialData?.rest_time_min || 0,
+        ingredients: initialData?.ingredients || [], 
+        procedure_steps: initialData?.procedure_steps || [],
+        batches: initialData?.batches || [], 
         pasosProduccion: initialData?.production_process || [],
         recipe_matrix: initialMatrix,
-        product_relations: [],
-        dough_relations: [],
-        themeIdx: 0,
-        ...initialData
+        product_relations: initialData?.product_relations || [],
+        dough_relations: initialData?.dough_relations || [],
+        theme_id: initialData?.theme_id || null,
     });
 
     // Aseguramos consistencia post-merge de initialData
@@ -473,7 +557,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
         { id: 5, label: 'VÍNCULOS', icon: Zap }
     ];
 
-    const theme = getTheme(formData.themeIdx ?? 0);
+    const theme = getTheme(formData.theme_id);
 
     return (
         <>
@@ -605,6 +689,79 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
                                             />
                                         </label>
                                     </div>
+
+                                    {/* Color Picker Popover */}
+                                    <div className="mt-6 relative">
+                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2 mb-2 block">Identidad Visual (Color)</span>
+                                        
+                                        {!showColorPicker ? (
+                                            <button
+                                                onClick={() => setShowColorPicker(true)}
+                                                className="w-full flex items-center gap-4 p-4 rounded-3xl border border-black/5 hover:scale-[1.01] transition-all"
+                                                style={{ backgroundColor: theme.input }}
+                                            >
+                                                {formData.theme_id && MASTER_PALETTE[formData.theme_id] ? (
+                                                    <>
+                                                        <div 
+                                                            className="w-10 h-10 rounded-full border-2 flex items-center justify-center"
+                                                            style={{ 
+                                                                backgroundColor: MASTER_PALETTE[formData.theme_id].bg,
+                                                                borderColor: MASTER_PALETTE[formData.theme_id].text
+                                                            }}
+                                                        >
+                                                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: MASTER_PALETTE[formData.theme_id].text }}></div>
+                                                        </div>
+                                                        <span style={{ color: theme.text }} className="font-bold text-lg">
+                                                            {MASTER_PALETTE[formData.theme_id].name}
+                                                        </span>
+                                                        <span className="ml-auto opacity-50" style={{ color: theme.text }}>Cambiar</span>
+                                                    </>
+                                                ) : (
+                                                    <span style={{ color: theme.text }} className="font-bold text-lg opacity-50">Seleccionar Color...</span>
+                                                )}
+                                            </button>
+                                        ) : (
+                                            <div className="p-4 rounded-3xl border border-black/5 flex flex-col gap-4 animate-in fade-in" style={{ backgroundColor: theme.input }}>
+                                                <div className="flex justify-between items-center px-2">
+                                                    <span style={{ color: theme.text }} className="text-sm font-bold opacity-70">Selecciona un color de la matriz (10x4)</span>
+                                                    <button onClick={() => setShowColorPicker(false)} className="opacity-50 hover:opacity-100" style={{ color: theme.text }}>
+                                                        <X size={20} />
+                                                    </button>
+                                                </div>
+                                                <div className="grid grid-cols-10 gap-2">
+                                                    {Object.entries(MASTER_PALETTE).map(([cid, colorData]) => {
+                                                        const isUsed = allDoughs.some(d => d.id !== initialData?.id && d.theme_id === cid);
+                                                        const isSelected = formData.theme_id === cid;
+                                                        
+                                                        return (
+                                                            <button
+                                                                key={cid}
+                                                                disabled={isUsed}
+                                                                onClick={() => {
+                                                                    setFormData({...formData, theme_id: cid});
+                                                                    setShowColorPicker(false);
+                                                                }}
+                                                                className={`w-full aspect-square rounded-full border-2 transition-all flex items-center justify-center relative
+                                                                    ${isUsed ? 'cursor-not-allowed grayscale opacity-30' : 'hover:scale-110'}`}
+                                                                style={{ 
+                                                                    backgroundColor: colorData.bg,
+                                                                    borderColor: isSelected ? colorData.text : colorData.input,
+                                                                }}
+                                                                title={isUsed ? `${colorData.name} (Ocupado)` : colorData.name}
+                                                            >
+                                                                {isSelected && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colorData.text }}></div>}
+                                                                {isUsed && (
+                                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                                        <X size={14} className="text-black/50" />
+                                                                    </div>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -644,7 +801,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
                                                         ) : (
                                                             <>
                                                                 <span style={{ color: theme.text }} className="text-[11px] leading-tight font-black uppercase tracking-widest">{col.name}</span>
-                                                                {cIdx > 1 && (
+                                                                {!col.id.startsWith('mep_') && (
                                                                     <div className="absolute inset-0 bg-white/95 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-all">
                                                                         <button 
                                                                             onClick={() => setEditingColumnId(col.id)}
@@ -806,6 +963,11 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData }) => {
                                                                         <option value="TANDA">TND</option>
                                                                         <option value="1/2 TANDA">1/2 TND</option>
                                                                         <option value="pza">pza</option>
+                                                                        <option value="BOLSA">BOLSA</option>
+                                                                        <option value="SUBBOLSA">SUBBOLSA</option>
+                                                                        <option value="BOTE">BOTE</option>
+                                                                        <option value="CUBETA">CUBETA</option>
+                                                                        <option value="COSTAL">COSTAL</option>
                                                                     </select>
                                                                 )}
                                                             </div>

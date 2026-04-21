@@ -136,6 +136,7 @@ class DoughBase(BaseModel):
     recipe_matrix: Optional[Dict[str, Any]] = None
     production_process: Optional[List[Dict[str, Any]]] = None
     position: int = 0
+    theme_id: Optional[str] = None
 
 class DoughCreate(DoughBase):
     ingredients: List[DoughIngredientCreate] = []

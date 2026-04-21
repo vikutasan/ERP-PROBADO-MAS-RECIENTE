@@ -133,6 +133,7 @@ class POSService:
             payment_details=ticket.payment_details,
             cash_session_id=ticket.cash_session_id,
             captured_by_id=ticket.captured_by_id,
+            cashed_by_id=ticket.cashed_by_id if ticket.status == "PAID" else None,
             order_type=ticket.order_type,
             order_status=ticket.order_status,
             delivery_type=ticket.delivery_type,
@@ -202,7 +203,12 @@ class POSService:
         if not ticket_obj.terminal_id:
             ticket_obj.terminal_id = ticket_obj.session.terminal_id if ticket_obj.session else "UNKNOWN"
         ticket_obj.captured_by_name = ticket_obj.captured_by.name if ticket_obj.captured_by else "SISTEMA"
-        ticket_obj.cashed_by_name = ticket_obj.cashed_by.name if ticket_obj.cashed_by else "SISTEMA/AUTO"
+        
+        if ticket_obj.status == "OPEN":
+            ticket_obj.cashed_by_name = "--- PENDIENTE ---"
+        else:
+            ticket_obj.cashed_by_name = ticket_obj.cashed_by.name if ticket_obj.cashed_by else "SISTEMA/AUTO"
+            
         return ticket_obj
 
     async def _create_order_from_ticket(self, db: AsyncSession, ticket: models.Ticket):
