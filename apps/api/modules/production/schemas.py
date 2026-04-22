@@ -155,3 +155,30 @@ class DoughResponse(DoughBase):
     
     class Config:
         from_attributes = True
+
+# Production Equipment
+class ProductionEquipmentBase(BaseModel):
+    name: str
+    model_ref: Optional[str] = None
+    serial_number: Optional[str] = None
+    description: Optional[str] = None
+    nature: str
+    image_url: Optional[str] = None
+    dynamic_specs: Optional[Dict[str, Any]] = None
+
+class ProductionEquipmentCreate(ProductionEquipmentBase):
+    pass
+
+class ProductionEquipmentUpdate(BaseModel):
+    name: Optional[str] = None
+    model_ref: Optional[str] = None
+    serial_number: Optional[str] = None
+    description: Optional[str] = None
+    nature: Optional[str] = None
+    image_url: Optional[str] = None
+    dynamic_specs: Optional[Dict[str, Any]] = None
+
+class ProductionEquipmentResponse(ProductionEquipmentBase):
+    id: int
+    class Config:
+        from_attributes = True

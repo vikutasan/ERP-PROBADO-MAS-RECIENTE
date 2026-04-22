@@ -114,3 +114,51 @@ async def reorder_doughs(db: AsyncSession, order: List[int]):
         )
     await db.commit()
     return True
+
+from sqlalchemy.exc import IntegrityError
+
+# Production Equipment Services
+async def list_equipment(db: AsyncSession):
+    result = await db.execute(select(models.ProductionEquipment))
+    return result.scalars().all()
+
+async def get_equipment(db: AsyncSession, equip_id: int):
+    result = await db.execute(select(models.ProductionEquipment).where(models.ProductionEquipment.id == equip_id))
+    return result.scalar_one_or_none()
+
+async def create_equipment(db: AsyncSession, data: schemas.ProductionEquipmentCreate):
+    try:
+        new_equip = models.ProductionEquipment(**data.model_dump())
+        db.add(new_equip)
+        await db.commit()
+        await db.refresh(new_equip)
+        return new_equip
+    except IntegrityError as e:
+        await db.rollback()
+        if "unique constraint" in str(e).lower() and "serial_number" in str(e).lower():
+            raise HTTPException(status_code=400, detail="El Número de Serie (S/N) ya existe en otro equipo.")
+        raise HTTPException(status_code=500, detail=f"Error de integridad en base de datos: {str(e)}")
+
+async def update_equipment(db: AsyncSession, equip_id: int, data: schemas.ProductionEquipmentUpdate):
+    equip = await get_equipment(db, equip_id)
+    if not equip:
+        return None
+    try:
+        for key, value in data.model_dump(exclude_unset=True).items():
+            setattr(equip, key, value)
+        await db.commit()
+        await db.refresh(equip)
+        return equip
+    except IntegrityError as e:
+        await db.rollback()
+        if "unique constraint" in str(e).lower() and "serial_number" in str(e).lower():
+            raise HTTPException(status_code=400, detail="El Número de Serie (S/N) ya existe en otro equipo.")
+        raise HTTPException(status_code=500, detail=f"Error de integridad en base de datos: {str(e)}")
+
+async def delete_equipment(db: AsyncSession, equip_id: int):
+    equip = await get_equipment(db, equip_id)
+    if not equip:
+        return False
+    await db.delete(equip)
+    await db.commit()
+    return True

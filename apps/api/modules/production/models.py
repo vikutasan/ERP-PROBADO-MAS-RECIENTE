@@ -117,3 +117,18 @@ class DoughProductRelation(Base):
     
     dough = relationship("Dough", back_populates="product_relations")
     product = relationship("Product")
+
+class ProductionEquipment(Base):
+    """
+    Catálogo y Registro del Equipamiento Físico de Producción.
+    """
+    __tablename__ = "production_equipment"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    model_ref = Column(String, nullable=True)
+    serial_number = Column(String, unique=True, index=True, nullable=True)
+    description = Column(Text, nullable=True)
+    nature = Column(String, nullable=False) # 'MAQUINARIA', 'MOBILIARIO', 'UTENSILIO', 'RECIPIENTE'
+    image_url = Column(Text, nullable=True)
+    dynamic_specs = Column(JSON, nullable=True) # Campos dinámicos (Voltaje, Capacidad, etc.)

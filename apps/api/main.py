@@ -20,7 +20,7 @@ from modules.settings.service import seed_settings as seed_system_settings
 from modules.pos.models import Ticket, TerminalSession, TerminalLock
 from modules.cash.models import CashSession, CashMovement
 from modules.settings.models import SystemSetting
-from modules.production.models import Dough, DoughBatchConfig, DoughIngredient, DoughProcedureStep, DoughProductRelation
+from modules.production.models import Dough, DoughBatchConfig, DoughIngredient, DoughProcedureStep, DoughProductRelation, ProductionEquipment
 from modules.orders.models import Order
 from modules.delivery_settings.models import DeliverySettings
 from modules.analytics.models import DailyContext

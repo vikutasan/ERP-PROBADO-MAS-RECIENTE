@@ -34,3 +34,26 @@ async def reorder_doughs(req: schemas.DoughReorderRequest, db: AsyncSession = De
     """Reorder doughs based on the provided list of IDs"""
     await service.reorder_doughs(db, req.order)
     return {"status": "ok"}
+
+# --- Equipment Endpoints ---
+@router.get("/equipment", response_model=list[schemas.ProductionEquipmentResponse])
+async def list_equipment(db: AsyncSession = Depends(get_db)):
+    return await service.list_equipment(db)
+
+@router.post("/equipment", response_model=schemas.ProductionEquipmentResponse)
+async def create_equipment(equip: schemas.ProductionEquipmentCreate, db: AsyncSession = Depends(get_db)):
+    return await service.create_equipment(db, equip)
+
+@router.put("/equipment/{equip_id}", response_model=schemas.ProductionEquipmentResponse)
+async def update_equipment(equip_id: int, equip: schemas.ProductionEquipmentUpdate, db: AsyncSession = Depends(get_db)):
+    updated = await service.update_equipment(db, equip_id, equip)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    return updated
+
+@router.delete("/equipment/{equip_id}")
+async def delete_equipment(equip_id: int, db: AsyncSession = Depends(get_db)):
+    deleted = await service.delete_equipment(db, equip_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    return {"status": "ok"}

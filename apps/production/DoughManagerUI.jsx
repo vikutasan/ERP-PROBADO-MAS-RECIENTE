@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     ArrowLeft, Plus, Search, Filter, Loader2, ChefHat, Info, 
     Save, X, ChevronRight, ChevronLeft, Beaker, Zap, Timer, 
     Scale, Trash2, ListOrdered, Settings2, Package, ArrowRight, Edit2, GripVertical, ClipboardList,
-    Eye, EyeOff
+    Eye, EyeOff, Download, Table, Upload
 } from 'lucide-react';
 import { PedidosPendientesUI } from './PedidosPendientesUI';
 import { ProcesoProduccionMasaUI } from './ProcesoProduccionMasaUI';
@@ -149,6 +149,163 @@ export const DoughManagerUI = ({ onBack }) => {
         } catch (e) { console.error("Error saving order:", e); }
     };
 
+    const handleGlobalExportCSV = () => {
+        const headers = [
+            "Masa_ID", "Masa_Nombre", "Masa_Clave",
+            "Paso_ID", "Nombre_Paso", "Grupo_Maquinaria",
+            "Subpaso_ID", "Nombre_Subpaso", "Instruccion_Voz",
+            "T_Humano_min", "T_Autonomo_min", "Recurso", "Nivel_Critico",
+            "Operario_Libre", "Confirmacion_Voz", "Trigger_Inicio",
+            "Pregunta_QA", "Tip_Coaching", "Grupo_Inseparable",
+            "Temperatura_Objetivo", "Senales_Completado", "Errores_Comunes",
+            "Ingredientes", "Dependencia"
+        ];
+
+        let csvContent = headers.join(",") + "\n";
+
+        doughs.forEach(dough => {
+            const mId = `"${dough.id || ''}"`;
+            const mName = `"${(dough.name || '').replace(/"/g, '""')}"`;
+            const mCode = `"${(dough.code || '').replace(/"/g, '""')}"`;
+
+            const process = dough.production_process || [];
+            if (process.length === 0) {
+                const row = [mId, mName, mCode, "","","","","","","","","","","","","","","","","","","","",""];
+                csvContent += row.join(",") + "\n";
+            } else {
+                process.forEach(paso => {
+                    const pasoId = `"${paso.id || ''}"`;
+                    const nombrePaso = `"${(paso.nombre || '').replace(/"/g, '""')}"`;
+                    const grupo = `"${(paso.idBloque || '').replace(/"/g, '""')}"`;
+
+                    if (paso.subpasos && paso.subpasos.length > 0) {
+                        paso.subpasos.forEach(sp => {
+                            const row = [
+                                mId, mName, mCode,
+                                pasoId, nombrePaso, grupo,
+                                `"${sp.id || ''}"`,
+                                `"${(sp.nombre || '').replace(/"/g, '""')}"`,
+                                `"${(sp.instruccionVoz || '').replace(/"/g, '""')}"`,
+                                sp.tHumano || 0,
+                                sp.tAutonomo || 0,
+                                `"${(sp.recurso || '').replace(/"/g, '""')}"`,
+                                `"${(sp.nivelCritico || '').replace(/"/g, '""')}"`,
+                                sp.operarioLibre ? "SI" : "NO",
+                                sp.confirmacionVoz ? "SI" : "NO",
+                                `"${(sp.triggerInicio || '').replace(/"/g, '""')}"`,
+                                `"${(sp.preguntaQA || '').replace(/"/g, '""')}"`,
+                                `"${(sp.tipCoaching || '').replace(/"/g, '""')}"`,
+                                `"${(sp.grupoInseparable || '').replace(/"/g, '""')}"`,
+                                `"${(sp.temperaturaObjetivo || '').replace(/"/g, '""')}"`,
+                                `"${(sp.senalesCompletado || '').replace(/"/g, '""')}"`,
+                                `"${(sp.erroresComunes || '').replace(/"/g, '""')}"`,
+                                `"${(sp.ingredientesRequeridos || '').replace(/"/g, '""')}"`,
+                                `"${(sp.dependenciaPasoPrevio || '').replace(/"/g, '""')}"`
+                            ];
+                            csvContent += row.join(",") + "\n";
+                        });
+                    } else {
+                        const row = [mId, mName, mCode, pasoId, nombrePaso, grupo, "","","","","","","","","","","","","","","","","",""];
+                        csvContent += row.join(",") + "\n";
+                    }
+                });
+            }
+        });
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Master_Agente_Completo.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleGlobalExportJSON = () => {
+        const fullConfig = doughs.map(d => ({
+            id: d.id,
+            name: d.name,
+            code: d.code,
+            production_process: d.production_process || []
+        }));
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullConfig, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `Master_Agente_Completo.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    };
+
+    const globalFileInputRef = useRef(null);
+    const [isGlobalImporting, setIsGlobalImporting] = useState(false);
+
+    const handleGlobalImportClick = () => {
+        if (globalFileInputRef.current) {
+            globalFileInputRef.current.click();
+        }
+    };
+
+    const handleGlobalFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const importedData = JSON.parse(event.target.result);
+                if (!Array.isArray(importedData)) {
+                    alert("El archivo no tiene el formato correcto (se esperaba un arreglo de masas).");
+                    return;
+                }
+
+                if (!window.confirm(`Estás a punto de importar la configuración de procesos para ${importedData.length} masas. Esto actualizará directamente la base de datos. ¿Deseas continuar?`)) {
+                    e.target.value = null;
+                    return;
+                }
+
+                setIsGlobalImporting(true);
+
+                let updatedCount = 0;
+                for (const imported of importedData) {
+                    const targetDough = doughs.find(d => d.id === imported.id || (imported.code && d.code === imported.code));
+                    
+                    if (targetDough && imported.production_process) {
+                        const payload = {
+                            ...targetDough,
+                            production_process: imported.production_process,
+                            batches: targetDough.batches || [],
+                            ingredients: targetDough.ingredients || [],
+                            dough_relations: targetDough.dough_relations || []
+                        };
+
+                        const resp = await fetch(`${API_BASE}/production/doughs/${targetDough.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (resp.ok) {
+                            updatedCount++;
+                        }
+                    }
+                }
+
+                alert(`¡Importación Global Exitosa! Se actualizaron los procesos de ${updatedCount} masas.`);
+                loadDoughs(); 
+                
+            } catch (err) {
+                alert("Error al procesar el archivo: " + err.message);
+            } finally {
+                setIsGlobalImporting(false);
+                e.target.value = null;
+            }
+        };
+        reader.readAsText(file);
+    };
+
     if (view === 'PEDIDOS_PENDIENTES') {
         return <PedidosPendientesUI onBack={() => setView('MAIN')} />;
     }
@@ -161,6 +318,14 @@ export const DoughManagerUI = ({ onBack }) => {
             }}
             className="flex-1 flex flex-col h-full animate-in fade-in duration-700 overflow-hidden relative"
         >
+            <input 
+                type="file" 
+                ref={globalFileInputRef} 
+                style={{ display: 'none' }} 
+                accept=".json" 
+                onChange={handleGlobalFileChange} 
+            />
+
             {/* Capa de Grano Industrial Sutil (Acabado Metálico/Piedra) */}
             <div className="absolute inset-0 opacity-[0.05] pointer-events-none' bg-[url('https://www.transparenttextures.com/patterns/pinstriped-suit.png')]" />
             
@@ -186,6 +351,32 @@ export const DoughManagerUI = ({ onBack }) => {
                 </div>
 
                 <div className="flex items-center gap-4">
+                    <div className="flex gap-2 mr-2 border-r border-black/10 pr-6">
+                        <button 
+                            onClick={handleGlobalImportClick}
+                            disabled={isGlobalImporting}
+                            className={`${isGlobalImporting ? 'opacity-50 cursor-wait' : 'hover:bg-white'} bg-white/40 text-gray-700 px-4 py-3 rounded-2xl flex items-center gap-2 font-black uppercase text-[10px] tracking-widest transition-all shadow-sm border border-black/5`}
+                            title="Importar y actualizar múltiples configuraciones de masas desde JSON"
+                        >
+                            {isGlobalImporting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} 
+                            Global Import
+                        </button>
+                        <button 
+                            onClick={handleGlobalExportJSON}
+                            className="bg-white/40 text-gray-700 px-4 py-3 rounded-2xl hover:bg-white flex items-center gap-2 font-black uppercase text-[10px] tracking-widest transition-all shadow-sm border border-black/5"
+                            title="Exportar todas las configuraciones a JSON"
+                        >
+                            <Download size={14} /> Global JSON
+                        </button>
+                        <button 
+                            onClick={handleGlobalExportCSV}
+                            className="bg-[#ecfdf5] text-[#10b981] px-4 py-3 rounded-2xl hover:bg-[#d1fae5] flex items-center gap-2 font-black uppercase text-[10px] tracking-widest transition-all shadow-sm border border-[#a7f3d0]"
+                            title="Exportar Reporte Maestro a Excel (CSV)"
+                        >
+                            <Download size={14} /> Maestro Excel
+                        </button>
+                    </div>
+
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30 group-focus-within:text-black transition-colors" size={16} />
                         <input 

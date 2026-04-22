@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ChefHat, ArrowRight } from 'lucide-react';
+import { ChefHat, ArrowRight, Settings2 } from 'lucide-react';
 import { DoughManagerUI } from './DoughManagerUI';
 import { PedidosProduccionUI } from './PedidosProduccionUI';
+import { ProductionEquipmentUI } from './ProductionEquipmentUI';
 
 /**
  * GESTOR DE PRODUCCIÓN
@@ -19,6 +20,10 @@ export const ProductionManagementUI = () => {
 
     if (view === 'pedidos-produccion') {
         return <PedidosProduccionUI onBack={() => setView('dashboard')} />;
+    }
+
+    if (view === 'equipment-manager') {
+        return <ProductionEquipmentUI onBack={() => setView('dashboard')} />;
     }
 
     return (
@@ -96,7 +101,28 @@ export const ProductionManagementUI = () => {
                     </div>
                 </button>
 
-                {/* Futuros botones irán aquí */}
+                <button 
+                    onClick={() => setView('equipment-manager')}
+                    className="w-full group relative flex items-center justify-between bg-white/5 border border-white/10 p-5 rounded-3xl hover:bg-cyan-500 hover:border-cyan-500 transition-all duration-500 text-left overflow-hidden shadow-xl"
+                >
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-cyan-500 group-hover:text-white group-hover:bg-white/20 transition-all duration-500">
+                            <Settings2 size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-white italic uppercase tracking-tight group-hover:text-white transition-colors">
+                                EQUIPAMIENTO DE <span className="text-cyan-500 group-hover:text-white">PRODUCCIÓN</span>
+                            </h2>
+                            <p className="text-[8px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-0.5 group-hover:text-white/80 transition-colors">
+                                Maquinaria, Mobiliario y Utensilios
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-white group-hover:bg-white group-hover:text-cyan-500 group-hover:border-transparent transition-all duration-500">
+                        <ArrowRight size={16} />
+                    </div>
+                </button>
                 
                 <p className="text-[8px] font-black text-gray-600 uppercase tracking-[0.4em] pl-6 pt-2">
                     ONLINE • PLANTA TOLUCA
