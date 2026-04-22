@@ -1081,9 +1081,9 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                     <div style={{ backgroundColor: theme.text, color: theme.bg }} className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-black italic shrink-0">
                                                         {pIdx + 1}
                                                     </div>
-                                                    <h4 style={{ color: theme.text }} className="text-lg font-black uppercase italic">{p.nombre}</h4>
+                                                    <h4 style={{ color: theme.text }} className="text-lg font-black uppercase italic">{String(p.nombre || '').replace(/nan/gi, '')}</h4>
                                                     <div className="ml-auto px-4 py-1.5 rounded-full bg-black/5 border border-black/5 text-[10px] font-black uppercase tracking-widest opacity-60">
-                                                        {p.idBloque}
+                                                        {(!p.idBloque || String(p.idBloque).toUpperCase() === 'NAN') ? '---' : p.idBloque}
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-1 gap-3 pl-12">
@@ -1092,7 +1092,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                             <div className="flex-1 flex flex-col gap-1">
                                                                 <div className="flex items-center gap-4">
                                                                     <span style={{ color: theme.text }} className="text-sm font-black opacity-80">{pIdx + 1}.{sIdx + 1}</span>
-                                                                    <span style={{ color: theme.text }} className="text-sm font-black uppercase tracking-tight">{s.nombre}</span>
+                                                                    <span style={{ color: theme.text }} className="text-sm font-black uppercase tracking-tight">{String(s.nombre || '').replace(/nan/gi, '')}</span>
                                                                 </div>
                                                                 {s.instruccionVoz && (
                                                                     <p style={{ color: theme.text }} className="text-[10px] font-bold opacity-50 italic pl-7 leading-tight">{s.instruccionVoz}</p>
@@ -1100,8 +1100,8 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                             </div>
                                                             <div className="flex items-center gap-6">
                                                                 <div className="flex items-center gap-2">
-                                                                    <Timer size={14} className="opacity-40" style={{ color: theme.text }}/>
-                                                                    <span style={{ color: theme.text }} className="text-[10px] font-black">{s.tHumano + s.tAutonomo}m</span>
+                                                                    <Timer size={18} style={{ color: theme.text }}/>
+                                                                    <span style={{ color: theme.text }} className="text-base font-black tracking-tight">{(parseFloat(s.tHumano) || 0) + (parseFloat(s.tAutonomo) || 0)}m</span>
                                                                 </div>
                                                                 {s.confirmacionVoz && (
                                                                     <div className="w-5 h-5 rounded-lg bg-green-500/20 flex items-center justify-center text-green-600">

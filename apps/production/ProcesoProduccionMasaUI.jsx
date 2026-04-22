@@ -180,7 +180,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                     style={{ color: activeTheme.text }}
                                     placeholder="Ej. G-MAS-15"
                                     className="w-full p-3 border border-black/5 rounded-xl bg-white/50 focus:bg-white outline-none transition-all font-black text-sm placeholder-black/30" 
-                                    value={paso.idBloque}
+                                    value={(!paso.idBloque || String(paso.idBloque).toUpperCase() === 'NAN') ? '' : paso.idBloque}
                                     onChange={e => setPasos(pasos.map(p => p.id === paso.id ? {...p, idBloque: e.target.value} : p))}
                                 />
                             </div>
@@ -196,9 +196,11 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                 </h4>
 
                                 {paso.subpasos.map((sp) => {
-                                    const totalTime = parseFloat(sp.tHumano || 0) + parseFloat(sp.tAutonomo || 0);
-                                    const humanPct = totalTime > 0 ? (parseFloat(sp.tHumano || 0) / totalTime) * 100 : 0;
-                                    const autoPct = totalTime > 0 ? (parseFloat(sp.tAutonomo || 0) / totalTime) * 100 : 0;
+                                    const tH = parseFloat(sp.tHumano) || 0;
+                                    const tA = parseFloat(sp.tAutonomo) || 0;
+                                    const totalTime = tH + tA;
+                                    const humanPct = totalTime > 0 ? (tH / totalTime) * 100 : 0;
+                                    const autoPct = totalTime > 0 ? (tA / totalTime) * 100 : 0;
 
                                     return (
                                         <div key={sp.id} style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderColor: activeTheme.border }} className="border rounded-2xl p-4 mb-4 flex gap-4 shadow-sm relative transition-all">
