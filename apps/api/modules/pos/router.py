@@ -143,6 +143,54 @@ async def heartbeat_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncS
         raise HTTPException(status_code=404, detail="No active lock found for this terminal/user.")
     return {"status": "alive", "terminal_id": terminal_id}
 
+@router.post("/tickets/emergency-save")
+async def emergency_save_ticket(payload: dict, db: AsyncSession = Depends(get_db)):
+    """
+    v4.0 ZERO-LOSS: Endpoint de emergencia para sendBeacon (cierre de navegador).
+    Acepta un payload simplificado y hace lo posible por guardar el ticket.
+    No lanza excepciones — siempre retorna 200 para no bloquear el cierre del navegador.
+    """
+    import logging
+    logger = logging.getLogger("pos.emergency")
+    
+    try:
+        account_num = payload.get("account_num")
+        items = payload.get("items", [])
+        
+        if not account_num or not items:
+            logger.warning("Emergency save: payload incompleto, ignorando")
+            return {"status": "ignored", "reason": "incomplete payload"}
+        
+        logger.warning(f"🆘 EMERGENCY SAVE: {account_num} con {len(items)} items")
+        
+        # Buscar sesión activa para cualquier terminal
+        from sqlalchemy.future import select
+        from .models import TerminalSession
+        result = await db.execute(
+            select(TerminalSession).where(TerminalSession.is_active == True).limit(1)
+        )
+        session = result.scalars().first()
+        
+        if not session:
+            logger.error("Emergency save: No hay sesión activa")
+            return {"status": "failed", "reason": "no active session"}
+        
+        # Construir TicketCreate y guardar
+        ticket_data = schemas.TicketCreate(
+            account_num=account_num,
+            session_id=session.id,
+            items=[schemas.TicketItemCreate(**item) for item in items],
+            status="OPEN"
+        )
+        
+        await pos_service.create_ticket(db, ticket_data)
+        logger.warning(f"✅ EMERGENCY SAVE exitoso: {account_num}")
+        return {"status": "saved", "account_num": account_num}
+        
+    except Exception as e:
+        logger.error(f"❌ EMERGENCY SAVE falló: {e}")
+        return {"status": "failed", "error": str(e)}
+
 @router.post("/vision/training/upload")
 async def upload_vision_training(payload: schemas.VisionTrainingUpload):
     return await pos_service.upload_training_images(payload)

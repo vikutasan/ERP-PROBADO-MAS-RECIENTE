@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount, cashEnabled = false }) => {
+export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount, cashEnabled = false, isSendingToPizarron = false }) => {
     const [editMode, setEditMode] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [editInputValue, setEditInputValue] = useState('');
@@ -140,13 +140,32 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                 <div className="flex flex-col gap-3">
                     <button 
                         onClick={handleHoldAccount}
-                        className="w-full bg-[#c1d72e] border-2 border-black hover:bg-black hover:text-[#c1d72e] p-6 flex flex-col items-center justify-center transition-all active:scale-95 group shadow-[4px_4px_0_rgba(0,0,0,1)] hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] relative overflow-hidden">
+                        disabled={isSendingToPizarron || cart.length === 0}
+                        className={`w-full border-2 border-black p-6 flex flex-col items-center justify-center transition-all group shadow-[4px_4px_0_rgba(0,0,0,1)] relative overflow-hidden ${
+                            isSendingToPizarron 
+                                ? 'bg-yellow-400 cursor-wait animate-pulse' 
+                                : cart.length === 0 
+                                    ? 'bg-gray-300 cursor-not-allowed opacity-50'
+                                    : 'bg-[#c1d72e] hover:bg-black hover:text-[#c1d72e] active:scale-95 hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]'
+                        }`}>
                         <div className="flex items-center gap-4">
-                            <span className="text-3xl grayscale group-hover:grayscale-0 animate-bounce">📌</span>
-                            <div className="text-left">
-                                <span className="block text-[14px] font-black uppercase tracking-tighter leading-none">ABRIR NUEVA CUENTA</span>
-                                <span className="block text-[8px] font-bold text-black/40 group-hover:text-[#c1d72e]/40 uppercase tracking-widest mt-1">Enviar ticket al pizarron central</span>
-                            </div>
+                            {isSendingToPizarron ? (
+                                <>
+                                    <span className="text-3xl animate-spin">⏳</span>
+                                    <div className="text-left">
+                                        <span className="block text-[14px] font-black uppercase tracking-tighter leading-none">GUARDANDO...</span>
+                                        <span className="block text-[8px] font-bold text-black/40 uppercase tracking-widest mt-1">Enviando al servidor</span>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-3xl grayscale group-hover:grayscale-0 animate-bounce">📌</span>
+                                    <div className="text-left">
+                                        <span className="block text-[14px] font-black uppercase tracking-tighter leading-none">ABRIR NUEVA CUENTA</span>
+                                        <span className="block text-[8px] font-bold text-black/40 group-hover:text-[#c1d72e]/40 uppercase tracking-widest mt-1">Enviar ticket al pizarron central</span>
+                                    </div>
+                                </>
+                            )}
                         </div>
                         <div className="absolute right-[-10px] bottom-[-10px] text-6xl opacity-10 group-hover:opacity-20 transition-opacity">
                             🛒

@@ -33,6 +33,7 @@ class Ticket(Base):
     payment_details = Column(JSON, nullable=True) # Almacena lista de pagos mixtos
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="OPEN") # OPEN, PAID, CANCELLED
+    version = Column(Integer, default=1, nullable=False)  # Bloqueo optimista: se incrementa en cada update
     
     # --- Data del OMS (Order Management System) ---
     order_type = Column(String, default="VENTA_DIRECTA") # VENTA_DIRECTA, PEDIDO

@@ -40,6 +40,7 @@ class TicketCreate(TicketBase):
     cash_session_id: Optional[int] = None
     captured_by_id: Optional[int] = None
     cashed_by_id: Optional[int] = None
+    version: Optional[int] = None  # Bloqueo optimista: enviar la versión conocida para validar
 
 class TicketResponse(TicketBase):
     id: int
@@ -54,6 +55,7 @@ class TicketResponse(TicketBase):
     captured_by_name: Optional[str] = None
     cashed_by_name: Optional[str] = None
     terminal_id: Optional[str] = None
+    version: int = 1  # Bloqueo optimista
     created_at: datetime
     items: List[TicketItemResponse] = []
     model_config = ConfigDict(from_attributes=True)
