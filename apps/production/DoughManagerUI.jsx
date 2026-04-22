@@ -1056,22 +1056,16 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                         )}
 
                         {step === 3 && (
-                            <div className="space-y-4 animate-in fade-in duration-500">
-                                <div className="flex flex-col items-center justify-center py-10">
-                                    <div className="flex flex-col items-center gap-6">
-                                        <button 
-                                            onClick={() => setIsConfiguringProduction(true)} 
-                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
-                                            className="px-10 py-6 rounded-[30px] text-xs font-black uppercase tracking-[0.2em] hover:scale-105 transition-all flex items-center gap-4 shadow-2xl"
-                                        >
-                                            <Settings2 size={20}/>
-                                            Establecer Proceso de Producción
-                                        </button>
-                                        <div className="text-center max-w-md">
-                                            <h3 style={{ color: theme.text }} className="text-xl font-black italic uppercase">Pasos y Subpasos</h3>
-                                            <p style={{ color: theme.text }} className="text-[10px] font-bold uppercase tracking-widest opacity-60 mt-1">Configuración avanzada para Agente de Voz y Coaching</p>
-                                        </div>
-                                    </div>
+                            <div className="space-y-4 animate-in fade-in duration-500 flex flex-col h-full">
+                                <div className="flex justify-between items-center mb-2 shrink-0 gap-4">
+                                    <h3 style={{ color: theme.text }} className="text-2xl font-black italic uppercase border-b border-black/10 pb-2 flex-1">Proceso de <span className="opacity-40 ml-2">Revoltura</span></h3>
+                                    <button 
+                                        onClick={() => setIsConfiguringProduction(true)} 
+                                        style={{ backgroundColor: theme.text, color: theme.bg }} 
+                                        className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
+                                    >
+                                        <Settings2 size={14}/> Establecer Proceso
+                                    </button>
                                 </div>
                                 
                                 <div className="space-y-6 max-w-4xl mx-auto pb-10">
@@ -1084,7 +1078,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                         formData.pasosProduccion.map((p, pIdx) => (
                                             <div key={p.id} style={{ backgroundColor: theme.input }} className="p-8 rounded-[40px] border border-black/5 shadow-sm">
                                                 <div className="flex items-center gap-4 mb-4">
-                                                    <div style={{ backgroundColor: theme.text, color: theme.bg }} className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black italic">
+                                                    <div style={{ backgroundColor: theme.text, color: theme.bg }} className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-black italic shrink-0">
                                                         {pIdx + 1}
                                                     </div>
                                                     <h4 style={{ color: theme.text }} className="text-lg font-black uppercase italic">{p.nombre}</h4>
@@ -1097,8 +1091,8 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                         <div key={s.id} className="flex items-center justify-between p-4 bg-white/40 rounded-2xl border border-black/5">
                                                             <div className="flex-1 flex flex-col gap-1">
                                                                 <div className="flex items-center gap-4">
-                                                                    <span style={{ color: theme.text }} className="text-[10px] font-black opacity-30">{pIdx + 1}.{sIdx + 1}</span>
-                                                                    <span style={{ color: theme.text }} className="text-xs font-black uppercase">{s.nombre}</span>
+                                                                    <span style={{ color: theme.text }} className="text-sm font-black opacity-80">{pIdx + 1}.{sIdx + 1}</span>
+                                                                    <span style={{ color: theme.text }} className="text-sm font-black uppercase tracking-tight">{s.nombre}</span>
                                                                 </div>
                                                                 {s.instruccionVoz && (
                                                                     <p style={{ color: theme.text }} className="text-[10px] font-bold opacity-50 italic pl-7 leading-tight">{s.instruccionVoz}</p>
