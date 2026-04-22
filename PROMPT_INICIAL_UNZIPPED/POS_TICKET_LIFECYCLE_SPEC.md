@@ -8,7 +8,7 @@
 > los race conditions de closures de React que causaron pérdida de datos en producción.
 >
 > Última actualización: 2026-04-22
-> Versión: 3.0 — POST-INCIDENTE #906
+> Versión: 4.0 — ZERO-LOSS ENDURECIMIENTO
 
 ---
 
@@ -25,6 +25,21 @@ obsoleto** en vez de leer el valor actual desde un `useRef`. Cuando el auto-save
 disparó con una versión antigua de `handleTicketAction`, envió al servidor un
 carrito incorrecto (1 item) con el folio correcto (V11906), **sobreescribiendo**
 los 8 items originales en la base de datos.
+
+---
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.0 (ZERO-LOSS)
+
+**Fecha:** 22/Abril/2026
+**Ticket:** #125 ($205) y #169
+**Síntoma:** Pérdida silenciosa del ticket #125 enviado al pizarrón (error de red silencioso) y sobrescritura cruzada del ticket #169 (dos usuarios editando la misma cuenta).
+
+**Causa raíz:** 
+1. El botón de enviar al pizarrón era "fire-and-forget" y limpiaba el carrito ANTES de confirmar el guardado. Si la red fallaba, el ticket desaparecía para siempre.
+2. La falta de bloqueo optimista permitía que un usuario sobreescribiera la versión actualizada de otro.
+3. El auto-save fallaba en silencio, sin avisar al usuario.
+
+**Solución Implementada (Reglas 9 a 11):** Guardado inmediato al primer producto, bloqueo optimista con `version` en DB, auto-save visible (badge rojo), confirmación obligatoria al guardar, y protección contra cierre de pestaña (`sendBeacon`).
 
 ---
 
@@ -241,6 +256,28 @@ const handleRecoverAccount = (account) => {
 
 - `alert()` bloquea JavaScript → interrumpe `iframe.print()`, polling, auto-save.
 
+### ⚡ REGLA 9 — GUARDADO INMEDIATO Y CONFIRMACIÓN OBLIGATORIA (ZERO-LOSS)
+
+```
+⛔ PROHIBIDO: Limpiar el carrito (`clearCart`) sin confirmar que el servidor guardó el ticket (respuesta 200).
+✅ OBLIGATORIO: Mostrar estado de loading (`isSendingToPizarron`) y limpiar el carrito SOLO si `savedTicket` existe.
+```
+Además, el ticket debe guardarse automáticamente en el servidor en el momento en que se agrega el primer producto (con status OPEN).
+
+### ⚡ REGLA 10 — BLOQUEO OPTIMISTA ANTI-SOBREESCRITURAS
+
+```
+⛔ PROHIBIDO: Actualizar el ticket enviando solo los datos actuales.
+✅ OBLIGATORIO: Enviar la `version` del ticket en cada petición de actualización.
+```
+El servidor validará que la `version` del cliente coincida con la de la BD. Si no coincide, lanzará un error 409 (Conflicto), obligando al usuario a refrescar.
+
+### ⚡ REGLA 11 — VISIBILIDAD DE AUTO-SAVE Y CIERRE DE NAVEGADOR
+
+- El Auto-Save debe tener feedback visual en la UI (`⚠️ SIN GUARDAR` o `✅ 11:05`).
+- El componente principal debe incluir un `beforeunload` listener para interceptar cierres accidentales.
+- Si se cierra accidentalmente, se debe intentar un `Emergency Save` usando `navigator.sendBeacon`.
+
 ---
 
 ## 3. FLUJO COMPLETO DEL TICKET
@@ -346,6 +383,7 @@ const handleRecoverAccount = (account) => {
 | `terminal_id` | STRING | Terminal donde se creó (campo directo, NO derivado) |
 | `total` | FLOAT | Total calculado por el servidor desde items |
 | `status` | STRING | `OPEN`, `PAID`, `CANCELLED` |
+| `version` | INT | Bloqueo optimista (se incrementa en cada update) |
 | `payment_details` | JSON | Lista de pagos mixtos |
 | `session_id` | FK → terminal_sessions | Sesión del terminal |
 | `cash_session_id` | FK → cash_sessions | Sesión de caja |
@@ -428,7 +466,10 @@ const handleRecoverAccount = (account) => {
 
 Antes de hacer CUALQUIER cambio en el flujo de tickets:
 
-- [ ] ¿Las funciones asíncronas/timers leen de **refs** (`cartRef`, `accountNumRef`, `originalCapturerRef`), NO de closures de state?
+- [ ] ¿Las funciones asíncronas/timers leen de **refs** (`cartRef`, `accountNumRef`, `originalCapturerRef`, `ticketVersionRef`), NO de closures de state?
+- [ ] ¿El ticket envía su `version` para bloqueo optimista?
+- [ ] ¿El botón Pizarrón espera la confirmación del servidor ANTES de hacer `clearCart()`?
+- [ ] ¿Existe feedback visual explícito si el auto-save falla?
 - [ ] ¿El useEffect del auto-save tiene dependencia en **`cart`** (array completo), NO en `cart.length`?
 - [ ] ¿`handleRecoverAccount` activa `isRecoveringRef` ANTES de mutar estado y lo desactiva DESPUÉS del render?
 - [ ] ¿El folio se genera exclusivamente con `nextval('ticket_folio_seq')`?
