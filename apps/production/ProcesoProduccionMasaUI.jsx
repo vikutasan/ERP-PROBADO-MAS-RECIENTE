@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
     ArrowLeft, Save, ChevronDown, ChevronRight, Plus, 
-    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered 
+    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered, Info, X 
 } from 'lucide-react';
 
 export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, onSave, initialData }) => {
@@ -9,6 +9,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
     const activeTheme = theme || { bg: '#f3f4f6', input: '#ffffff', text: '#1f2937', border: '#e5e7eb' };
 
     // Initial state matching the 28-column schema we defined
+    const [showInfoModal, setShowInfoModal] = useState(false);
     const [pasos, setPasos] = useState(initialData || [
         {
             id: '1',
@@ -174,7 +175,15 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                 />
                             </div>
                             <div className="flex-1 flex flex-col gap-1 max-w-[200px]">
-                                <label style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-widest opacity-80">Grupo Maquinaria</label>
+                                <div className="flex items-center gap-2">
+                                    <label style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-widest opacity-80">Grupo Maquinaria</label>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setShowInfoModal(true); }}
+                                        className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center hover:scale-125 transition-all shadow-md shrink-0"
+                                    >
+                                        <Info size={12} fill="currentColor" />
+                                    </button>
+                                </div>
                                 <input 
                                     type="text" 
                                     style={{ color: activeTheme.text }}
@@ -359,8 +368,65 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                 <button onClick={addPaso} style={{ color: activeTheme.text, backgroundColor: activeTheme.input, borderColor: activeTheme.border }} className="w-full py-6 border-2 border-dashed rounded-3xl font-black text-sm uppercase tracking-widest hover:scale-[1.01] transition-all flex items-center justify-center gap-2 shadow-sm mb-20">
                     <Plus size={20} /> AGREGAR NUEVO PASO PRINCIPAL
                 </button>
-
             </div>
+
+            {/* INFO MODAL FOR MACHINERY GROUP */}
+            {showInfoModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+                    <div style={{ backgroundColor: activeTheme.input }} className="w-full max-w-xl rounded-[40px] p-10 border border-black/10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.5)]"></div>
+                        <div className="flex justify-between items-start mb-8">
+                            <div className="flex items-center gap-4">
+                                <div className="w-14 h-14 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                                    <Info size={32} />
+                                </div>
+                                <div>
+                                    <h3 style={{ color: activeTheme.text }} className="text-3xl font-black italic uppercase tracking-tighter">Grupo Maquinaria</h3>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-orange-500/60">Manual de Operación de Planta</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowInfoModal(false)} className="w-10 h-10 bg-black/5 flex items-center justify-center rounded-full transition-all hover:bg-red-500 hover:text-white">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-6">
+                            <div className="p-6 bg-orange-500/5 rounded-[30px] border border-orange-500/10">
+                                <p style={{ color: activeTheme.text }} className="text-xs font-black uppercase tracking-[0.2em] mb-2 opacity-50">¿Cuál es su utilidad?</p>
+                                <p style={{ color: activeTheme.text }} className="text-lg font-bold leading-tight italic">
+                                    "Este campo es la llave que vincula este paso de producción con un equipo físico real dentro de la planta."
+                                </p>
+                            </div>
+                            
+                            <div className="p-6 bg-black/5 rounded-[30px]">
+                                <p style={{ color: activeTheme.text }} className="text-xs font-black uppercase tracking-[0.2em] mb-4 opacity-50">Efectos Directos en Producción:</p>
+                                <ul style={{ color: activeTheme.text }} className="text-base font-bold space-y-4 list-none">
+                                    <li className="flex gap-3">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-2 shrink-0"></div>
+                                        <span><span className="text-orange-600 uppercase tracking-tighter italic mr-1">Anticolisión:</span> Impide que se asigne más de un proceso al mismo motor o equipo simultáneamente.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-2 shrink-0"></div>
+                                        <span><span className="text-orange-600 uppercase tracking-tighter italic mr-1">Agente de Voz:</span> Sincroniza las instrucciones del asistente según la ubicación de la maquinaria.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-2 shrink-0"></div>
+                                        <span><span className="text-orange-600 uppercase tracking-tighter italic mr-1">Plan Maestro:</span> Es indispensable para calcular los tiempos de espera y el flujo total de la planta.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={() => setShowInfoModal(false)}
+                            style={{ backgroundColor: activeTheme.text, color: activeTheme.bg }}
+                            className="w-full mt-10 py-6 rounded-[25px] font-black text-sm uppercase tracking-[0.3em] hover:scale-[1.02] active:scale-95 transition-all shadow-2xl shadow-black/20"
+                        >
+                            Entendido, cerrar guía
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
