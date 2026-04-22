@@ -4,8 +4,8 @@
 > CUALQUIER lógica relacionada con tickets, folios, carrito, cobros, auto-save,
 > pizarrón, auditoría, o impresión.
 >
-> **Este documento reemplaza la versión 2.0.** La versión anterior NO documentaba
-> los race conditions de closures de React que causaron pérdida de datos en producción.
+> **Este documento reemplaza la versión 3.0.** La versión anterior NO incluía
+> las protecciones Zero-Loss contra pérdida silenciosa de tickets por fallos de red.
 >
 > Última actualización: 2026-04-22
 > Versión: 4.0 — ZERO-LOSS ENDURECIMIENTO
@@ -55,7 +55,8 @@ los 8 items originales en la base de datos.
   localStorage         _populate_           ticket_folio_seq
   useRef (CRITICO)     flat_fields()        (secuencia atómica)
   cartRef              FOR UPDATE           FOR UPDATE SKIP LOCKED
-  accountNumRef
+  accountNumRef        version (OL)         sendBeacon (emergency)
+  ticketVersionRef
 ```
 
 ### Archivos Críticos y sus Responsabilidades
@@ -102,6 +103,7 @@ const accountNumRef = React.useRef('');
 const originalCapturerRef = React.useRef(null);   // ← DEBE EXISTIR
 const isGeneratingFolioRef = React.useRef(false);
 const isRecoveringRef = React.useRef(false);       // ← DEBE EXISTIR
+const ticketVersionRef = React.useRef(1);          // ← v4.0 ZERO-LOSS
 
 // Sincronización:
 React.useEffect(() => { cartRef.current = cart; }, [cart]);
@@ -144,8 +146,11 @@ useEffect(() => {
         if (isGeneratingFolioRef.current) return;
         if (isRecoveringRef.current) return;  // ← OBLIGATORIO
         if (!accountNumRef.current || cartRef.current.length === 0) return;
-        handleTicketAction('OPEN', null, false).catch(e => console.warn("Auto-save failed:", e));
-    }, 30000);
+        handleTicketAction('OPEN', null, false).catch(e => {
+            console.warn("Auto-save failed:", e);
+            setLastSaveStatus('failed');  // ← v4.0: feedback visual obligatorio
+        });
+    }, 15000);  // ← v4.0: reducido de 30s a 15s
 
     return () => clearInterval(autoSaveTimer);
 }, [currentAccountNum, cart, showCheckout]);  // ← cart, NO cart.length
@@ -260,29 +265,77 @@ const handleRecoverAccount = (account) => {
 
 ```
 ⛔ PROHIBIDO: Limpiar el carrito (`clearCart`) sin confirmar que el servidor guardó el ticket (respuesta 200).
+⛔ PROHIBIDO: Hacer clearCart() y luego intentar guardar (fire-and-forget).
 ✅ OBLIGATORIO: Mostrar estado de loading (`isSendingToPizarron`) y limpiar el carrito SOLO si `savedTicket` existe.
+✅ OBLIGATORIO: Guardar el ticket al servidor al agregar el PRIMER producto (handleAddToCart).
 ```
-Además, el ticket debe guardarse automáticamente en el servidor en el momento en que se agrega el primer producto (con status OPEN).
+
+**Flujo obligatorio del botón Pizarrón:**
+```javascript
+// 1. Bloquear UI
+setIsSendingToPizarron(true);
+
+// 2. Enviar al servidor y ESPERAR respuesta
+const savedTicket = await handleTicketAction('OPEN', null, true);
+
+// 3. SOLO limpiar si el servidor confirmó
+if (savedTicket) {
+    clearCart();
+    setCurrentAccountNum('');
+    toast.success('📌 Cuenta guardada exitosamente.');
+} else {
+    toast.error('❌ Error al guardar. Tu carrito NO se borró.');
+}
+
+// 4. Desbloquear UI
+setIsSendingToPizarron(false);
+```
 
 ### ⚡ REGLA 10 — BLOQUEO OPTIMISTA ANTI-SOBREESCRITURAS
 
 ```
-⛔ PROHIBIDO: Actualizar el ticket enviando solo los datos actuales.
+⛔ PROHIBIDO: Actualizar el ticket enviando solo los datos actuales sin versión.
 ✅ OBLIGATORIO: Enviar la `version` del ticket en cada petición de actualización.
 ```
-El servidor validará que la `version` del cliente coincida con la de la BD. Si no coincide, lanzará un error 409 (Conflicto), obligando al usuario a refrescar.
+
+- La tabla `tickets` tiene una columna `version` (INTEGER, default=1).
+- Cada `_update_ticket_fields()` incrementa `version += 1`.
+- `_upsert_ticket_header()` valida que la versión del cliente coincida con la de la BD.
+- Si no coincide → **HTTP 409 Conflict** con mensaje `"Conflicto de versión"`.
+- El frontend debe capturar el 409 y mostrar un toast de advertencia, forzando al usuario a refrescar.
+
+**Refs obligatorias:**
+```javascript
+const ticketVersionRef = React.useRef(1);
+
+// Al guardar exitosamente:
+ticketVersionRef.current = savedTicket.version;
+
+// Al enviar al servidor:
+version: ticketVersionRef.current,
+```
 
 ### ⚡ REGLA 11 — VISIBILIDAD DE AUTO-SAVE Y CIERRE DE NAVEGADOR
 
-- El Auto-Save debe tener feedback visual en la UI (`⚠️ SIN GUARDAR` o `✅ 11:05`).
-- El componente principal debe incluir un `beforeunload` listener para interceptar cierres accidentales.
-- Si se cierra accidentalmente, se debe intentar un `Emergency Save` usando `navigator.sendBeacon`.
+```
+⛔ PROHIBIDO: Auto-save silencioso sin feedback visual al usuario.
+⛔ PROHIBIDO: Permitir cerrar la pestaña con items no guardados sin advertencia.
+✅ OBLIGATORIO: Badge visible de estado de guardado (⚠️ SIN GUARDAR / ✅ HH:MM).
+✅ OBLIGATORIO: Listener `beforeunload` + `navigator.sendBeacon` como último recurso.
+```
+
+- Estado `lastSaveStatus`: `'unsaved'` | `'saving'` | `'saved'` | `'failed'`
+- Si `failed` → badge rojo parpadeante `⚠️ SIN GUARDAR` visible en el Pizarrón.
+- Si `saved` → badge verde `✅ 11:05` con hora del último guardado exitoso.
+- `beforeunload`: muestra diálogo nativo de advertencia si hay items no guardados.
+- `sendBeacon`: envía POST a `/api/v1/pos/tickets/emergency-save` con el carrito actual.
+- El endpoint de emergencia **nunca lanza excepciones** — siempre retorna 200.
 
 ---
 
 ## 3. FLUJO COMPLETO DEL TICKET
 
-### 3.1 Reserva (Lazy)
+### 3.1 Reserva + Guardado Inmediato (v4.0)
 
 ```
 1. Usuario agrega primer producto → handleAddToCart(product)
@@ -296,14 +349,17 @@ El servidor validará que la `version` del cliente coincida con la de la BD. Si 
    → Si no: _generate_consecutive_ticket() con nextval('ticket_folio_seq')
 7. Frontend: setCurrentAccountNum(ticket.account_num)
 8. isGeneratingFolioRef.current = false
+9. ⚡ v4.0: handleTicketAction('OPEN') — GUARDADO INMEDIATO al servidor
+   → El ticket se persiste con el primer producto sin esperar al auto-save
+   → Si falla: setLastSaveStatus('failed') → badge visible
 ```
 
-### 3.2 Auto-Save (Pizarrón) — CADA 30 SEGUNDOS
+### 3.2 Auto-Save (Pizarrón) — CADA 15 SEGUNDOS (v4.0)
 
 ```
 1. useEffect se activa cuando cambian: currentAccountNum, cart, showCheckout
 2. Si !currentAccountNum || cart.length === 0 || showCheckout → NO crear timer
-3. setInterval(30000):
+3. setInterval(15000):  ← v4.0: reducido de 30s a 15s
    a. Si isGeneratingFolioRef.current → SKIP
    b. Si isRecoveringRef.current → SKIP (NUEVO — v3.0)
    c. Si !accountNumRef.current || cartRef.current.length === 0 → SKIP
@@ -311,21 +367,38 @@ El servidor validará que la `version` del cliente coincida con la de la BD. Si 
       → LEE cartRef.current (NO cart)
       → LEE accountNumRef.current (NO currentAccountNum)
       → LEE originalCapturerRef.current (NO originalCapturer)
-4. Servidor: _upsert_ticket_header() con FOR UPDATE
+      → ENVÍA ticketVersionRef.current (v4.0 — bloqueo optimista)
+4. Servidor: _upsert_ticket_header() con FOR UPDATE + validación de version
    → Actualiza total, items, campos OMS, captured_by_id
-5. El ticket aparece en el Pizarrón (get_open_tickets WHERE status=OPEN AND total>0)
+   → Incrementa version += 1
+5. Frontend: ticketVersionRef.current = response.version
+6. setLastSaveStatus('saved') o setLastSaveStatus('failed')
+7. El ticket aparece en el Pizarrón (get_open_tickets WHERE status=OPEN AND total>0)
 ```
 
-### 3.3 Guardar en Pizarrón (Manual)
+### 3.3 Guardar en Pizarrón (Manual) — PROTOCOLO ZERO-LOSS (v4.0)
 
 ```
-1. Usuario hace click en botón "Guardar en Pizarrón"
-2. handleTicketAction('OPEN', null, true)
-   → finalizeUI = true → después de guardar, limpia el carrito
-3. Servidor guarda el ticket completo
-4. Frontend: clearCart(), setCurrentAccountNum(''), setOriginalCapturer(null)
-5. El capturista escribe el papelito con # de cuenta y total
+1. Usuario hace click en botón "ABRIR NUEVA CUENTA"
+2. ⚡ setIsSendingToPizarron(true) → botón se bloquea, muestra "⏳ GUARDANDO..."
+3. const savedTicket = await handleTicketAction('OPEN', null, true)
+   → Envía items + version al servidor
+4. Servidor: _upsert_ticket_header() + validación de version
+5. ⚡ SI savedTicket existe (respuesta 200):
+   → clearCart(), setCurrentAccountNum(''), setOriginalCapturer(null)
+   → Toast verde: "📌 Cuenta guardada en el Pizarrón exitosamente."
+   → setIsSendingToPizarron(false)
+6. ⚡ SI savedTicket es null (error de red/servidor):
+   → El carrito NO se limpia — los items permanecen en pantalla
+   → Toast rojo: "❌ Error al guardar. Tu carrito NO se borró."
+   → setIsSendingToPizarron(false)
+   → El usuario puede reintentar
+7. El capturista escribe el papelito con # de cuenta y total
 ```
+
+> **⛔ CAMBIO CRÍTICO v4.0:** En versiones anteriores (v3.0 y previas), el paso 4
+> hacía `clearCart()` ANTES de verificar la respuesta del servidor. Esto causó la
+> pérdida del ticket #125 ($205 MXN) cuando la red falló silenciosamente.
 
 ### 3.4 Recuperación desde Pizarrón — PROTOCOLO CRÍTICO
 
@@ -424,12 +497,13 @@ El servidor validará que la `version` del cliente coincida con la de la BD. Si 
 ## 5. BACKEND: FUNCIONES CRÍTICAS Y SUS CONTRATOS
 
 ### `_upsert_ticket_header()` — service.py
-- **Input:** account_num, items, status, captured_by_id, cashed_by_id
+- **Input:** account_num, items, status, captured_by_id, cashed_by_id, **version** (v4.0)
 - **Comportamiento:**
   1. `SELECT ... FOR UPDATE` por account_num → bloquea la fila
   2. Si existe y `status == 'PAID'` → **rechaza con HTTP 400** (idempotencia)
-  3. Si existe y `status != 'PAID'` → `_update_ticket_fields()`
-  4. Si no existe → `_initialize_new_ticket()`
+  3. ⚡ v4.0: Si existe y `ticket.version != payload.version` → **rechaza con HTTP 409** (conflicto optimista)
+  4. Si existe y `status != 'PAID'` → `_update_ticket_fields()` → `version += 1`
+  5. Si no existe → `_initialize_new_ticket()` con `version = 1`
 - **NUNCA modificar sin FOR UPDATE**
 
 ### `_sync_ticket_items()` — service.py
@@ -494,6 +568,9 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `alert()` después de cobro | Impresión bloqueada | REGLA 8: Toast |
 | `SELECT → UPDATE` sin `FOR UPDATE` | Race condition entre auto-save y cobro simultáneo | REGLA 6: FOR UPDATE |
 | Crear ticket sin `captured_by_id` | Auditoría mostraba "SISTEMA" en vez del empleado real | REGLA 7: Desde reserva |
+| `clearCart()` antes de confirmar respuesta del servidor | **Ticket #125: $205 perdidos** — Red falló, carrito se borró, ticket nunca llegó al servidor | REGLA 9: Confirmar 200 antes de limpiar |
+| Sin bloqueo optimista (`version`) | **Ticket #169: sobrescritura cruzada** — Dos usuarios editaron la misma cuenta, el último borró los cambios del primero | REGLA 10: `version` en cada update |
+| Auto-save fallaba en silencio | Usuario no sabía que su ticket no se había guardado. Continuaba trabajando creyendo que estaba respaldado | REGLA 11: Badge visual obligatorio |
 
 ---
 
@@ -537,7 +614,7 @@ T=30s   ✅ Auto-save lee cartRef.current (que es [BOLSA para V11907])
 > **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
 >
 > Cualquier IA o desarrollador que modifique el sistema DEBE leerlo primero
-> y verificar que sus cambios no violan NINGUNA de las 8 reglas.
+> y verificar que sus cambios no violan NINGUNA de las 11 reglas.
 >
-> **Las reglas 1, 2 y 3 son las más críticas.** Violarlas causa pérdida
+> **Las reglas 1, 2, 3, 9 y 10 son las más críticas.** Violarlas causa pérdida
 > silenciosa de datos en producción.
