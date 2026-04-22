@@ -154,13 +154,32 @@ class POSService:
         - Productos que ya estaban → actualiza qty/precio
         - Productos nuevos → inserta
         - Productos que ya no están → elimina
+        
+        v3.0: Incluye detección anti-downgrade para auditoría.
         """
+        import logging
+        logger = logging.getLogger("pos.ticket_sync")
+
         # Obtener items actuales del ticket
         existing_result = await db.execute(
             select(models.TicketItem).where(models.TicketItem.ticket_id == ticket_id)
         )
         existing_items = {item.product_id: item for item in existing_result.scalars().all()}
         
+        # v3.0 ANTI-DOWNGRADE: Detectar reducciones drásticas de items (señal de stale closure)
+        old_count = len(existing_items)
+        new_count = len(db_items)
+        if old_count > 0 and new_count > 0 and new_count < old_count:
+            old_total = sum(item.subtotal for item in existing_items.values())
+            new_total = sum(item.subtotal for item in db_items)
+            drop_pct = ((old_total - new_total) / old_total * 100) if old_total > 0 else 0
+            if drop_pct > 50:
+                logger.warning(
+                    f"⚠️ ANTI-DOWNGRADE: Ticket #{ticket_id} — Items: {old_count}→{new_count}, "
+                    f"Total: ${old_total:.2f}→${new_total:.2f} (caída {drop_pct:.0f}%%). "
+                    f"Posible stale closure. Revisar si es intencional."
+                )
+
         new_product_ids = set()
         for new_item in db_items:
             new_product_ids.add(new_item.product_id)

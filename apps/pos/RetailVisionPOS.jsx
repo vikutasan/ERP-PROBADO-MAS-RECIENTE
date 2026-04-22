@@ -40,7 +40,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const savedTicketRef = React.useRef(null); // Ref inmediata para datos de impresión (no depende de re-render)
     const cartRef = React.useRef([]);           // Ref para auto-save anti-stale-closure
     const accountNumRef = React.useRef('');      // Ref para auto-save anti-stale-closure
+    const originalCapturerRef = React.useRef(null); // Ref anti-stale para capturista original (v3.0)
     const isGeneratingFolioRef = React.useRef(false); // Flag para bloquear auto-save durante generación
+    const isRecoveringRef = React.useRef(false);      // Flag para bloquear auto-save durante recuperación del pizarrón (v3.0)
 
     // --- Estado de Ocupación de Terminales (Custom Hook) ---
     const { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal } = useTerminalLocking(selectedTerminal, currentUser);
@@ -69,8 +71,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const { isScanning, setIsScanning } = useVision();
 
     // --- Mantener refs sincronizadas con state (anti-stale-closure) ---
+    // REGLA 1 de POS_TICKET_LIFECYCLE_SPEC v3.0: TODA variable leída en timers/callbacks DEBE tener ref
     React.useEffect(() => { cartRef.current = cart; }, [cart]);
     React.useEffect(() => { accountNumRef.current = currentAccountNum; }, [currentAccountNum]);
+    React.useEffect(() => { originalCapturerRef.current = originalCapturer; }, [originalCapturer]);
 
     // --- Persistencia de Metadatos de Sesión ---
     useEffect(() => {
@@ -229,19 +233,21 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     }, [selectedTerminal, currentAccountNum, generateNewAccountNum]);
 
     // --- Auto-Guardado en Pizarrón (Garantizar captura) ---
+    // REGLA 2 de POS_TICKET_LIFECYCLE_SPEC v3.0: dependencia DEBE ser `cart` (NO `cart.length`)
     useEffect(() => {
         if (!currentAccountNum || cart.length === 0 || showCheckout) return;
 
         const autoSaveTimer = setInterval(() => {
             // ANTI-STALE-CLOSURE: Leer valores actuales desde refs, no desde closures
             if (isGeneratingFolioRef.current) return; // No guardar mientras se genera folio
+            if (isRecoveringRef.current) return; // v3.0: No guardar durante recuperación del pizarrón
             if (!accountNumRef.current || cartRef.current.length === 0) return;
             console.log("⏱️ Auto-guardando ticket en Pizarrón...");
             handleTicketAction('OPEN', null, false).catch(e => console.warn("Auto-save failed:", e));
         }, 30000); // Cada 30 segundos
 
         return () => clearInterval(autoSaveTimer);
-    }, [currentAccountNum, cart.length, showCheckout]);
+    }, [currentAccountNum, cart, showCheckout]); // v3.0: `cart` en vez de `cart.length` para reiniciar timer al cambiar contenido
 
     // --- Teclado (Barcode) ---
     useEffect(() => {
@@ -312,7 +318,12 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     };
 
     const handleTicketAction = async (status, paymentData = null, finalizeUI = true) => {
-        if (cart.length === 0) return alert("El ticket esta vacio.");
+        // v3.0 FIX — REGLA 1: Leer SIEMPRE de refs para evitar stale closures
+        const liveCart = cartRef.current;
+        const liveAccountNum = accountNumRef.current;
+        const liveCapturer = originalCapturerRef.current;
+
+        if (liveCart.length === 0) return alert("El ticket esta vacio.");
         
         // Si no hay datos de pago y se intenta cobrar, abrir pantalla de pago
         if (status === 'PAID' && (!paymentData || paymentData.length === 0)) {
@@ -321,7 +332,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
 
         try {
-            let targetAccountNum = currentAccountNum;
+            let targetAccountNum = liveAccountNum;
             if (!targetAccountNum) {
                 targetAccountNum = await generateNewAccountNum();
             }
@@ -334,11 +345,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             let payload = {
                 account_num: targetAccountNum,
                 session_id: session.id,
-                items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
+                items: liveCart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
                 status: status,
                 payment_details: paymentData,
                 cash_session_id: cashSessionId,
-                captured_by_id: originalCapturer?.id || currentUser?.id || null,
+                captured_by_id: liveCapturer?.id || currentUser?.id || null,
                 cashed_by_id: status === 'PAID' ? (currentUser?.id || null) : null,
                 order_type: orderType
             };
@@ -399,6 +410,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
     const handleRecoverAccount = (account) => {
         if (!account.rawItems?.length) return alert("Cuenta vacia.");
+
+        // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado
+        isRecoveringRef.current = true;
+
         const recovered = account.rawItems.map(i => {
             const originalProd = initialProducts.find(p => p.id === i.product.id) || {};
             return {
@@ -413,7 +428,6 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         setCart(recovered);
         setCurrentAccountNum(account.accountNum);
         // Guardar también quién la capturó originalmente para que persista en el ticket final
-        // Limpiamos los datos para asegurar que tengan el formato correcto
         const capturer = account.capturedById ? { 
             id: account.capturedById, 
             name: account.capturedByName 
@@ -441,6 +455,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
 
         setShowCorkboard(false);
+
+        // v3.0: Desbloquear auto-save DESPUÉS de que React procese todos los setState batched
+        requestAnimationFrame(() => {
+            isRecoveringRef.current = false;
+        });
     };
 
     useEffect(() => {
