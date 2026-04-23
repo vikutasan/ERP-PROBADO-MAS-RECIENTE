@@ -231,25 +231,31 @@ Las únicas formas legítimas de que una cuenta salga del pizarrón son:
 ### ¿Qué hace?
 
 Elimina el registro de `terminal_locks` para una terminal específica, sin importar quién la tenía.
+**Si la terminal tiene una CashSession activa**, transfiere la titularidad de esa sesión de caja al usuario que ejecutó el desbloqueo (Traspuesta de Titularidad).
 
 ### ¿Qué NO debe hacer?
 
 - **NO debe cerrar la CashSession.** El corte de caja es una operación contable separada.
-- **NO debe transferir la propiedad de la CashSession** al admin que fuerza el desbloqueo.
 - **NO debe eliminar tickets abiertos** de esa terminal.
 - **NO debe cerrar la TerminalSession.**
+
+### Regla: TRASPUESTA DE TITULARIDAD DE CAJA
+
+> Cuando se fuerza el desbloqueo de una terminal que tiene CashSession activa, el backend **DEBE** cambiar el `employee_id` y `employee_name` de esa CashSession al usuario que ejecutó el desbloqueo. Esto permite que el nuevo operador (gerente/supervisor) pueda emitir el Corte de Caja bajo su propio PIN y contabilidad. El cajero original pierde definitivamente la titularidad de esa sesión de caja.
 
 ### Flujo Esperado
 
 ```
-1. Admin ve que Terminal T5 está bloqueada por "JUAN"
+1. Admin ve que Terminal T5 está bloqueada por "JUAN" y tiene CAJA ABIERTA
 2. Admin presiona "Forzar Desbloqueo"
-3. Backend: Elimina el lock de T5 en terminal_locks
+3. Backend:
+   a. Elimina el lock de T5 en terminal_locks
+   b. Cambia employee_id y employee_name de la CashSession activa al Admin
 4. El polling del frontend de JUAN detecta que su lock ya no existe
 5. JUAN recibe modal informativo: "Un administrador liberó tu terminal"
 6. JUAN es redirigido a la pantalla de selección de terminal
-7. La CashSession de T5 (si existía) sigue abierta — JUAN u otro empleado
-   pueden volver a entrar a T5 y continuar con la sesión de caja existente
+7. El Admin es ahora el titular de la CashSession de T5
+   y puede continuar cobrando o sacar el Corte de Caja
 ```
 
 ---
