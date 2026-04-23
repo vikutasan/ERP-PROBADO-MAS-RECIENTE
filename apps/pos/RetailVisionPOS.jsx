@@ -190,6 +190,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     // nunca lea un accountNum vacío y genere un folio duplicado.
                     accountNumRef.current = ticket.account_num;
                     setCurrentAccountNum(ticket.account_num);
+                    
+                    // v4.4 Bugfix: Sincronizar versión del ticket reciclado para evitar 
+                    // que el primer auto-save envíe version=null y rompa el tracking
+                    const v = ticket.version || 1;
+                    ticketVersionRef.current = v;
+                    setTicketVersion(v);
+
                     const cap = ticket.captured_by
                         ? { id: ticket.captured_by.id, name: ticket.captured_by.name }
                         : currentUser;

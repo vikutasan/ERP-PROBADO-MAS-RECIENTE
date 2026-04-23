@@ -84,14 +84,29 @@ class POSService:
                     status_code=400, 
                     detail=f"El folio {ticket.account_num} ya ha sido pagado y no puede modificarse."
                 )
+            # Obtener el terminal_id de la petición entrante para verificaciones
+            req_terminal_id = None
+            if ticket.session_id:
+                session = await db.get(models.TerminalSession, ticket.session_id)
+                req_terminal_id = session.terminal_id if session else None
+
             # BLOQUEO OPTIMISTA v4.0: Si el cliente envía una versión, validar que coincida
             if ticket.version is not None and ticket.version != db_ticket.version:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Conflicto de versión en folio {ticket.account_num}. "
-                           f"Versión del cliente: {ticket.version}, versión actual: {db_ticket.version}. "
-                           f"Otro usuario modificó esta cuenta. Recupere la cuenta del Pizarrón e intente de nuevo."
-                )
+                # BYPASS v4.4: Falsos positivos por timeout de red ("Hora Pico")
+                # Si la petición viene de la MISMA terminal que ya es dueña del ticket, 
+                # es un reintento idempotente tras un fallo de red. Se perdona el conflicto.
+                if req_terminal_id and req_terminal_id == db_ticket.terminal_id:
+                    import logging
+                    logging.getLogger("pos.optimistic_lock").info(
+                        f"Bypass de version para {ticket.account_num} en {req_terminal_id}. Retry de red perdonado."
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Conflicto de versión en folio {ticket.account_num}. "
+                               f"Versión del cliente: {ticket.version}, versión actual: {db_ticket.version}. "
+                               f"Otro usuario modificó esta cuenta. Recupere la cuenta del Pizarrón e intente de nuevo."
+                    )
             return await self._update_ticket_fields(db, db_ticket, ticket, total)
         
         return await self._initialize_new_ticket(db, ticket, total)
@@ -120,9 +135,9 @@ class POSService:
         if ticket.captured_by_id:
             db_ticket.captured_by_id = ticket.captured_by_id
 
-        # Asegurar terminal_id directo siempre esté poblado
-        if not db_ticket.terminal_id and db_ticket.session_id:
-            session = await db.get(models.TerminalSession, db_ticket.session_id)
+        # Asegurar que la terminal actual se convierte en la dueña del ticket
+        if ticket.session_id:
+            session = await db.get(models.TerminalSession, ticket.session_id)
             if session:
                 db_ticket.terminal_id = session.terminal_id
 
