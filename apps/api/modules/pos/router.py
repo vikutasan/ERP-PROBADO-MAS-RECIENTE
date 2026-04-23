@@ -52,9 +52,11 @@ async def get_open_tickets(db: AsyncSession = Depends(get_db)):
 @router.get("/terminals/status")
 async def get_terminals_status(db: AsyncSession = Depends(get_db)):
     """
-    Fuente de verdad UNIFICADA:
+    Fuente de verdad UNIFICADA (v4.3):
     1. Lee candados persistentes de la tabla terminal_locks (DB)
     2. Complementa con sesiones de caja abiertas (CashSession)
+    3. Previene que un usuario aparezca en 2+ terminales simultáneamente
+    4. Aplica TTL máximo de 24h a CashSessions huérfanas
     No depende de RAM volátil.
     """
     try:
@@ -66,23 +68,57 @@ async def get_terminals_status(db: AsyncSession = Depends(get_db)):
     # Fuente 1: Candados persistentes (reemplaza _locks en RAM)
     locks = await get_all_locks(db, ttl_minutes=ttl)
     
+    # Construir set de user IDs que ya tienen un lock activo (con heartbeat reciente)
+    locked_user_ids = {info["occupier_id"] for info in locks.values()}
+    
     # Fuente 2: Sesiones de caja activas (persisten incluso sin lock)
     from modules.cash.models import CashSession
     from sqlalchemy.future import select
+    from datetime import datetime, timedelta
+    
+    CASH_SESSION_MAX_TTL_HOURS = 24  # TTL máximo para sesiones de caja huérfanas
+    
     result = await db.execute(select(CashSession).where(CashSession.status == "OPEN"))
     active_cash = result.scalars().all()
     
     # Combinar: locks de DB + caja abierta
     res = dict(locks)
+    cutoff = datetime.utcnow() - timedelta(hours=CASH_SESSION_MAX_TTL_HOURS)
+    
     for c in active_cash:
         tid = c.terminal_id.strip() if c.terminal_id else ""
+        
+        # v4.3 Bug Fix: Si el usuario de esta CashSession ya tiene un lock activo
+        # en OTRA terminal, no crear un candado fantasma en esta terminal.
+        # Solo marcar como caja abierta sin operador presente.
+        user_locked_elsewhere = (c.employee_id in locked_user_ids) and (tid not in res or res[tid].get("occupier_id") != c.employee_id)
+        
         if tid not in res:
-            res[tid] = {
-                "occupier_id": c.employee_id,
-                "occupier_name": c.employee_name,
-                "locked_at": c.opened_at,
-                "is_cash_register": True
-            }
+            if user_locked_elsewhere:
+                # El cajero se fue a otra terminal — marcar caja como abierta pero sin operador activo
+                res[tid] = {
+                    "occupier_id": c.employee_id,
+                    "occupier_name": f"{c.employee_name} (CAJA ABIERTA)",
+                    "locked_at": c.opened_at,
+                    "is_cash_register": True,
+                    "operator_absent": True
+                }
+            elif c.opened_at and c.opened_at < cutoff:
+                # v4.3: CashSession huérfana (>24h sin cerrar) — marcar como zombie
+                res[tid] = {
+                    "occupier_id": c.employee_id,
+                    "occupier_name": f"{c.employee_name} (SESIÓN EXPIRADA)",
+                    "locked_at": c.opened_at,
+                    "is_cash_register": True,
+                    "stale_session": True
+                }
+            else:
+                res[tid] = {
+                    "occupier_id": c.employee_id,
+                    "occupier_name": c.employee_name,
+                    "locked_at": c.opened_at,
+                    "is_cash_register": True
+                }
         else:
             res[tid]["is_cash_register"] = True
     return res
@@ -138,7 +174,12 @@ async def force_terminal_unlock(terminal_id: str, req: LockRequest, db: AsyncSes
 @router.post("/terminals/{terminal_id}/heartbeat")
 async def heartbeat_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
     tid = terminal_id.strip()
-    success = await heartbeat(db, tid, req.occupier_id)
+    try:
+        ttl_setting = await get_setting_by_key(db, "pos_terminal_lock_ttl_m")
+        ttl = int(ttl_setting.value)
+    except Exception:
+        ttl = 15
+    success = await heartbeat(db, tid, req.occupier_id, ttl_minutes=ttl)
     if not success:
         raise HTTPException(status_code=404, detail="No active lock found for this terminal/user.")
     return {"status": "alive", "terminal_id": terminal_id}

@@ -4,11 +4,12 @@
 > CUALQUIER lógica relacionada con tickets, folios, carrito, cobros, auto-save,
 > pizarrón, auditoría, o impresión.
 >
-> **Este documento reemplaza la versión 3.0.** La versión anterior NO incluía
-> las protecciones Zero-Loss contra pérdida silenciosa de tickets por fallos de red.
+> **Este documento reemplaza las versiones 3.0 y 4.0.** La versión 4.0 introdujo
+> Zero-Loss pero causaba falsos positivos de "Conflicto de Versión" por auto-colisiones
+> del propio sistema (misma terminal disparando auto-save con versión stale).
 >
-> Última actualización: 2026-04-22
-> Versión: 4.0 — ZERO-LOSS ENDURECIMIENTO
+> Última actualización: 2026-04-23
+> Versión: 4.3 — TERMINAL OCCUPANCY HARDENING
 
 ---
 
@@ -43,6 +44,41 @@ los 8 items originales en la base de datos.
 
 ---
 
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.2 (ANTI-SELF-COLLISION)
+
+**Fecha:** 22/Abril/2026
+**Síntoma:** El modal "CONFLICTO DE VERSIÓN" aparecía constantemente durante la operación normal de un solo cajero, sin que ningún otro usuario estuviera editando la misma cuenta. Esto bloqueaba el flujo de trabajo y confundía al personal.
+
+**Causa raíz:** El pipeline `setState → useEffect → ref` de React es **asíncrono**. Cuando el auto-save #1 obtenía `version=2` del servidor y lo guardaba con `setTicketVersion(2)`, el `useEffect` que sincronizaba `ticketVersionRef.current` NO se ejecutaba inmediatamente. Si el auto-save #2 se disparaba antes de que el useEffect corriera, leía `ticketVersionRef.current = 1` (stale), enviaba `version=1` al servidor, y el servidor veía `1 ≠ 2` → **HTTP 409 FALSO**.
+
+Además, el auto-save enviaba `version` en TODAS las peticiones, activando la validación de bloqueo optimista incluso para guardados del mismo usuario en la misma terminal — un escenario donde NO existe riesgo real de conflicto.
+
+**Solución Implementada (Regla 12 + Regla 10 actualizada):**
+1. Auto-save envía `version: null` → servidor salta validación optimista (mismo usuario, sin riesgo).
+2. Acciones manuales (Pizarrón, PAID) envían `version: liveVersion` → validación optimista activa.
+3. `ticketVersionRef.current` se actualiza **sincrónicamente** (ref directa) además del `setState` asíncrono.
+4. Si un conflicto llega al auto-save (no debería), se ignora silenciosamente en vez de mostrar modal.
+
+---
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.3 (TERMINAL OCCUPANCY HARDENING)
+
+**Fecha:** 23/Abril/2026
+**Terminal afectada:** CAJA + T4 / T6 (usuario OMEGA, ID: 20)
+**Síntoma:** La sesión de OMEGA alternaba entre Terminal 4 y Terminal 6, mientras simultáneamente aparecía como ocupante de la terminal CAJA. Un mismo usuario bloqueaba 2 terminales a la vez en la pantalla de selección.
+
+**Causa raíz (3 bugs interconectados):**
+1. **CashSession sin TTL:** OMEGA abrió una sesión de caja (CashSession #110) el 21/Abril que **nunca se cerró**. El endpoint `/terminals/status` combina `terminal_locks` (con TTL de 15 min) y `cash_sessions` abiertas (**sin TTL alguno**). Resultado: la terminal CAJA quedó bloqueada permanentemente como "fantasma" por 2+ días.
+2. **Doble ocupación simultánea:** La función `lock_terminal()` en `occupancy.py` limpia locks del mismo usuario en otras terminales, pero NO sabe nada de CashSessions. Cuando OMEGA seleccionaba T4 o T6, el lock se creaba ahí, pero la CashSession huérfana en CAJA seguía generando una entrada duplicada.
+3. **Heartbeat sin purga:** La función `heartbeat()` solo renovaba el timestamp del lock actual sin ejecutar `_purge_stale_locks()` ni limpiar locks duplicados del mismo usuario en otras terminales.
+
+**Solución Implementada (Regla 13):**
+1. `heartbeat()` ahora ejecuta purga de locks expirados + limpieza de locks duplicados del mismo usuario en cada ciclo (cada 20s).
+2. `/terminals/status` detecta cuando un usuario ya tiene lock activo en otra terminal y marca la CashSession huérfana como `"CAJA ABIERTA"` con flag `operator_absent: true`.
+3. CashSessions abiertas por más de 24 horas se marcan como `"SESIÓN EXPIRADA"` con flag `stale_session: true`.
+
+---
+
 ## 1. ARQUITECTURA GENERAL
 
 ```
@@ -72,7 +108,7 @@ los 8 items originales en la base de datos.
 | Servicio Backend | `apps/api/modules/pos/service.py` | Lógica de negocio |
 | Modelos | `apps/api/modules/pos/models.py` | SQLAlchemy ORM |
 | Schemas | `apps/api/modules/pos/schemas.py` | Validación Pydantic |
-| Occupancy | `apps/api/modules/pos/occupancy.py` | Candados de terminal |
+| Occupancy | `apps/api/modules/pos/occupancy.py` | Candados de terminal (v4.3: heartbeat con purga) |
 
 ---
 
@@ -103,12 +139,16 @@ const accountNumRef = React.useRef('');
 const originalCapturerRef = React.useRef(null);   // ← DEBE EXISTIR
 const isGeneratingFolioRef = React.useRef(false);
 const isRecoveringRef = React.useRef(false);       // ← DEBE EXISTIR
-const ticketVersionRef = React.useRef(1);          // ← v4.0 ZERO-LOSS
+const ticketVersionRef = React.useRef(null);       // ← v4.0 ZERO-LOSS
+const actionMutexRef = React.useRef(Promise.resolve()); // ← v4.1 MUTEX
 
-// Sincronización:
+// Sincronización vía useEffect (backup, NO fuente primaria para version):
 React.useEffect(() => { cartRef.current = cart; }, [cart]);
 React.useEffect(() => { accountNumRef.current = currentAccountNum; }, [currentAccountNum]);
 React.useEffect(() => { originalCapturerRef.current = originalCapturer; }, [originalCapturer]);
+React.useEffect(() => { ticketVersionRef.current = ticketVersion; }, [ticketVersion]);
+// ⚠️ v4.2: ticketVersionRef TAMBIÉN se actualiza sincrónicamente en handleTicketAction
+// (ver Regla 12). El useEffect es solo un backup por si acaso.
 ```
 
 **Dentro de `handleTicketAction`, las siguientes líneas son OBLIGATORIAS:**
@@ -291,28 +331,42 @@ if (savedTicket) {
 setIsSendingToPizarron(false);
 ```
 
-### ⚡ REGLA 10 — BLOQUEO OPTIMISTA ANTI-SOBREESCRITURAS
+### ⚡ REGLA 10 — BLOQUEO OPTIMISTA SELECTIVO (v4.2)
 
 ```
-⛔ PROHIBIDO: Actualizar el ticket enviando solo los datos actuales sin versión.
-✅ OBLIGATORIO: Enviar la `version` del ticket en cada petición de actualización.
+⛔ PROHIBIDO: Enviar `version` en auto-save (causa auto-colisiones por stale ref).
+⛔ PROHIBIDO: Actualizar ticketVersionRef solo con setState (async, llega tarde).
+✅ OBLIGATORIO: Enviar `version` SOLO en acciones manuales del usuario (Pizarrón, PAID).
+✅ OBLIGATORIO: Actualizar ticketVersionRef.current SINCRÓNICAMENTE tras respuesta exitosa.
 ```
 
 - La tabla `tickets` tiene una columna `version` (INTEGER, default=1).
 - Cada `_update_ticket_fields()` incrementa `version += 1`.
-- `_upsert_ticket_header()` valida que la versión del cliente coincida con la de la BD.
-- Si no coincide → **HTTP 409 Conflict** con mensaje `"Conflicto de versión"`.
-- El frontend debe capturar el 409 y mostrar un toast de advertencia, forzando al usuario a refrescar.
+- `_upsert_ticket_header()` valida versión **SOLO si `ticket.version is not None`**.
+- Auto-save envía `version: null` → servidor SALTA la validación (mismo usuario, sin riesgo).
+- Acciones manuales envían `version: liveVersion` → servidor VALIDA (protección multi-usuario).
+- Si conflicto en acción manual → **HTTP 409** + modal `CollisionModal`.
+- Si conflicto en auto-save (no debería ocurrir) → log silencioso, sin modal.
 
-**Refs obligatorias:**
+**Código obligatorio en `handleTicketAction`:**
 ```javascript
-const ticketVersionRef = React.useRef(1);
+// AL CONSTRUIR EL PAYLOAD:
+version: finalizeUI ? liveVersion : null,  // ← v4.2: auto-save NO envía version
 
-// Al guardar exitosamente:
-ticketVersionRef.current = savedTicket.version;
+// AL RECIBIR RESPUESTA EXITOSA:
+if (savedTicket?.version) {
+    ticketVersionRef.current = savedTicket.version; // SYNC: anti-stale (INMEDIATO)
+    setTicketVersion(savedTicket.version);          // ASYNC: para UI de React
+}
 
-// Al enviar al servidor:
-version: ticketVersionRef.current,
+// AL CAPTURAR ERROR 409:
+if (errorMessage.includes("Conflicto de versión")) {
+    if (finalizeUI) {
+        setShowCollisionModal(true);  // Solo modal en acciones del usuario
+    } else {
+        console.warn('v4.2: Conflicto en auto-save ignorado');
+    }
+}
 ```
 
 ### ⚡ REGLA 11 — VISIBILIDAD DE AUTO-SAVE Y CIERRE DE NAVEGADOR
@@ -330,6 +384,119 @@ version: ticketVersionRef.current,
 - `beforeunload`: muestra diálogo nativo de advertencia si hay items no guardados.
 - `sendBeacon`: envía POST a `/api/v1/pos/tickets/emergency-save` con el carrito actual.
 - El endpoint de emergencia **nunca lanza excepciones** — siempre retorna 200.
+
+### ⚡ REGLA 12 — MUTEX ANTI-SELF-COLLISION + ACTUALIZACIÓN SÍNCRONA DE VERSION (v4.2)
+
+```
+⛔ PROHIBIDO: Dos llamadas a handleTicketAction ejecutándose en paralelo.
+⛔ PROHIBIDO: Actualizar ticketVersionRef SOLO con useEffect (async, llega tarde al mutex).
+✅ OBLIGATORIO: Serializar TODAS las llamadas con actionMutexRef (Promise chain).
+✅ OBLIGATORIO: Escribir ticketVersionRef.current = response.version INMEDIATAMENTE.
+```
+
+**¿Qué es el Mutex?** Un candado que serializa llamadas concurrentes. Si el auto-save
+dispara mientras un cobro está en progreso, el auto-save ESPERA a que termine.
+
+**¿Por qué actualización síncrona de la ref?** El pipeline de React es:
+```
+setState(newVersion) → re-render → useEffect → ref.current = newVersion
+```
+Esto puede tomar 50-200ms. Si el mutex libera y el siguiente auto-save lee la ref
+ANTES de que el useEffect corra, lee el valor STALE → 409 falso.
+
+La solución es escribir la ref DIRECTAMENTE:
+```javascript
+// DENTRO de handleTicketAction, DESPUÉS de recibir respuesta:
+ticketVersionRef.current = savedTicket.version; // ← SÍNCRONO, INMEDIATO
+setTicketVersion(savedTicket.version);           // ← Asíncrono, para UI
+```
+
+**Estructura del Mutex:**
+```javascript
+const actionMutexRef = React.useRef(Promise.resolve());
+
+const handleTicketAction = async (status, paymentData, finalizeUI) => {
+    // 1. Adquirir lock
+    const previousPromise = actionMutexRef.current;
+    let releaseMutex;
+    actionMutexRef.current = new Promise(resolve => releaseMutex = resolve);
+    await previousPromise;  // Espera a que la llamada anterior termine
+
+    try {
+        // 2. Leer refs DESPUÉS del lock (valores frescos)
+        const liveVersion = ticketVersionRef.current;
+        // ... lógica ...
+
+        // 3. Actualizar ref SINCRÓNICAMENTE
+        ticketVersionRef.current = savedTicket.version;
+    } finally {
+        releaseMutex(); // 4. Liberar lock para la siguiente llamada
+    }
+};
+```
+
+**Diagrama del problema v4.0 vs la solución v4.2:**
+```
+❌ v4.0 (ROTO):
+  Auto-save#1 → envia version=1 → server guarda → responde version=2
+  setState(2) ─── useEffect PENDIENTE ───┐
+  Mutex libera                           │
+  Auto-save#2 → lee ref (AÚN =1!) → envia version=1 → server: 1≠2 → 409 💥
+                                         │
+                           useEffect corre│→ ref=2 (DEMASIADO TARDE)
+
+✅ v4.2 (CORREGIDO):
+  Auto-save#1 → envia version=null → server guarda (salta check) → responde version=2
+  ref.current=2 (INMEDIATO) + setState(2)
+  Mutex libera
+  Auto-save#2 → lee ref (=2 ✅) → envia version=null → server guarda → OK ✅
+
+  Acción manual → envia version=2 → server valida 2==2 → OK ✅
+```
+
+### ⚡ REGLA 13 — OCUPACIÓN DE TERMINAL: 1 USUARIO = 1 TERMINAL (v4.3)
+
+```
+⛔ PROHIBIDO: Que un usuario aparezca como ocupante de 2+ terminales simultáneamente.
+⛔ PROHIBIDO: CashSessions abiertas sin TTL máximo (causa bloqueo permanente de terminal).
+⛔ PROHIBIDO: Heartbeat que solo renueve timestamp sin limpiar locks obsoletos.
+✅ OBLIGATORIO: heartbeat() debe purgar locks expirados + eliminar locks del mismo usuario en otras terminales.
+✅ OBLIGATORIO: /terminals/status debe deduplicar usuarios entre terminal_locks y cash_sessions.
+✅ OBLIGATORIO: CashSessions >24h sin cerrar deben marcarse como "SESIÓN EXPIRADA".
+```
+
+**Archivos afectados:**
+- `occupancy.py` → `heartbeat()` ahora llama `_purge_stale_locks()` y limpia locks duplicados.
+- `router.py` → `get_terminals_status()` ahora detecta usuarios con lock en otra terminal y aplica TTL de 24h a CashSessions.
+
+**Flujo del heartbeat reforzado (v4.3):**
+```python
+async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
+    # 1. Purgar locks expirados de TODAS las terminales
+    await _purge_stale_locks(db, ttl_minutes)
+    
+    # 2. Eliminar locks de este usuario en OTRAS terminales
+    #    (regla 1-usuario-1-terminal)
+    DELETE FROM terminal_locks 
+    WHERE occupier_id = ? AND terminal_id != ?
+    
+    # 3. Renovar timestamp del lock actual
+    UPDATE terminal_locks SET locked_at = NOW()
+    WHERE terminal_id = ? AND occupier_id = ?
+```
+
+**Flujo del status reforzado (v4.3):**
+```
+1. Obtener locks activos de terminal_locks (con TTL normal)
+2. Construir set de user IDs que ya tienen lock activo
+3. Para cada CashSession OPEN:
+   a. Si employee_id ya tiene lock en OTRA terminal:
+      → Marcar como "NOMBRE (CAJA ABIERTA)" + operator_absent=true
+   b. Si opened_at > 24 horas:
+      → Marcar como "NOMBRE (SESIÓN EXPIRADA)" + stale_session=true
+   c. Si ninguna condición anterior:
+      → Mostrar normalmente como ocupante
+```
 
 ---
 
@@ -354,7 +521,7 @@ version: ticketVersionRef.current,
    → Si falla: setLastSaveStatus('failed') → badge visible
 ```
 
-### 3.2 Auto-Save (Pizarrón) — CADA 15 SEGUNDOS (v4.0)
+### 3.2 Auto-Save (Pizarrón) — CADA 15 SEGUNDOS (v4.2)
 
 ```
 1. useEffect se activa cuando cambian: currentAccountNum, cart, showCheckout
@@ -363,17 +530,24 @@ version: ticketVersionRef.current,
    a. Si isGeneratingFolioRef.current → SKIP
    b. Si isRecoveringRef.current → SKIP (NUEVO — v3.0)
    c. Si !accountNumRef.current || cartRef.current.length === 0 → SKIP
-   d. handleTicketAction('OPEN', null, false)
+   d. handleTicketAction('OPEN', null, false)  ← finalizeUI=false
+      → ADQUIERE MUTEX (espera si hay otra operación en curso)
       → LEE cartRef.current (NO cart)
       → LEE accountNumRef.current (NO currentAccountNum)
       → LEE originalCapturerRef.current (NO originalCapturer)
-      → ENVÍA ticketVersionRef.current (v4.0 — bloqueo optimista)
-4. Servidor: _upsert_ticket_header() con FOR UPDATE + validación de version
+      → ⚡ v4.2: ENVÍA version: null (NO ticketVersionRef.current)
+        El servidor SALTA la validación de bloqueo optimista.
+        Mismo usuario + misma terminal = sin riesgo de conflicto real.
+4. Servidor: _upsert_ticket_header() con FOR UPDATE, SIN validación de version
    → Actualiza total, items, campos OMS, captured_by_id
    → Incrementa version += 1
-5. Frontend: ticketVersionRef.current = response.version
+5. Frontend:
+   → ticketVersionRef.current = response.version (SYNC, inmediato)
+   → setTicketVersion(response.version) (ASYNC, para UI)
 6. setLastSaveStatus('saved') o setLastSaveStatus('failed')
-7. El ticket aparece en el Pizarrón (get_open_tickets WHERE status=OPEN AND total>0)
+7. ⚡ v4.2: Si ocurre un 409 inesperado → log silencioso, SIN modal
+8. LIBERA MUTEX
+9. El ticket aparece en el Pizarrón (get_open_tickets WHERE status=OPEN AND total>0)
 ```
 
 ### 3.3 Guardar en Pizarrón (Manual) — PROTOCOLO ZERO-LOSS (v4.0)
@@ -541,7 +715,11 @@ version: ticketVersionRef.current,
 Antes de hacer CUALQUIER cambio en el flujo de tickets:
 
 - [ ] ¿Las funciones asíncronas/timers leen de **refs** (`cartRef`, `accountNumRef`, `originalCapturerRef`, `ticketVersionRef`), NO de closures de state?
-- [ ] ¿El ticket envía su `version` para bloqueo optimista?
+- [ ] ¿El auto-save envía `version: null`? (REGLA 12 — anti-self-collision)
+- [ ] ¿Las acciones manuales (Pizarrón, PAID) envían `version: liveVersion`? (REGLA 10)
+- [ ] ¿`ticketVersionRef.current` se actualiza SINCRÓNICAMENTE tras respuesta exitosa? (REGLA 12)
+- [ ] ¿El CollisionModal SOLO se muestra cuando `finalizeUI === true`? (REGLA 12)
+- [ ] ¿`handleTicketAction` está envuelto en el mutex (`actionMutexRef`)? (REGLA 12)
 - [ ] ¿El botón Pizarrón espera la confirmación del servidor ANTES de hacer `clearCart()`?
 - [ ] ¿Existe feedback visual explícito si el auto-save falla?
 - [ ] ¿El useEffect del auto-save tiene dependencia en **`cart`** (array completo), NO en `cart.length`?
@@ -554,6 +732,9 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 - [ ] ¿El campo `terminal_id` se graba directo en el modelo?
 - [ ] ¿Cualquier campo virtual nuevo se agrega a `_populate_flat_fields()`?
 - [ ] ¿Los datos de Auditoría y POS pasan por el MISMO código?
+- [ ] ¿El `heartbeat()` purga locks expirados y limpia locks del mismo usuario en otras terminales? (REGLA 13)
+- [ ] ¿El endpoint `/terminals/status` deduplica usuarios entre `terminal_locks` y `cash_sessions`? (REGLA 13)
+- [ ] ¿Las CashSessions >24h se marcan como expiradas? (REGLA 13)
 
 ---
 
@@ -571,6 +752,8 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `clearCart()` antes de confirmar respuesta del servidor | **Ticket #125: $205 perdidos** — Red falló, carrito se borró, ticket nunca llegó al servidor | REGLA 9: Confirmar 200 antes de limpiar |
 | Sin bloqueo optimista (`version`) | **Ticket #169: sobrescritura cruzada** — Dos usuarios editaron la misma cuenta, el último borró los cambios del primero | REGLA 10: `version` en cada update |
 | Auto-save fallaba en silencio | Usuario no sabía que su ticket no se había guardado. Continuaba trabajando creyendo que estaba respaldado | REGLA 11: Badge visual obligatorio |
+| Auto-save enviaba `version` al servidor | **Modal "CONFLICTO DE VERSIÓN" aparecía constantemente** sin que otro usuario editara la cuenta. El pipeline async de React (setState→useEffect→ref) causaba lecturas stale de `ticketVersionRef` | REGLA 12: Auto-save envía `version: null`, ref se actualiza sincrónicamente |
+| CashSession sin cerrar bloqueaba terminal permanentemente | **OMEGA aparecía en CAJA + T4/T6 simultáneamente** durante 2+ días. La sesión de caja #110 nunca se cerró y no tenía TTL, causando un candado fantasma permanente en la pantalla de selección | REGLA 13: TTL de 24h para CashSessions + deduplicación de usuarios + heartbeat con purga |
 
 ---
 
@@ -614,7 +797,8 @@ T=30s   ✅ Auto-save lee cartRef.current (que es [BOLSA para V11907])
 > **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
 >
 > Cualquier IA o desarrollador que modifique el sistema DEBE leerlo primero
-> y verificar que sus cambios no violan NINGUNA de las 11 reglas.
+> y verificar que sus cambios no violan NINGUNA de las 13 reglas.
 >
-> **Las reglas 1, 2, 3, 9 y 10 son las más críticas.** Violarlas causa pérdida
-> silenciosa de datos en producción.
+> **Las reglas 1, 2, 3, 9, 10, 12 y 13 son las más críticas.** Violarlas causa pérdida
+> silenciosa de datos en producción, modales falsos que interrumpen la operación,
+> o sesiones fantasma que bloquean terminales indefinidamente.
