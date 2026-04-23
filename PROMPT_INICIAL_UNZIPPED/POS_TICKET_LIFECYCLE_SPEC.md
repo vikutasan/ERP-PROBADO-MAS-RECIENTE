@@ -7,9 +7,11 @@
 > **Este documento reemplaza las versiones 3.0 y 4.0.** La versión 4.0 introdujo
 > Zero-Loss pero causaba falsos positivos de "Conflicto de Versión" por auto-colisiones
 > del propio sistema (misma terminal disparando auto-save con versión stale).
+> La versión 4.3.1 cerró las últimas vulnerabilidades de race condition en la
+> sincronización de refs y habilitó bloqueo optimista total (incluido auto-save).
 >
 > Última actualización: 2026-04-23
-> Versión: 4.3 — TERMINAL OCCUPANCY HARDENING
+> Versión: 4.3.1 — ANTI-RACE-CONDITION HARDENING
 
 ---
 
@@ -54,10 +56,15 @@ los 8 items originales en la base de datos.
 Además, el auto-save enviaba `version` en TODAS las peticiones, activando la validación de bloqueo optimista incluso para guardados del mismo usuario en la misma terminal — un escenario donde NO existe riesgo real de conflicto.
 
 **Solución Implementada (Regla 12 + Regla 10 actualizada):**
-1. Auto-save envía `version: null` → servidor salta validación optimista (mismo usuario, sin riesgo).
-2. Acciones manuales (Pizarrón, PAID) envían `version: liveVersion` → validación optimista activa.
-3. `ticketVersionRef.current` se actualiza **sincrónicamente** (ref directa) además del `setState` asíncrono.
-4. Si un conflicto llega al auto-save (no debería), se ignora silenciosamente en vez de mostrar modal.
+1. `ticketVersionRef.current` se actualiza **sincrónicamente** (ref directa) además del `setState` asíncrono.
+2. `actionMutexRef` serializa todas las llamadas a `handleTicketAction` (no hay concurrencia).
+3. Con mutex + sync directo, las stale-closures están eliminadas.
+
+> **⚡ ACTUALIZACIÓN v4.3.1:** La solución original (v4.2) enviaba `version: null` en
+> auto-save para evitar self-collisions. Esto dejaba una **vulnerabilidad de sobreescritura
+> silenciosa multi-usuario**. Como el mutex + sync directo eliminan las stale-closures,
+> ahora es seguro enviar `version` SIEMPRE. El auto-save ahora detecta conflictos reales
+> y muestra el CollisionModal al operador.
 
 ---
 
@@ -206,7 +213,11 @@ useEffect(() => {
 `handleRecoverAccount` DEBE seguir este protocolo exacto:
 ```javascript
 const handleRecoverAccount = (account) => {
-    if (!account.rawItems?.length) return alert("Cuenta vacía.");
+    if (!account.rawItems?.length) {
+        setToastMessage("⚠️ Cuenta vacía.");  // ← REGLA 8: Toast, NO alert()
+        setTimeout(() => setToastMessage(null), 3000);
+        return;
+    }
 
     // 1. BLOQUEAR auto-save ANTES de cualquier mutación
     isRecoveringRef.current = true;
@@ -221,12 +232,19 @@ const handleRecoverAccount = (account) => {
         nature: i.product.nature || 'PRODUCTO'
     }));
 
-    // 3. Mutar estado (React batcha estas operaciones)
+    // 3. Mutar estado — SYNC REFS INMEDIATO antes de setState
+    //    ⚡ v4.3.1: requestAnimationFrame puede dispararse ANTES de los
+    //    useEffect que sincronizan refs → el auto-save leería refs stale.
     setCart(recovered);
+    accountNumRef.current = account.accountNum;              // SYNC inmediato
     setCurrentAccountNum(account.accountNum);
-    setOriginalCapturer(account.capturedById
+    const capturer = account.capturedById
         ? { id: account.capturedById, name: account.capturedByName }
-        : currentUser);
+        : currentUser;
+    originalCapturerRef.current = capturer;                  // SYNC inmediato
+    setOriginalCapturer(capturer);
+    ticketVersionRef.current = account.version || null;      // SYNC inmediato
+    setTicketVersion(account.version || null);
 
     // 4. Restaurar OMS data si es pedido
     if (account.orderType === 'PEDIDO') {
@@ -240,7 +258,6 @@ const handleRecoverAccount = (account) => {
     setShowCorkboard(false);
 
     // 5. DESBLOQUEAR auto-save DESPUÉS de que React procese los estados
-    //    requestAnimationFrame espera al siguiente frame de pintura
     requestAnimationFrame(() => {
         isRecoveringRef.current = false;
     });
@@ -331,27 +348,27 @@ if (savedTicket) {
 setIsSendingToPizarron(false);
 ```
 
-### ⚡ REGLA 10 — BLOQUEO OPTIMISTA SELECTIVO (v4.2)
+### ⚡ REGLA 10 — BLOQUEO OPTIMISTA TOTAL (v4.3.1)
 
 ```
-⛔ PROHIBIDO: Enviar `version` en auto-save (causa auto-colisiones por stale ref).
+⛔ PROHIBIDO: Enviar `version: null` en auto-save (permite sobreescritura silenciosa multi-usuario).
 ⛔ PROHIBIDO: Actualizar ticketVersionRef solo con setState (async, llega tarde).
-✅ OBLIGATORIO: Enviar `version` SOLO en acciones manuales del usuario (Pizarrón, PAID).
+✅ OBLIGATORIO: Enviar `version: liveVersion` en TODAS las llamadas (auto-save + manuales).
 ✅ OBLIGATORIO: Actualizar ticketVersionRef.current SINCRÓNICAMENTE tras respuesta exitosa.
+✅ OBLIGATORIO: Mostrar CollisionModal en TODO 409 (auto-save incluido).
 ```
 
 - La tabla `tickets` tiene una columna `version` (INTEGER, default=1).
 - Cada `_update_ticket_fields()` incrementa `version += 1`.
 - `_upsert_ticket_header()` valida versión **SOLO si `ticket.version is not None`**.
-- Auto-save envía `version: null` → servidor SALTA la validación (mismo usuario, sin riesgo).
-- Acciones manuales envían `version: liveVersion` → servidor VALIDA (protección multi-usuario).
-- Si conflicto en acción manual → **HTTP 409** + modal `CollisionModal`.
-- Si conflicto en auto-save (no debería ocurrir) → log silencioso, sin modal.
+- ⚡ v4.3.1: TODAS las llamadas envían `version: liveVersion` (mutex + sync directo eliminan stale-closures).
+- Si conflicto → **HTTP 409** + modal `CollisionModal` (siempre, incluido auto-save).
+- El guard `showCollisionModal` en `useAutoSave` pausa futuros auto-saves automáticamente.
 
 **Código obligatorio en `handleTicketAction`:**
 ```javascript
 // AL CONSTRUIR EL PAYLOAD:
-version: finalizeUI ? liveVersion : null,  // ← v4.2: auto-save NO envía version
+version: liveVersion,  // ← v4.3.1: SIEMPRE enviar version (mutex elimina stale-closures)
 
 // AL RECIBIR RESPUESTA EXITOSA:
 if (savedTicket?.version) {
@@ -361,11 +378,9 @@ if (savedTicket?.version) {
 
 // AL CAPTURAR ERROR 409:
 if (errorMessage.includes("Conflicto de versión")) {
-    if (finalizeUI) {
-        setShowCollisionModal(true);  // Solo modal en acciones del usuario
-    } else {
-        console.warn('v4.2: Conflicto en auto-save ignorado');
-    }
+    // v4.3.1: SIEMPRE mostrar modal. El operador DEBE re-sincronizar desde Pizarrón.
+    setShowCollisionModal(true);
+    throw err;
 }
 ```
 
@@ -435,23 +450,29 @@ const handleTicketAction = async (status, paymentData, finalizeUI) => {
 };
 ```
 
-**Diagrama del problema v4.0 vs la solución v4.2:**
+**Diagrama del problema v4.0 vs la solución v4.3.1:**
 ```
-❌ v4.0 (ROTO):
+❌ v4.0 (ROTO — auto-save enviaba version, sin mutex):
   Auto-save#1 → envia version=1 → server guarda → responde version=2
   setState(2) ─── useEffect PENDIENTE ───┐
-  Mutex libera                           │
   Auto-save#2 → lee ref (AÚN =1!) → envia version=1 → server: 1≠2 → 409 💥
                                          │
                            useEffect corre│→ ref=2 (DEMASIADO TARDE)
 
-✅ v4.2 (CORREGIDO):
-  Auto-save#1 → envia version=null → server guarda (salta check) → responde version=2
-  ref.current=2 (INMEDIATO) + setState(2)
-  Mutex libera
-  Auto-save#2 → lee ref (=2 ✅) → envia version=null → server guarda → OK ✅
+❌ v4.2 (PARCIAL — auto-save enviaba null, sin protección multi-usuario):
+  Auto-save#1 → envia version=null → server guarda (salta check) → version=2
+  Auto-save#2 → envia version=null → server guarda (salta check) → version=3
+  ⚠️ Otro usuario también envia version=null → SOBREESCRIBE sin 409 💥
 
-  Acción manual → envia version=2 → server valida 2==2 → OK ✅
+✅ v4.3.1 (COMPLETO — mutex + sync directo + version siempre):
+  Auto-save#1 ADQUIERE MUTEX
+    → lee ref (=1) → envia version=1 → server valida 1==1 → OK → version=2
+    → ref.current=2 (INMEDIATO) + setState(2)
+    → LIBERA MUTEX
+  Auto-save#2 ADQUIERE MUTEX
+    → lee ref (=2 ✅) → envia version=2 → server valida 2==2 → OK ✅
+    → LIBERA MUTEX
+  Otro usuario envia version=1 → server: 1≠2 → 409 → CollisionModal ✅
 ```
 
 ### ⚡ REGLA 13 — OCUPACIÓN DE TERMINAL: 1 USUARIO = 1 TERMINAL (v4.3)
@@ -514,18 +535,20 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
    → _find_empty_ticket(terminal_id) con FOR UPDATE SKIP LOCKED
    → Si encuentra ticket vacío del MISMO terminal: lo reutiliza
    → Si no: _generate_consecutive_ticket() con nextval('ticket_folio_seq')
-7. Frontend: setCurrentAccountNum(ticket.account_num)
-8. isGeneratingFolioRef.current = false
-9. ⚡ v4.0: handleTicketAction('OPEN') — GUARDADO INMEDIATO al servidor
+7. Frontend: accountNumRef.current = ticket.account_num (SYNC inmediato, v4.3.1)
+8. Frontend: setCurrentAccountNum(ticket.account_num) (ASYNC, para UI)
+9. Frontend: originalCapturerRef.current = capturer (SYNC inmediato, v4.3.1)
+10. isGeneratingFolioRef.current = false
+11. ⚡ v4.0: handleTicketAction('OPEN') — GUARDADO INMEDIATO al servidor
    → El ticket se persiste con el primer producto sin esperar al auto-save
    → Si falla: setLastSaveStatus('failed') → badge visible
 ```
 
-### 3.2 Auto-Save (Pizarrón) — CADA 15 SEGUNDOS (v4.2)
+### 3.2 Auto-Save (Pizarrón) — CADA 15 SEGUNDOS (v4.3.1)
 
 ```
-1. useEffect se activa cuando cambian: currentAccountNum, cart, showCheckout
-2. Si !currentAccountNum || cart.length === 0 || showCheckout → NO crear timer
+1. useEffect se activa cuando cambian: currentAccountNum, cart, showCheckout, showCollisionModal
+2. Si !currentAccountNum || cart.length === 0 || showCheckout || showCollisionModal → NO crear timer
 3. setInterval(15000):  ← v4.0: reducido de 30s a 15s
    a. Si isGeneratingFolioRef.current → SKIP
    b. Si isRecoveringRef.current → SKIP (NUEVO — v3.0)
@@ -535,17 +558,17 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
       → LEE cartRef.current (NO cart)
       → LEE accountNumRef.current (NO currentAccountNum)
       → LEE originalCapturerRef.current (NO originalCapturer)
-      → ⚡ v4.2: ENVÍA version: null (NO ticketVersionRef.current)
-        El servidor SALTA la validación de bloqueo optimista.
-        Mismo usuario + misma terminal = sin riesgo de conflicto real.
-4. Servidor: _upsert_ticket_header() con FOR UPDATE, SIN validación de version
+      → ⚡ v4.3.1: ENVÍA version: liveVersion (protección multi-usuario total)
+        El mutex + sync directo garantizan que la version siempre es fresca.
+4. Servidor: _upsert_ticket_header() con FOR UPDATE + validación de version
    → Actualiza total, items, campos OMS, captured_by_id
    → Incrementa version += 1
 5. Frontend:
    → ticketVersionRef.current = response.version (SYNC, inmediato)
    → setTicketVersion(response.version) (ASYNC, para UI)
 6. setLastSaveStatus('saved') o setLastSaveStatus('failed')
-7. ⚡ v4.2: Si ocurre un 409 inesperado → log silencioso, SIN modal
+7. ⚡ v4.3.1: Si ocurre un 409 → CollisionModal se muestra al operador
+   → showCollisionModal pausa futuros auto-saves automáticamente
 8. LIBERA MUTEX
 9. El ticket aparece en el Pizarrón (get_open_tickets WHERE status=OPEN AND total>0)
 ```
@@ -715,11 +738,12 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
 Antes de hacer CUALQUIER cambio en el flujo de tickets:
 
 - [ ] ¿Las funciones asíncronas/timers leen de **refs** (`cartRef`, `accountNumRef`, `originalCapturerRef`, `ticketVersionRef`), NO de closures de state?
-- [ ] ¿El auto-save envía `version: null`? (REGLA 12 — anti-self-collision)
-- [ ] ¿Las acciones manuales (Pizarrón, PAID) envían `version: liveVersion`? (REGLA 10)
+- [ ] ¿TODAS las llamadas a `handleTicketAction` envían `version: liveVersion`? (REGLA 10 v4.3.1)
+- [ ] ¿El CollisionModal se muestra en TODO 409 (incluido auto-save)? (REGLA 10 v4.3.1)
 - [ ] ¿`ticketVersionRef.current` se actualiza SINCRÓNICAMENTE tras respuesta exitosa? (REGLA 12)
-- [ ] ¿El CollisionModal SOLO se muestra cuando `finalizeUI === true`? (REGLA 12)
 - [ ] ¿`handleTicketAction` está envuelto en el mutex (`actionMutexRef`)? (REGLA 12)
+- [ ] ¿`generateNewAccountNum` sincroniza `accountNumRef` y `originalCapturerRef` inmediatamente? (v4.3.1)
+- [ ] ¿`handleRecoverAccount` sincroniza TODAS las refs inmediatamente (accountNum, originalCapturer, ticketVersion)? (v4.3.1)
 - [ ] ¿El botón Pizarrón espera la confirmación del servidor ANTES de hacer `clearCart()`?
 - [ ] ¿Existe feedback visual explícito si el auto-save falla?
 - [ ] ¿El useEffect del auto-save tiene dependencia en **`cart`** (array completo), NO en `cart.length`?
@@ -752,7 +776,10 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `clearCart()` antes de confirmar respuesta del servidor | **Ticket #125: $205 perdidos** — Red falló, carrito se borró, ticket nunca llegó al servidor | REGLA 9: Confirmar 200 antes de limpiar |
 | Sin bloqueo optimista (`version`) | **Ticket #169: sobrescritura cruzada** — Dos usuarios editaron la misma cuenta, el último borró los cambios del primero | REGLA 10: `version` en cada update |
 | Auto-save fallaba en silencio | Usuario no sabía que su ticket no se había guardado. Continuaba trabajando creyendo que estaba respaldado | REGLA 11: Badge visual obligatorio |
-| Auto-save enviaba `version` al servidor | **Modal "CONFLICTO DE VERSIÓN" aparecía constantemente** sin que otro usuario editara la cuenta. El pipeline async de React (setState→useEffect→ref) causaba lecturas stale de `ticketVersionRef` | REGLA 12: Auto-save envía `version: null`, ref se actualiza sincrónicamente |
+| Auto-save enviaba `version` al servidor (v4.0) | **Modal "CONFLICTO DE VERSIÓN" aparecía constantemente** sin que otro usuario editara la cuenta. El pipeline async de React (setState→useEffect→ref) causaba lecturas stale de `ticketVersionRef` | REGLA 12: Mutex serializa llamadas + ref se actualiza sincrónicamente. v4.3.1 envía `version` siempre (mutex elimina stale-closures) |
+| Auto-save enviaba `version: null` (v4.2) | **Sobreescritura silenciosa multi-usuario** — Dos terminales editaban la misma cuenta, el auto-save de una sobreescribía el trabajo de la otra sin 409 | REGLA 10 v4.3.1: SIEMPRE enviar `version: liveVersion` + CollisionModal en todo 409 |
+| `generateNewAccountNum` no sincronizaba refs | **Folios huérfanos** — `handleTicketAction` leía `accountNumRef` vacío y generaba un segundo folio duplicado | v4.3.1: Sync inmediato de `accountNumRef` y `originalCapturerRef` antes de setState |
+| `handleRecoverAccount` no sincronizaba todas las refs | **409 falsos post-recuperación** — `requestAnimationFrame` se disparaba antes del `useEffect` sync, auto-save leía refs stale | v4.3.1: Sync inmediato de `accountNumRef`, `originalCapturerRef`, `ticketVersionRef` |
 | CashSession sin cerrar bloqueaba terminal permanentemente | **OMEGA aparecía en CAJA + T4/T6 simultáneamente** durante 2+ días. La sesión de caja #110 nunca se cerró y no tenía TTL, causando un candado fantasma permanente en la pantalla de selección | REGLA 13: TTL de 24h para CashSessions + deduplicación de usuarios + heartbeat con purga |
 
 ---
