@@ -11,7 +11,7 @@
 > sincronización de refs y habilitó bloqueo optimista total (incluido auto-save).
 >
 > Última actualización: 2026-04-23
-> Versión: 4.4 — HORA PICO NETWORK RESILIENCE
+> Versión: 4.5 — STALE POLLING FIX
 
 ---
 
@@ -96,6 +96,18 @@ Además, el auto-save enviaba `version` en TODAS las peticiones, activando la va
 **Solución Implementada:** 
 1. **Bypass Idempotente de Red:** Si el servidor detecta un conflicto de versión, pero comprueba que la petición proviene de la MISMA terminal dueña del ticket (`req_terminal_id == db_ticket.terminal_id`), asume un timeout de red y perdona el conflicto.
 2. `reserveTicket` ahora envía la versión inicial (`ticketVersionRef.current = ticket.version`) para no enviar un primer auto-save "ciego".
+
+---
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.5 (STALE CORKBOARD POLLING)
+
+**Fecha:** 23/Abril/2026
+**Síntoma:** El cliente llega a caja con su "papelito", el cajero abre el Pizarrón de inmediato, selecciona el número de cuenta y la cuenta aparece **incompleta** (solo con los primeros artículos capturados). Al salir, esperar unos segundos y volver a entrar, la cuenta ya aparecía completa.
+
+**Causa raíz:** El "Pizarrón" (Corkboard) realiza polling (`getOpenTickets`) cada 5 segundos. Si el cajero abría el pizarrón antes de que pasara ese intervalo de refresco, le daba clic a un "post-it viejo" (datos *stale* en la memoria del frontend). `handleRecoverAccount` usaba `account.rawItems` directamente desde ese post-it viejo, en vez de consultar a la base de datos por los datos reales actualizados.
+
+**Solución Implementada:** 
+**Fetch Asíncrono en Recuperación**. `handleRecoverAccount` ya no confía en los datos cacheados visualmente en el Pizarrón. Ahora es `async` y hace un `fetch` pidiendo la versión *Live* (fresca) del ticket (`getTicketByAccountNum`) justo antes de inyectarlo en el estado de React. Esto garantiza latencia cero entre terminales.
 
 ---
 
@@ -773,6 +785,7 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 - [ ] ¿El `heartbeat()` purga locks expirados y limpia locks del mismo usuario en otras terminales? (REGLA 13)
 - [ ] ¿El endpoint `/terminals/status` deduplica usuarios entre `terminal_locks` y `cash_sessions`? (REGLA 13)
 - [ ] ¿Las CashSessions >24h se marcan como expiradas? (REGLA 13)
+- [ ] ¿`handleRecoverAccount` descarga los datos más recientes (Live Data) del servidor ANTES de restaurar el estado local? (v4.5)
 
 ---
 
@@ -796,6 +809,7 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `generateNewAccountNum` no sincronizaba refs | **Folios huérfanos y Version=null** — `handleTicketAction` leía `accountNumRef` vacío y generaba folio duplicado. Además, enviaba version=null rompiendo bloqueo optimista. | v4.4: Sync inmediato de `accountNumRef`, `originalCapturerRef`, y `ticketVersionRef` |
 | `handleRecoverAccount` no sincronizaba todas las refs | **409 falsos post-recuperación** — `requestAnimationFrame` se disparaba antes del `useEffect` sync, auto-save leía refs stale | v4.3.1: Sync inmediato de `accountNumRef`, `originalCapturerRef`, `ticketVersionRef` |
 | CashSession sin cerrar bloqueaba terminal permanentemente | **OMEGA aparecía en CAJA + T4/T6 simultáneamente** durante 2+ días. La sesión de caja #110 nunca se cerró y no tenía TTL, causando un candado fantasma permanente en la pantalla de selección | REGLA 13: TTL de 24h para CashSessions + deduplicación de usuarios + heartbeat con purga |
+| Pizarrón cargaba cuentas incompletas temporalmente | **Delay visual en recuperación de cuenta** — Polling cada 5s causaba que `handleRecoverAccount` usara un `rawItems` viejo si se le daba clic muy rápido. | v4.5: `handleRecoverAccount` realiza fetch `getTicketByAccountNum` para obtener versión *Live* ignorando caché local. |
 
 ---
 
