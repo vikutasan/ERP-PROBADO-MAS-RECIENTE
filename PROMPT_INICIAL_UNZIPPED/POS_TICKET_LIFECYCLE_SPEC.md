@@ -11,7 +11,7 @@
 > sincronización de refs y habilitó bloqueo optimista total (incluido auto-save).
 >
 > Última actualización: 2026-04-23
-> Versión: 4.3.1 — ANTI-RACE-CONDITION HARDENING
+> Versión: 4.4 — HORA PICO NETWORK RESILIENCE
 
 ---
 
@@ -83,6 +83,19 @@ Además, el auto-save enviaba `version` en TODAS las peticiones, activando la va
 1. `heartbeat()` ahora ejecuta purga de locks expirados + limpieza de locks duplicados del mismo usuario en cada ciclo (cada 20s).
 2. `/terminals/status` detecta cuando un usuario ya tiene lock activo en otra terminal y marca la CashSession huérfana como `"CAJA ABIERTA"` con flag `operator_absent: true`.
 3. CashSessions abiertas por más de 24 horas se marcan como `"SESIÓN EXPIRADA"` con flag `stale_session: true`.
+
+---
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.4 (HORA PICO FALSE POSITIVES)
+
+**Fecha:** 23/Abril/2026
+**Síntoma:** Durante la hora pico, los cajeros que trabajaban solos en sus propias terminales recibían constantemente el modal rojo de "CONFLICTO DE VERSIÓN (409)", bloqueando su trabajo aunque nadie más estuviera editando su cuenta.
+
+**Causa raíz:** Las micro-desconexiones de Wi-Fi (*timeouts*) causaban que el servidor guardara exitosamente los datos e incrementara la versión, pero la terminal no recibía la respuesta de éxito. Al reintentar, la terminal enviaba una versión obsoleta que el servidor rechazaba, disparando un falso positivo de bloqueo optimista. Además, los tickets "reciclados" vacíos no inicializaban su versión en la UI.
+
+**Solución Implementada:** 
+1. **Bypass Idempotente de Red:** Si el servidor detecta un conflicto de versión, pero comprueba que la petición proviene de la MISMA terminal dueña del ticket (`req_terminal_id == db_ticket.terminal_id`), asume un timeout de red y perdona el conflicto.
+2. `reserveTicket` ahora envía la versión inicial (`ticketVersionRef.current = ticket.version`) para no enviar un primer auto-save "ciego".
 
 ---
 
@@ -361,8 +374,9 @@ setIsSendingToPizarron(false);
 - La tabla `tickets` tiene una columna `version` (INTEGER, default=1).
 - Cada `_update_ticket_fields()` incrementa `version += 1`.
 - `_upsert_ticket_header()` valida versión **SOLO si `ticket.version is not None`**.
+- ⚡ v4.4: **Bypass Idempotente:** Si hay conflicto, pero `req_terminal_id == db_ticket.terminal_id`, se asume timeout de red y se perdona el conflicto.
 - ⚡ v4.3.1: TODAS las llamadas envían `version: liveVersion` (mutex + sync directo eliminan stale-closures).
-- Si conflicto → **HTTP 409** + modal `CollisionModal` (siempre, incluido auto-save).
+- Si conflicto real (distinta terminal) → **HTTP 409** + modal `CollisionModal`.
 - El guard `showCollisionModal` en `useAutoSave` pausa futuros auto-saves automáticamente.
 
 **Código obligatorio en `handleTicketAction`:**
@@ -778,7 +792,8 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | Auto-save fallaba en silencio | Usuario no sabía que su ticket no se había guardado. Continuaba trabajando creyendo que estaba respaldado | REGLA 11: Badge visual obligatorio |
 | Auto-save enviaba `version` al servidor (v4.0) | **Modal "CONFLICTO DE VERSIÓN" aparecía constantemente** sin que otro usuario editara la cuenta. El pipeline async de React (setState→useEffect→ref) causaba lecturas stale de `ticketVersionRef` | REGLA 12: Mutex serializa llamadas + ref se actualiza sincrónicamente. v4.3.1 envía `version` siempre (mutex elimina stale-closures) |
 | Auto-save enviaba `version: null` (v4.2) | **Sobreescritura silenciosa multi-usuario** — Dos terminales editaban la misma cuenta, el auto-save de una sobreescribía el trabajo de la otra sin 409 | REGLA 10 v4.3.1: SIEMPRE enviar `version: liveVersion` + CollisionModal en todo 409 |
-| `generateNewAccountNum` no sincronizaba refs | **Folios huérfanos** — `handleTicketAction` leía `accountNumRef` vacío y generaba un segundo folio duplicado | v4.3.1: Sync inmediato de `accountNumRef` y `originalCapturerRef` antes de setState |
+| Timeouts de red desincronizaban `version` (v4.3.1) | **Falso Positivo de Conflicto en Hora Pico** — El servidor guardaba pero la UI perdía la conexión. Al reintentar la UI enviaba version vieja y el servidor la bloqueaba. | v4.4: Bypass idempotente. Si la terminal atacante = terminal dueña, perdonar 409. |
+| `generateNewAccountNum` no sincronizaba refs | **Folios huérfanos y Version=null** — `handleTicketAction` leía `accountNumRef` vacío y generaba folio duplicado. Además, enviaba version=null rompiendo bloqueo optimista. | v4.4: Sync inmediato de `accountNumRef`, `originalCapturerRef`, y `ticketVersionRef` |
 | `handleRecoverAccount` no sincronizaba todas las refs | **409 falsos post-recuperación** — `requestAnimationFrame` se disparaba antes del `useEffect` sync, auto-save leía refs stale | v4.3.1: Sync inmediato de `accountNumRef`, `originalCapturerRef`, `ticketVersionRef` |
 | CashSession sin cerrar bloqueaba terminal permanentemente | **OMEGA aparecía en CAJA + T4/T6 simultáneamente** durante 2+ días. La sesión de caja #110 nunca se cerró y no tenía TTL, causando un candado fantasma permanente en la pantalla de selección | REGLA 13: TTL de 24h para CashSessions + deduplicación de usuarios + heartbeat con purga |
 
