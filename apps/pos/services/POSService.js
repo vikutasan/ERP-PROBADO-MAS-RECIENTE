@@ -58,6 +58,13 @@ class POSService {
         return res.json();
     }
 
+    async getTicketByAccountNum(accountNum) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets?search=${accountNum}`);
+        if (!res.ok) throw new Error("Error obteniendo ticket fresco");
+        const tickets = await res.json();
+        return tickets.length > 0 ? tickets[0] : null;
+    }
+
     async getTerminalsStatus() {
         const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/status`);
         if (!res.ok) throw new Error("Error cargando estado de terminales");

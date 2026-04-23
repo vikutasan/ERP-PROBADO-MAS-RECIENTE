@@ -479,17 +479,35 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
     };
 
-    const handleRecoverAccount = (account) => {
-        if (!account.rawItems?.length) {
+    const handleRecoverAccount = async (account) => {
+        // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado o fetch asíncrono
+        isRecoveringRef.current = true;
+
+        // ⚡ FIX: Eliminar delay de polling obteniendo siempre la versión más fresca directamente
+        let freshItems = account.rawItems;
+        let freshVersion = account.version;
+        let freshCapturer = account.capturedById ? { id: account.capturedById, name: account.capturedByName } : null;
+        
+        try {
+            const liveTicket = await posService.getTicketByAccountNum(account.accountNum);
+            if (liveTicket && liveTicket.items) {
+                console.log("⚡ Cuenta recuperada (Live Data):", liveTicket);
+                freshItems = liveTicket.items;
+                freshVersion = liveTicket.version;
+                freshCapturer = liveTicket.captured_by_id ? { id: liveTicket.captured_by_id, name: liveTicket.captured_by_name || liveTicket.captured_by?.name } : freshCapturer;
+            }
+        } catch (e) {
+            console.warn("⚠️ No se pudo obtener la versión fresca del ticket, usando datos del Pizarrón", e);
+        }
+
+        if (!freshItems?.length) {
             setToastMessage("⚠️ Cuenta vacía.");
             setTimeout(() => setToastMessage(null), 3000);
+            isRecoveringRef.current = false;
             return;
         }
 
-        // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado
-        isRecoveringRef.current = true;
-
-        const recovered = account.rawItems.map(i => {
+        const recovered = freshItems.map(i => {
             const originalProd = initialProducts.find(p => p.id === i.product.id) || {};
             return {
                 id: i.product.id,
@@ -506,17 +524,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         // permitiendo que el auto-save lea refs stale si no sincronizamos aquí.
         accountNumRef.current = account.accountNum;
         setCurrentAccountNum(account.accountNum);
-        const capturer = account.capturedById ? { 
-            id: account.capturedById, 
-            name: account.capturedByName 
-        } : null;
         
-        console.log("Recovering account. Original capturer:", capturer);
-        originalCapturerRef.current = capturer || currentUser;
-        setOriginalCapturer(capturer || currentUser);
+        console.log("Recovering account. Original capturer:", freshCapturer);
+        originalCapturerRef.current = freshCapturer || currentUser;
+        setOriginalCapturer(freshCapturer || currentUser);
         // v4.3: Restaurar versión del ticket con SYNC inmediato para evitar 409 falsos
-        ticketVersionRef.current = account.version || null;
-        setTicketVersion(account.version || null);
+        ticketVersionRef.current = freshVersion || null;
+        setTicketVersion(freshVersion || null);
         
         // --- Restaurar Order Data si la cuenta es un PEDIDO ---
         if (account.orderType === 'PEDIDO') {
