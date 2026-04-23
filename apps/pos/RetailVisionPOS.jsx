@@ -168,7 +168,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 setInitialProducts(activeProducts);
             } catch (error) {
                 console.error("Fetch error:", error);
-                alert("Error conectando con el ERP. Verifique que el servidor este activo.");
+                setToastMessage("❌ Error conectando con el ERP. Verifique el servidor.");
+                setTimeout(() => setToastMessage(null), 5000);
             }
         };
         loadInitialData();
@@ -185,15 +186,15 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
                     const ticket = await posService.reserveTicket(terminalId, currentUser?.id || null);
+                    // v4.3 ANTI-RACE: Sync refs ANTES del setState para que handleTicketAction
+                    // nunca lea un accountNum vacío y genere un folio duplicado.
+                    accountNumRef.current = ticket.account_num;
                     setCurrentAccountNum(ticket.account_num);
-                    if (ticket.captured_by) {
-                        setOriginalCapturer({
-                            id: ticket.captured_by.id,
-                            name: ticket.captured_by.name
-                        });
-                    } else {
-                        setOriginalCapturer(currentUser);
-                    }
+                    const cap = ticket.captured_by
+                        ? { id: ticket.captured_by.id, name: ticket.captured_by.name }
+                        : currentUser;
+                    originalCapturerRef.current = cap;
+                    setOriginalCapturer(cap);
                     return ticket.account_num;
                 } catch (error) {
                     console.error(`Error reservando cuenta (intento ${attempt}/3):`, error);
@@ -203,7 +204,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 }
             }
             
-            alert("⚠️ Error de conexión con el servidor. No se pudo reservar un número de cuenta. Verifique que el servidor esté activo.");
+            setToastMessage("⚠️ Error de conexión. No se pudo reservar folio.");
+            setTimeout(() => setToastMessage(null), 5000);
             throw new Error("No se pudo reservar cuenta después de 3 intentos");
         })();
 
@@ -268,6 +270,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         currentAccountNum, 
         cart, 
         showCheckout, 
+        showCollisionModal,
         refs: { isGeneratingFolioRef, isRecoveringRef, accountNumRef, cartRef },
         setLastSaveStatus, 
         setLastSaveTime, 
@@ -338,7 +341,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             const liveCapturer = originalCapturerRef.current;
             const liveVersion = ticketVersionRef.current;
 
-            if (liveCart.length === 0) return alert("El ticket esta vacio.");
+            if (liveCart.length === 0) {
+                setToastMessage("⚠️ El ticket está vacío.");
+                setTimeout(() => setToastMessage(null), 3000);
+                return;
+            }
             
             // Si no hay datos de pago y se intenta cobrar, abrir pantalla de pago
             if (status === 'PAID' && (!paymentData || paymentData.length === 0)) {
@@ -370,7 +377,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     captured_by_id: liveCapturer?.id || currentUser?.id || null,
                     cashed_by_id: status === 'PAID' ? (currentUser?.id || null) : null,
                     order_type: orderType,
-                    version: liveVersion // v4.0: Enviar versión para bloqueo optimista
+                    // v4.3: SIEMPRE enviar version. El mutex serializa las llamadas y
+                    // el sync directo de ticketVersionRef (L424) elimina stale-closures.
+                    // Enviar null permitía que el auto-save sobreescribiera tickets de otros usuarios.
+                    version: liveVersion
                 };
 
                 // Inyectar data del OMS si es pedido
@@ -387,12 +397,14 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         console.warn("⚠️ Colisión de folio detectada en servidor. Autogenerando nuevo folio y reintentando...");
                         const newAccountNum = await generateNewAccountNum();
                         targetAccountNum = newAccountNum;
-                        setCurrentAccountNum(newAccountNum);
+                        // generateNewAccountNum ya sincroniza accountNumRef (v4.3)
                         payload.account_num = newAccountNum;
                         payload.version = null; // Ticket nuevo, sin versión
                         savedTicket = await posService.createTicket(payload);
                     } else if (errorMessage.includes("Conflicto de versión")) {
-                        // v4.0: Conflicto de versión — otro usuario modificó la cuenta
+                        // v4.3: SIEMPRE mostrar modal de colisión. El usuario DEBE saber
+                        // que otro operador modificó la cuenta para ir al Pizarrón a re-sincronizar.
+                        // El guard de showCollisionModal en useAutoSave pausará futuros auto-saves.
                         setShowCollisionModal(true);
                         throw err;
                     } else {
@@ -400,9 +412,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     }
                 }
                 
-                // v4.0: Actualizar versión local con la del servidor
+                // v4.2: Actualizar versión SINCRÓNICAMENTE en la ref para que
+                // el próximo ciclo del mutex lea la versión fresca.
+                // Antes se hacía solo con setState, y el useEffect que sincroniza
+                // la ref llegaba tarde → siguiente auto-save leía versión stale → 409.
                 if (savedTicket?.version) {
-                    setTicketVersion(savedTicket.version);
+                    ticketVersionRef.current = savedTicket.version; // SYNC: anti-stale
+                    setTicketVersion(savedTicket.version);          // ASYNC: para UI
                 }
                 
                 setPrintTicketData(savedTicket);
@@ -443,7 +459,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 if (finalizeUI) {
                     const errMsg = error.detail || error.message || "";
                     if (!errMsg.includes("Conflicto de versión")) {
-                        alert(errMsg || "Error al procesar el ticket. Su carrito está intacto, intente de nuevo.");
+                        setToastMessage(`❌ ${errMsg || "Error al procesar el ticket."}`);
+                        setTimeout(() => setToastMessage(null), 5000);
                     }
                 }
                 throw error;
@@ -456,7 +473,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     };
 
     const handleRecoverAccount = (account) => {
-        if (!account.rawItems?.length) return alert("Cuenta vacia.");
+        if (!account.rawItems?.length) {
+            setToastMessage("⚠️ Cuenta vacía.");
+            setTimeout(() => setToastMessage(null), 3000);
+            return;
+        }
 
         // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado
         isRecoveringRef.current = true;
@@ -473,16 +494,21 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             };
         });
         setCart(recovered);
+        // v4.3 ANTI-RACE: Sync TODAS las refs ANTES de los setState.
+        // requestAnimationFrame (L535) puede dispararse antes que los useEffect de sync,
+        // permitiendo que el auto-save lea refs stale si no sincronizamos aquí.
+        accountNumRef.current = account.accountNum;
         setCurrentAccountNum(account.accountNum);
-        // Guardar también quién la capturó originalmente para que persista en el ticket final
         const capturer = account.capturedById ? { 
             id: account.capturedById, 
             name: account.capturedByName 
         } : null;
         
         console.log("Recovering account. Original capturer:", capturer);
+        originalCapturerRef.current = capturer || currentUser;
         setOriginalCapturer(capturer || currentUser);
-        // v4.0: Restaurar versión del ticket para bloqueo optimista
+        // v4.3: Restaurar versión del ticket con SYNC inmediato para evitar 409 falsos
+        ticketVersionRef.current = account.version || null;
         setTicketVersion(account.version || null);
         
         // --- Restaurar Order Data si la cuenta es un PEDIDO ---
@@ -750,31 +776,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     total={total}
                     orderData={orderData}
                     onConfirm={async (method) => {
-                        await handleTicketAction('PAID', method, false);
+                        await handleTicketAction('PAID', method, true); // finalizeUI=true maneja impresión y limpieza
                     }}
                     onClose={() => {
                         setShowCheckout(false);
-                    }}
-                    onFinish={() => {
-                        clearCart();
-                        setCurrentAccountNum('');
-                        setShowCheckout(false);
-                        setPaymentsHistory([]);
-                        setOrderData(null);
-                        setOrderType('VENTA_DIRECTA');
-                    }}
-                    onPrint={() => {
-                        console.log("Manual print from CheckoutScreen requested.");
-                        // Usar ref inmediata para garantizar datos actualizados del servidor
-                        const ticketToPrint = savedTicketRef.current || printTicketData;
-                        handlePrintTicket(ticketToPrint);
-                        clearCart();
-                        setCurrentAccountNum('');
-                        setShowCheckout(false);
-                        setPaymentsHistory([]);
-                        setOrderData(null);
-                        setOrderType('VENTA_DIRECTA');
-                        savedTicketRef.current = null; // Limpiar ref después de imprimir
                     }}
                 />
             )}

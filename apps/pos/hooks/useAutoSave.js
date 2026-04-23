@@ -2,21 +2,22 @@ import { useEffect } from 'react';
 
 /**
  * Hook: useAutoSave
- * Guardado automático periódico al Pizarrón con retry y backoff.
+ * Guardado automático periódico al Pizarrón cada 15s (single-try).
+ * Se pausa automáticamente durante checkout, colisiones y recuperaciones.
  */
 export const useAutoSave = ({
     currentAccountNum, 
     cart, 
     showCheckout, 
+    showCollisionModal,
     refs, 
     setLastSaveStatus, 
     setLastSaveTime, 
     onSave
 }) => {
     useEffect(() => {
-        if (!currentAccountNum || cart.length === 0 || showCheckout) return;
+        if (!currentAccountNum || cart.length === 0 || showCheckout || showCollisionModal) return;
 
-        let failCount = 0;
         const autoSaveTimer = setInterval(async () => {
             if (refs.isGeneratingFolioRef.current) return;
             if (refs.isRecoveringRef.current) return;
@@ -24,25 +25,17 @@ export const useAutoSave = ({
 
             setLastSaveStatus('saving');
 
-            for (let attempt = 1; attempt <= 3; attempt++) {
-                try {
-                    console.log(`⏱️ Auto-guardando en Pizarrón (intento ${attempt}/3)...`);
-                    await onSave();
-                    setLastSaveStatus('saved');
-                    setLastSaveTime(new Date());
-                    failCount = 0;
-                    return;
-                } catch (e) {
-                    console.warn(`Auto-save intento ${attempt} falló:`, e);
-                    if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 1000));
-                }
+            try {
+                console.log(`⏱️ Auto-guardando en Pizarrón...`);
+                await onSave();
+                setLastSaveStatus('saved');
+                setLastSaveTime(new Date());
+            } catch (e) {
+                console.warn(`Auto-save falló:`, e);
+                setLastSaveStatus('failed');
             }
-
-            failCount++;
-            setLastSaveStatus('failed');
-            console.error(`🔴 Auto-save falló después de 3 intentos (racha: ${failCount})`);
         }, 15000);
 
         return () => clearInterval(autoSaveTimer);
-    }, [currentAccountNum, cart, showCheckout, refs, setLastSaveStatus, setLastSaveTime, onSave]);
+    }, [currentAccountNum, cart, showCheckout, showCollisionModal, refs, setLastSaveStatus, setLastSaveTime, onSave]);
 };

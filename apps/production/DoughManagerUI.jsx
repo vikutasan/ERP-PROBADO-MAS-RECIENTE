@@ -775,6 +775,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 masaNombre={formData.name} 
                 theme={theme}
                 initialData={formData.pasosProduccion}
+                recipeMatrix={formData.recipe_matrix}
                 onSave={(pasos) => setFormData({...formData, pasosProduccion: pasos})}
                 onClose={() => setIsConfiguringProduction(false)} 
             />

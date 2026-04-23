@@ -1,14 +1,16 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
     ArrowLeft, Save, ChevronDown, ChevronRight, Plus, 
-    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered, Info, X, Download, Upload, Table
+    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered, Info, X, Download, Upload, Table, AlertTriangle
 } from 'lucide-react';
+
+const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
 
 const FIELD_INFO_DATA = {
     'grupoMaquinaria': {
         title: 'Grupo Maquinaria',
         subtitle: 'Manual de Operación de Planta',
-        desc: 'Es el Nombre y Apellido de la estación o máquina donde ocurre este paso (ej. G-MAS-15).',
+        desc: 'Es el Nombre y Apellido de la estación o máquina donde ocurre este paso (ej. G-MASA-15).',
         bullets: [
             { label: 'Cero Conflictos:', text: 'El sistema bloquea que dos procesos usen la misma máquina al mismo tiempo.' },
             { label: 'Guía del Agente:', text: 'Gemma usará este nombre para mandar al panadero a la estación correcta.' },
@@ -73,11 +75,12 @@ const FIELD_INFO_DATA = {
         ]
     },
     'operarioLibre': {
-        title: 'Operario Libre',
-        subtitle: 'Multitasking',
-        desc: 'Si está activo, significa que el panadero puede soltar esta máquina e ir a hacer otra masa u orden.',
+        title: 'Estado del Operario (Libre / Ocupado)',
+        subtitle: 'Control de Multitasking',
+        desc: 'Determina si el panadero debe permanecer físicamente en esta máquina (Ocupado) o si puede retirarse a realizar otra tarea (Libre).',
         bullets: [
-            { label: 'Optimización:', text: 'Gemma dirá "Tienes X minutos libres, puedes avanzar otra receta".' }
+            { label: 'Ocupado:', text: 'El panadero está anclado a la estación de trabajo prestando atención al proceso.' },
+            { label: 'Libre:', text: 'Gemma dirá "Tienes X minutos libres, puedes avanzar otra receta" optimizando los tiempos muertos.' }
         ]
     },
     'confirmacionVoz': {
@@ -145,11 +148,12 @@ const FIELD_INFO_DATA = {
         ]
     },
     'ingredientesRequeridos': {
-        title: 'Ingredientes Requeridos',
-        subtitle: 'Mise en place',
-        desc: 'Qué debe tener el panadero a la mano ANTES de arrancar el paso.',
+        title: 'Ingredientes y Porcentajes',
+        subtitle: 'Dosificación Técnica',
+        desc: 'Selecciona los ingredientes específicos de la receta y el porcentaje de participación en este subpaso.',
         bullets: [
-            { label: 'Checklist:', text: 'Gemma enumerará esto primero para evitar pausas indeseadas luego.' }
+            { label: 'Precisión:', text: 'Permite al Agente Gemma dar instrucciones de pesaje exactas.' },
+            { label: 'Filtro BOM:', text: 'Solo muestra ingredientes que diste de alta en la pestaña RECETA.' }
         ]
     },
     'dependenciaPasoPrevio': {
@@ -162,12 +166,23 @@ const FIELD_INFO_DATA = {
     }
 };
 
-export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, onSave, initialData }) => {
+export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, onSave, initialData, recipeMatrix }) => {
     // If theme is not provided (safety fallback), we use a default neutral theme
     const activeTheme = theme || { bg: '#f3f4f6', input: '#ffffff', text: '#1f2937', border: '#e5e7eb' };
 
     // Initial state matching the 28-column schema we defined
     const [infoModalField, setInfoModalField] = useState(null);
+    const [equipments, setEquipments] = useState([]);
+
+    useEffect(() => {
+        const fetchEquipments = async () => {
+            try {
+                const resp = await fetch(`${API_BASE}/production/equipment`);
+                if (resp.ok) setEquipments(await resp.json());
+            } catch (e) { console.error('Error fetching equipments:', e); }
+        };
+        fetchEquipments();
+    }, []);
 
     const FieldLabel = ({ id, text, isMain = false }) => (
         <div className="flex items-center gap-2 mb-1">
@@ -183,37 +198,102 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
             </button>
         </div>
     );
-    const [pasos, setPasos] = useState(initialData || [
-        {
-            id: '1',
-            nombre: 'IDENTIFICAR EL MEP',
-            idBloque: 'G-MAS-15',
-            isExpanded: true,
-            subpasos: [
-                {
-                    id: '1.1',
-                    nombre: 'Revisar orden de producción',
-                    instruccionVoz: 'Revisa la orden. ¿Cuántas preparaciones harás hoy?',
-                    tHumano: 1.0,
-                    tAutonomo: 0.0,
-                    recurso: 'MESA-TRABAJO-01',
-                    nivelCritico: 'bajo',
-                    operarioLibre: false,
-                    confirmacionVoz: true,
-                    triggerInicio: 'inicio_turno',
-                    preguntaQA: '¿Cuántas preparaciones harás hoy?',
-                    tipCoaching: '',
-                    grupoInseparable: '',
-                    temperaturaObjetivo: '',
-                    senalesCompletado: '',
-                    erroresComunes: '',
-                    ingredientesRequeridos: '',
-                    dependenciaPasoPrevio: '',
-                    showAdvanced: false
+
+    const DualTimeInput = ({ value, onChange }) => {
+        const totalMinutes = parseFloat(value) || 0;
+        const mins = Math.floor(totalMinutes);
+        const secs = Math.round((totalMinutes - mins) * 60);
+
+        const updateTime = (m, s) => {
+            const final = parseFloat(m) + (parseFloat(s) / 60);
+            onChange(final.toFixed(4)); // Alta precisión para evitar errores de redondeo
+        };
+
+        return (
+            <div className="flex items-center gap-2 bg-black/10 p-1 rounded-2xl border border-black/10 shadow-inner">
+                <div className="flex-1 flex flex-col">
+                    <input 
+                        type="number" 
+                        min="0"
+                        placeholder="0"
+                        style={{ color: activeTheme.text }} 
+                        value={mins || ''} 
+                        onChange={e => updateTime(e.target.value || 0, secs)} 
+                        className="w-full bg-transparent p-2 outline-none font-black text-center text-sm placeholder-black/20" 
+                    />
+                    <span className="text-[8px] uppercase font-black text-center -mt-1 pb-1 opacity-60" style={{ color: activeTheme.text }}>MIN.</span>
+                </div>
+                <div className="font-black text-xl mb-3 opacity-30" style={{ color: activeTheme.text }}>:</div>
+                <div className="flex-1 flex flex-col">
+                    <input 
+                        type="number" 
+                        min="0"
+                        max="59"
+                        placeholder="0"
+                        style={{ color: activeTheme.text }} 
+                        value={secs || ''} 
+                        onChange={e => {
+                            let s = parseInt(e.target.value) || 0;
+                            if (s > 59) s = 59;
+                            updateTime(mins, s);
+                        }} 
+                        className="w-full bg-transparent p-2 outline-none font-black text-center text-sm placeholder-black/20" 
+                    />
+                    <span className="text-[8px] uppercase font-black text-center -mt-1 pb-1 opacity-60" style={{ color: activeTheme.text }}>SEG.</span>
+                </div>
+            </div>
+        );
+    };
+    const [pasos, setPasos] = useState(() => {
+        const masaName = masaId || 'la masa en cuestión';
+        const defaultInstruccion = `Revisa la orden. ¿Cuántas preparaciones de ${masaName} harás hoy?`;
+        const defaultQA = `¿Cuántas preparaciones de ${masaName} harás hoy?`;
+
+        if (initialData && initialData.length > 0) {
+            const data = JSON.parse(JSON.stringify(initialData));
+            if (data[0].subpasos && data[0].subpasos.length > 0) {
+                const sub = data[0].subpasos[0];
+                if (sub.instruccionVoz?.includes('¿Cuántas preparaciones harás hoy?') || sub.instruccionVoz?.includes('¿Cuántas preparaciones de masa') || sub.instruccionVoz?.includes('¿Cuántas preparaciones de MASA')) {
+                    sub.instruccionVoz = defaultInstruccion;
+                    sub.preguntaQA = defaultQA;
                 }
-            ]
+            }
+            return data;
         }
-    ]);
+
+        return [
+            {
+                id: '1',
+                nombre: 'IDENTIFICAR EL MEP',
+                idBloque: 'G-MASA-15',
+                isExpanded: true,
+                subpasos: [
+                    {
+                        id: '1.1',
+                        nombre: 'Revisar orden de producción',
+                        instruccionVoz: defaultInstruccion,
+                        tHumano: 1.0,
+                        tAutonomo: 0.0,
+                        recurso: '',
+                        recursoConfigs: {},
+                        nivelCritico: 'bajo',
+                        operarioLibre: false,
+                        confirmacionVoz: true,
+                        triggerInicio: 'inicio_turno',
+                        preguntaQA: defaultQA,
+                        tipCoaching: '',
+                        grupoInseparable: '',
+                        temperaturaObjetivo: '',
+                        senalesCompletado: '',
+                        erroresComunes: '',
+                        ingredientesRequeridos: '',
+                        dependenciaPasoPrevio: '',
+                        showAdvanced: false
+                    }
+                ]
+            }
+        ];
+    });
 
     const fileInputRef = useRef(null);
 
@@ -231,7 +311,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
         const headers = [
             "Paso_ID", "Nombre_Paso", "Grupo_Maquinaria",
             "Subpaso_ID", "Nombre_Subpaso", "Instruccion_Voz",
-            "T_Humano_min", "T_Autonomo_min", "Recurso", "Nivel_Critico",
+            "T_Humano_min", "T_Autonomo_min", "Recurso", "Config_Recurso", "Nivel_Critico",
             "Operario_Libre", "Confirmacion_Voz", "Trigger_Inicio",
             "Pregunta_QA", "Tip_Coaching", "Grupo_Inseparable",
             "Temperatura_Objetivo", "Senales_Completado", "Errores_Comunes",
@@ -255,6 +335,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                         sp.tHumano || 0,
                         sp.tAutonomo || 0,
                         `"${(sp.recurso || '').replace(/"/g, '""')}"`,
+                        `"${(JSON.stringify(sp.recursoConfigs || {})).replace(/"/g, '""')}"`,
                         `"${(sp.nivelCritico || '').replace(/"/g, '""')}"`,
                         sp.operarioLibre ? "SI" : "NO",
                         sp.confirmacionVoz ? "SI" : "NO",
@@ -271,7 +352,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                     csvContent += row.join(",") + "\n";
                 });
             } else {
-                const row = [pasoId, nombrePaso, grupo, "","","","","","","","","","","","","","","","","",""];
+                const row = [pasoId, nombrePaso, grupo, "","","","","","","","","","","","","","","","","","",""];
                 csvContent += row.join(",") + "\n";
             }
         });
@@ -328,6 +409,22 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
         }));
     };
 
+    const handleRecursoConfigChange = (pasoId, subpasoId, key, value) => {
+        setPasos(pasos.map(p => {
+            if (p.id !== pasoId) return p;
+            return {
+                ...p,
+                subpasos: p.subpasos.map(sp => {
+                    if (sp.id !== subpasoId) return sp;
+                    return { 
+                        ...sp, 
+                        recursoConfigs: { ...(sp.recursoConfigs || {}), [key]: value } 
+                    };
+                })
+            };
+        }));
+    };
+
     const toggleStep = (pasoId) => {
         setPasos(pasos.map(p => 
             p.id === pasoId ? { ...p, isExpanded: !p.isExpanded } : p
@@ -359,7 +456,8 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                     instruccionVoz: '',
                     tHumano: 0.5,
                     tAutonomo: 0.0,
-                    recurso: 'MESA-TRABAJO-01',
+                    recurso: '',
+                    recursoConfigs: {},
                     nivelCritico: 'bajo',
                     operarioLibre: false,
                     confirmacionVoz: true,
@@ -495,7 +593,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                 <input 
                                     type="text" 
                                     style={{ color: activeTheme.text }}
-                                    placeholder="Ej. G-MAS-15"
+                                    placeholder="Ej. G-MASA-15"
                                     className="w-full p-3 border border-black/5 rounded-xl bg-white/50 focus:bg-white outline-none transition-all font-black text-sm placeholder-black/30" 
                                     value={(!paso.idBloque || String(paso.idBloque).toUpperCase() === 'NAN') ? '' : paso.idBloque}
                                     onChange={e => setPasos(pasos.map(p => p.id === paso.id ? {...p, idBloque: e.target.value} : p))}
@@ -512,7 +610,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                     <ListOrdered size={16} /> LISTA DE SUBPASOS
                                 </h4>
 
-                                {paso.subpasos.map((sp) => {
+                                {paso.subpasos.map((sp, spIndex) => {
                                     const tH = parseFloat(sp.tHumano) || 0;
                                     const tA = parseFloat(sp.tAutonomo) || 0;
                                     const totalTime = tH + tA;
@@ -530,13 +628,65 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                             </div>
                                             
                                             <div className="flex-1 flex flex-col gap-4">
-                                                {/* ROW 1: Names */}
-                                                <div className="grid grid-cols-5 gap-4">
-                                                    <div className="col-span-2 flex flex-col">
-                                                        <FieldLabel id="nombreSubpaso" text={`${sp.id} Nombre del Subpaso`} />
-                                                        <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.nombre} onChange={e => handleSubpasoChange(paso.id, sp.id, 'nombre', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
+                                                {/* ========================================= */}
+                                                {/* SÚPER SECCIÓN: PARÁMETROS DEL SUBPASO     */}
+                                                {/* ========================================= */}
+                                                <div>
+                                                    <h5 style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 border-b pb-1 mb-4">
+                                                        Parámetros del Subpaso
+                                                    </h5>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                                        <div className="col-span-2 flex flex-col">
+                                                            <FieldLabel id="nombreSubpaso" text="Nombre del Subpaso" />
+                                                            <div className="flex gap-2">
+                                                                <div style={{ backgroundColor: activeTheme.text, color: '#fff' }} className="flex items-center justify-center px-4 rounded-xl font-black text-lg shadow-md shrink-0 tracking-widest">
+                                                                    {index + 1}.{spIndex + 1}
+                                                                </div>
+                                                                <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.nombre} onChange={e => handleSubpasoChange(paso.id, sp.id, 'nombre', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm flex-1 min-w-0" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
+                                                            <FieldLabel id="triggerInicio" text="Trigger de Inicio" />
+                                                            <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.triggerInicio} onChange={e => handleSubpasoChange(paso.id, sp.id, 'triggerInicio', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm truncate">
+                                                                <option value="confirmacion_anterior">Confirmación Anterior</option>
+                                                                <option value="inicio_turno">Inicio de Turno</option>
+                                                                <option value="fin_temporizador">Fin Temporizador Autónomo</option>
+                                                                <option value="temp_alcanzada">Temperatura Alcanzada</option>
+                                                                <option value="paso_externo">Fin de Paso en Otra Masa</option>
+                                                                <option value="hora_fija">Hora Fija / Programada</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
+                                                            <FieldLabel id="dependenciaPasoPrevio" text="Dependencia (Opc.)" />
+                                                            <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.dependenciaPasoPrevio || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'dependenciaPasoPrevio', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm truncate">
+                                                                <option value="">Ninguno</option>
+                                                                <option value="inmediato_anterior">Inmediato Anterior</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
+                                                            <FieldLabel id="grupoInseparable" text="Grupo Inseparable" />
+                                                            <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. G-VEL-1" value={sp.grupoInseparable} onChange={e => handleSubpasoChange(paso.id, sp.id, 'grupoInseparable', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
+                                                        </div>
+                                                        <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
+                                                            <FieldLabel id="nivelCritico" text="Nivel de Criticidad" />
+                                                            <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.nivelCritico} onChange={e => handleSubpasoChange(paso.id, sp.id, 'nivelCritico', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm truncate">
+                                                                <option value="bajo">Bajo (Normal)</option>
+                                                                <option value="medio">Medio (Firme)</option>
+                                                                <option value="alto">Alto (Enfático)</option>
+                                                            </select>
+                                                        </div>
                                                     </div>
-                                                    <div className="col-span-3 flex flex-col relative">
+                                                </div>
+
+                                                {/* ========================================= */}
+                                                {/* SÚPER SECCIÓN: INTERACCIONES CON EL OPERARIO */}
+                                                {/* ========================================= */}
+                                                <div>
+                                                    <h5 style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 border-b pb-1 mb-4">
+                                                        Interacciones con el Operario
+                                                    </h5>
+                                                    
+                                                    <div className="flex flex-col relative mb-4">
                                                         <FieldLabel id="instruccionVoz" text={<span><Mic size={14} className="inline mr-1"/> Instrucción de Voz Principal</span>} />
                                                         <div className="relative">
                                                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -551,150 +701,388 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                             />
                                                         </div>
                                                     </div>
-                                                </div>
 
-                                                {/* ROW 2: Numbers & Resources */}
-                                                <div className="grid grid-cols-4 gap-4">
-                                                    <div className="flex flex-col">
-                                                        <FieldLabel id="tHumano" text="T. Humano (min)" />
-                                                        <input type="number" step="0.1" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.tHumano} onChange={e => handleSubpasoChange(paso.id, sp.id, 'tHumano', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <FieldLabel id="tAutonomo" text="T. Autónomo (min)" />
-                                                        <input type="number" step="0.1" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.tAutonomo} onChange={e => handleSubpasoChange(paso.id, sp.id, 'tAutonomo', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <FieldLabel id="recurso" text="Recurso Asignado" />
-                                                        <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recurso} onChange={e => handleSubpasoChange(paso.id, sp.id, 'recurso', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm">
-                                                            <option value="MESA-TRABAJO-01">Mesa de Trabajo 1</option>
-                                                            <option value="BATIDORA-01">Batidora 1</option>
-                                                            <option value="REVOLVEDORA-01">Revolvedora 1</option>
-                                                            <option value="REFINADORA-01">Refinadora 1</option>
-                                                            <option value="BASCULA-01">Báscula 1</option>
-                                                            <option value="RACK-FERMENTO-01">Rack de Fermento 1</option>
-                                                        </select>
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <FieldLabel id="nivelCritico" text="Nivel de Criticidad" />
-                                                        <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.nivelCritico} onChange={e => handleSubpasoChange(paso.id, sp.id, 'nivelCritico', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm">
-                                                            <option value="bajo">Bajo (Tono Normal)</option>
-                                                            <option value="medio">Medio (Tono Firme)</option>
-                                                            <option value="alto">Alto (Tono Enfático)</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
+                                                    <div style={{ backgroundColor: 'rgba(255,255,255,0.4)', borderColor: activeTheme.border }} className="flex items-center gap-6 p-3 rounded-xl border border-dashed">
+                                                        <div className="flex items-center gap-2">
+                                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                                <input type="checkbox" style={{ accentColor: activeTheme.text }} checked={sp.confirmacionVoz} onChange={e => handleSubpasoChange(paso.id, sp.id, 'confirmacionVoz', e.target.checked)} className="w-5 h-5 rounded border-black/10 cursor-pointer" />
+                                                                <span style={{ color: activeTheme.text }} className="text-sm font-black uppercase tracking-widest opacity-80">Confirmación por Voz</span>
+                                                            </label>
+                                                            <button onClick={(e) => { e.stopPropagation(); setInfoModalField('confirmacionVoz'); }} className="w-4 h-4 rounded-full bg-orange-500 text-white flex items-center justify-center hover:scale-125 transition-all shadow-sm">
+                                                                <Info size={10} fill="currentColor" />
+                                                            </button>
+                                                        </div>
 
-                                                {/* ROW 3: Timeline Bar */}
-                                                <div>
-                                                    <div style={{ color: activeTheme.text }} className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">
-                                                        <span>Línea de Tiempo Estimada</span>
-                                                        <span>{totalTime.toFixed(1)} min total</span>
-                                                    </div>
-                                                    <div className="w-full h-2 bg-slate-200 rounded-full flex overflow-hidden">
-                                                        <div style={{width: `${humanPct}%`}} className="bg-amber-500 h-full transition-all" title="Humano"></div>
-                                                        <div style={{width: `${autoPct}%`}} className="bg-emerald-500 h-full transition-all" title="Autónomo"></div>
-                                                    </div>
-                                                </div>
-
-                                                {/* ROW 4: Options */}
-                                                <div style={{ backgroundColor: 'rgba(255,255,255,0.4)', borderColor: activeTheme.border }} className="flex items-center gap-6 p-3 rounded-xl border border-dashed">
-                                                    
-                                                    <div className="flex items-center gap-2">
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                                                                <input type="checkbox" className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 transition-transform duration-200 ease-in-out" 
-                                                                    style={{ transform: sp.operarioLibre ? 'translateX(100%)' : 'translateX(0)', borderColor: sp.operarioLibre ? '#10b981' : activeTheme.border }}
-                                                                    checked={sp.operarioLibre}
-                                                                    onChange={e => handleSubpasoChange(paso.id, sp.id, 'operarioLibre', e.target.checked)}
-                                                                />
-                                                                <div style={{ backgroundColor: sp.operarioLibre ? '#10b981' : 'rgba(0,0,0,0.1)' }} className={`toggle-label block overflow-hidden h-5 rounded-full cursor-pointer transition-colors duration-200 ease-in-out`}></div>
+                                                        {sp.confirmacionVoz && (
+                                                            <div className="flex items-center gap-2 ml-4">
+                                                                <span style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-widest opacity-50">Palabra:</span>
+                                                                <select 
+                                                                    style={{ color: activeTheme.text, borderColor: activeTheme.border }} 
+                                                                    value={sp.palabraConfirmacion || 'listo'} 
+                                                                    onChange={e => handleSubpasoChange(paso.id, sp.id, 'palabraConfirmacion', e.target.value)} 
+                                                                    className="p-1 px-2 border rounded-lg bg-white outline-none font-black text-xs uppercase"
+                                                                >
+                                                                    <option value="hecho">HECHO</option>
+                                                                    <option value="listo">LISTO</option>
+                                                                    <option value="siguiente">SIGUIENTE</option>
+                                                                    <option value="inicio_ciclo">INICIO CICLO</option>
+                                                                </select>
                                                             </div>
-                                                            <span style={{ color: sp.operarioLibre ? '#059669' : activeTheme.text }} className={`text-xs font-black uppercase tracking-widest ${!sp.operarioLibre && 'opacity-60'}`}>Operario Libre</span>
-                                                        </label>
-                                                        <button onClick={(e) => { e.stopPropagation(); setInfoModalField('operarioLibre'); }} className="w-4 h-4 rounded-full bg-orange-500 text-white flex items-center justify-center hover:scale-125 transition-all shadow-sm">
-                                                            <Info size={10} fill="currentColor" />
+                                                        )}
+
+                                                        <div className="flex-1"></div>
+
+                                                        <button onClick={() => toggleAdvanced(paso.id, sp.id)} style={{ color: activeTheme.text }} className="text-xs font-black uppercase tracking-widest hover:underline flex items-center gap-1 opacity-70">
+                                                            <Settings size={14} /> {sp.showAdvanced ? 'Ocultar' : 'Mostrar'} Avanzados
                                                         </button>
                                                     </div>
 
-                                                    <div style={{ backgroundColor: activeTheme.border }} className="h-5 w-px"></div>
+                                                    {sp.showAdvanced && (
+                                                        <div style={{ borderColor: activeTheme.border }} className="grid grid-cols-2 gap-4 mt-2 pt-4 border-t border-dashed animate-in slide-in-from-top-2">
+                                                            <div className="col-span-2"><h5 style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 border-b pb-1">Parámetros de Calidad y Coaching</h5></div>
 
-                                                    <div className="flex items-center gap-2">
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input type="checkbox" style={{ accentColor: activeTheme.text }} checked={sp.confirmacionVoz} onChange={e => handleSubpasoChange(paso.id, sp.id, 'confirmacionVoz', e.target.checked)} className="w-5 h-5 rounded border-black/10 cursor-pointer" />
-                                                            <span style={{ color: activeTheme.text }} className="text-sm font-black uppercase tracking-widest opacity-80">Confirmación por Voz</span>
-                                                        </label>
-                                                        <button onClick={(e) => { e.stopPropagation(); setInfoModalField('confirmacionVoz'); }} className="w-4 h-4 rounded-full bg-orange-500 text-white flex items-center justify-center hover:scale-125 transition-all shadow-sm">
-                                                            <Info size={10} fill="currentColor" />
-                                                        </button>
-                                                    </div>
+                                                            <div className="flex flex-col">
+                                                                <FieldLabel id="preguntaQA" text="Pregunta de Validación (QA)" />
+                                                                <input type="text" placeholder="Ej. ¿A qué temperatura quedó?" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.preguntaQA || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'preguntaQA', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <FieldLabel id="temperaturaObjetivo" text="Temperatura Objetivo (°C)" />
+                                                                <input type="text" placeholder="Ej. 24°C" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.temperaturaObjetivo || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'temperaturaObjetivo', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
+                                                            </div>
 
-                                                    <div className="flex-1"></div>
+                                                            <div className="col-span-2 flex flex-col">
+                                                                <FieldLabel id="tipCoaching" text="Tip de Coaching Sensorial (Voz)" />
+                                                                <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. La masa debe verse brillante..." value={sp.tipCoaching} onChange={e => handleSubpasoChange(paso.id, sp.id, 'tipCoaching', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
+                                                            </div>
 
-                                                    <button onClick={() => toggleAdvanced(paso.id, sp.id)} style={{ color: activeTheme.text }} className="text-xs font-black uppercase tracking-widest hover:underline flex items-center gap-1 opacity-70">
-                                                        <Settings size={14} /> {sp.showAdvanced ? 'Ocultar' : 'Mostrar'} Avanzados
-                                                    </button>
+                                                            <div className="col-span-2 flex flex-col">
+                                                                <FieldLabel id="senalesCompletado" text="Señales Visuales de Completado" />
+                                                                <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. Se forma una tela delgada y translúcida al estirar." value={sp.senalesCompletado || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'senalesCompletado', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
+                                                            </div>
+
+                                                            <div className="col-span-2 flex flex-col">
+                                                                <FieldLabel id="erroresComunes" text="Errores Comunes a Prevenir" />
+                                                                <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. Sobre-batido (rompe gluten), agua muy caliente." value={sp.erroresComunes || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'erroresComunes', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
 
-                                                {sp.showAdvanced && (
-                                                    <div style={{ borderColor: activeTheme.border }} className="grid grid-cols-2 gap-4 mt-2 pt-4 border-t border-dashed animate-in slide-in-from-top-2">
+                                                {/* ========================================= */}
+                                                {/* SÚPER SECCIÓN: RECURSOS                   */}
+                                                {/* ========================================= */}
+                                                <div>
+                                                    <h5 style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 border-b pb-1 mb-4">
+                                                        Recursos
+                                                    </h5>
+                                                    
+                                                    {/* SECCIÓN: RECURSO HUMANO */}
+                                                    <div className="bg-white/40 border border-dashed rounded-xl p-4 mb-4" style={{ borderColor: activeTheme.border }}>
+                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-3 text-emerald-700">Recurso Humano</div>
+                                                        <div className="flex items-center justify-between gap-6">
+                                                            <div className="flex flex-col w-44 shrink-0">
+                                                                <FieldLabel id="tHumano" text="T. Humano" />
+                                                                <DualTimeInput value={sp.tHumano} onChange={val => handleSubpasoChange(paso.id, sp.id, 'tHumano', val)} />
+                                                            </div>
+                                                            
+                                                            {/* BOTÓN OPERARIO LIBRE / OCUPADO */}
+                                                            <div className="flex flex-col items-center justify-center flex-1">
+                                                                <div className="flex items-center gap-2 mt-4">
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => handleSubpasoChange(paso.id, sp.id, 'operarioLibre', !sp.operarioLibre)}
+                                                                        className="relative flex items-center w-72 h-10 rounded-full bg-black/5 overflow-hidden cursor-pointer shadow-inner border border-black/10 transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                                                                    >
+                                                                        <div 
+                                                                            className="absolute top-0 bottom-0 rounded-full transition-transform duration-300 ease-out shadow-md"
+                                                                            style={{ 
+                                                                                transform: sp.operarioLibre ? 'translateX(100%)' : 'translateX(0)',
+                                                                                backgroundColor: sp.operarioLibre ? '#10b981' : '#f59e0b',
+                                                                                margin: '2px',
+                                                                                height: 'calc(100% - 4px)',
+                                                                                width: 'calc(50% - 2px)'
+                                                                            }}
+                                                                        />
+                                                                        <div className="relative z-10 flex w-full h-full text-[11px] font-black uppercase tracking-wider select-none">
+                                                                            <div className={`flex-1 flex items-center justify-center transition-colors duration-300 ${!sp.operarioLibre ? 'text-white' : 'text-black/40'}`}>
+                                                                                Operario Ocupado
+                                                                            </div>
+                                                                            <div className={`flex-1 flex items-center justify-center transition-colors duration-300 ${sp.operarioLibre ? 'text-white' : 'text-black/40'}`}>
+                                                                                Operario Libre
+                                                                            </div>
+                                                                        </div>
+                                                                    </button>
+                                                                    <button onClick={(e) => { e.stopPropagation(); setInfoModalField('operarioLibre'); }} className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center hover:scale-125 transition-all shadow-sm shrink-0">
+                                                                        <Info size={12} fill="currentColor" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex flex-col w-44 shrink-0">
+                                                                <FieldLabel id="tAutonomo" text="T. Autónomo" />
+                                                                <DualTimeInput value={sp.tAutonomo} onChange={val => handleSubpasoChange(paso.id, sp.id, 'tAutonomo', val)} />
+                                                            </div>
+                                                        </div>
                                                         
-                                                        {/* PARÁMETROS OPERATIVOS */}
-                                                        <div className="col-span-2"><h5 style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 border-b pb-1">Parámetros Operativos del Agente</h5></div>
-                                                        
-                                                        <div className="flex flex-col">
-                                                            <FieldLabel id="triggerInicio" text="Trigger de Inicio" />
-                                                            <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.triggerInicio} onChange={e => handleSubpasoChange(paso.id, sp.id, 'triggerInicio', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm">
-                                                                <option value="inicio_turno">Inicio de Turno</option>
-                                                                <option value="confirmacion_anterior">Confirmación Anterior</option>
-                                                                <option value="fin_temporizador">Fin de Temporizador Autónomo</option>
-                                                                <option value="temp_alcanzada">Temperatura Alcanzada</option>
-                                                                <option value="paso_externo">Fin de Paso en Otra Masa</option>
-                                                                <option value="hora_fija">Hora Fija / Programada</option>
-                                                            </select>
+                                                        {/* TIMELINE BAR */}
+                                                        <div className="mt-4">
+                                                            <div style={{ color: activeTheme.text }} className="flex justify-between text-[9px] font-black uppercase tracking-widest opacity-70 mb-1">
+                                                                <span>Línea de Tiempo Estimada</span>
+                                                                <span>{totalTime.toFixed(1)} min total</span>
+                                                            </div>
+                                                            <div className="w-full h-2 bg-slate-200 rounded-full flex overflow-hidden">
+                                                                <div style={{width: `${humanPct}%`}} className="bg-amber-500 h-full transition-all" title="Humano"></div>
+                                                                <div style={{width: `${autoPct}%`}} className="bg-emerald-500 h-full transition-all" title="Autónomo"></div>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex flex-col">
-                                                            <FieldLabel id="dependenciaPasoPrevio" text="Dependencia (Opcional)" />
-                                                            <input type="text" placeholder="Ej. Paso 1.2" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.dependenciaPasoPrevio || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'dependenciaPasoPrevio', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
-                                                        </div>
-
-                                                        <div className="flex flex-col">
-                                                            <FieldLabel id="grupoInseparable" text="Grupo Inseparable" />
-                                                            <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. G-VEL-1" value={sp.grupoInseparable} onChange={e => handleSubpasoChange(paso.id, sp.id, 'grupoInseparable', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <FieldLabel id="ingredientesRequeridos" text="Ingredientes / MEP (Coma separada)" />
-                                                            <input type="text" placeholder="Ej. 500g Harina, Agua helada" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.ingredientesRequeridos || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
-                                                        </div>
-
-                                                        {/* PARÁMETROS DE CALIDAD Y COACHING */}
-                                                        <div className="col-span-2 mt-4"><h5 style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 border-b pb-1">Parámetros de Calidad y Coaching</h5></div>
-
-                                                        <div className="flex flex-col">
-                                                            <FieldLabel id="preguntaQA" text="Pregunta de Validación (QA)" />
-                                                            <input type="text" placeholder="Ej. ¿A qué temperatura quedó?" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.preguntaQA || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'preguntaQA', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <FieldLabel id="temperaturaObjetivo" text="Temperatura Objetivo (°C)" />
-                                                            <input type="text" placeholder="Ej. 24°C" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.temperaturaObjetivo || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'temperaturaObjetivo', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm" />
-                                                        </div>
-
-                                                        <div className="col-span-2 flex flex-col">
-                                                            <FieldLabel id="tipCoaching" text="Tip de Coaching Sensorial (Voz)" />
-                                                            <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. La masa debe verse brillante..." value={sp.tipCoaching} onChange={e => handleSubpasoChange(paso.id, sp.id, 'tipCoaching', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
-                                                        </div>
-
-                                                        <div className="col-span-2 flex flex-col">
-                                                            <FieldLabel id="senalesCompletado" text="Señales Visuales de Completado" />
-                                                            <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. Se forma una tela delgada y translúcida al estirar." value={sp.senalesCompletado || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'senalesCompletado', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
-                                                        </div>
-
-                                                        <div className="col-span-2 flex flex-col">
-                                                            <FieldLabel id="erroresComunes" text="Errores Comunes a Prevenir" />
-                                                            <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} placeholder="Ej. Sobre-batido (rompe gluten), agua muy caliente." value={sp.erroresComunes || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'erroresComunes', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm placeholder-black/30" />
-                                                        </div>
-
                                                     </div>
-                                                )}
+
+                                                    {/* SECCIÓN: RECURSOS MATERIALES */}
+                                                    <div className="bg-white/40 border border-dashed rounded-xl p-4 mb-4" style={{ borderColor: activeTheme.border }}>
+                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-3 text-cyan-700">Recursos Materiales</div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                            <div className="flex flex-col">
+                                                                <FieldLabel id="recurso" text="Recurso Asignado" />
+                                                                <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recurso} onChange={e => {
+                                                                    setPasos(pasos.map(p => p.id === paso.id ? {
+                                                                        ...p,
+                                                                        subpasos: p.subpasos.map(subp => subp.id === sp.id ? { ...subp, recurso: e.target.value, recursoConfigs: {} } : subp)
+                                                                    } : p));
+                                                                }} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm">
+                                                                    <option value="">(Selecciona equipo)</option>
+                                                                    {equipments.map(eq => (
+                                                                        <option key={eq.id} value={eq.id}>{eq.name} {eq.model_ref ? `(${eq.model_ref})` : ''}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            
+                                                            {/* DYNAMIC RECURSO CONFIGS */}
+                                                            {(() => {
+                                                                const selEq = equipments.find(eq => String(eq.id) === String(sp.recurso));
+                                                                if (!selEq) return null;
+                                                                
+                                                                let dynSpecs = selEq.dynamic_specs || {};
+                                                                if (typeof dynSpecs === 'string') {
+                                                                    try { dynSpecs = JSON.parse(dynSpecs); } catch(e) { dynSpecs = {}; }
+                                                                }
+                                                                
+                                                                const tipo = dynSpecs.tipo_maquina || '';
+                                                                const validTypes = ['BATIDORA', 'AMASADORA', 'REFINADORA', 'REVOLVEDORA', 'CORTADORA', 'MESA DE TRABAJO'];
+                                                                const isMesa = tipo === 'MESA DE TRABAJO' || (selEq.name && selEq.name.toUpperCase().includes('MESA'));
+                                                                
+                                                                if (!validTypes.includes(tipo) && !dynSpecs.accesorios && !isMesa) return null;
+
+                                                                return (
+                                                                    <>
+                                                                        {dynSpecs.accesorios && (
+                                                                            <div className="flex flex-col">
+                                                                                <FieldLabel id="accesorio" text="Accesorio a Usar" />
+                                                                                <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recursoConfigs?.accesorio || ''} onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'accesorio', e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-sm">
+                                                                                    <option value="">(Selecciona Accesorio)</option>
+                                                                                    {dynSpecs.accesorios.split(',').map(a => a.trim()).filter(Boolean).map(acc => (
+                                                                                        <option key={acc} value={acc}>{acc}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            </div>
+                                                                        )}
+                                                                        
+                                                                        {['BATIDORA', 'AMASADORA', 'REFINADORA', 'REVOLVEDORA'].includes(tipo) && (
+                                                                            <>
+                                                                                <div className="flex flex-col">
+                                                                                    <FieldLabel id="estado" text="Estado / Velocidad" />
+                                                                                    <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recursoConfigs?.estado || ''} onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'estado', e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-sm">
+                                                                                        <option value="">(Selecciona Estado)</option>
+                                                                                        <option value="Apagado">Apagado</option>
+                                                                                        <option value="Encendido">Encendido (Genérico)</option>
+                                                                                        {dynSpecs.velocidades ? (
+                                                                                            Array.from({ length: parseInt(dynSpecs.velocidades) || 0 }).map((_, i) => (
+                                                                                                <option key={`v${i+1}`} value={`Velocidad ${i+1}`}>Velocidad {i+1}</option>
+                                                                                            ))
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <option value="Velocidad Baja">Velocidad Baja (1)</option>
+                                                                                                <option value="Velocidad Media">Velocidad Media (2)</option>
+                                                                                                <option value="Velocidad Alta">Velocidad Alta (3)</option>
+                                                                                            </>
+                                                                                        )}
+                                                                                    </select>
+                                                                                </div>
+
+                                                                                {sp.recursoConfigs?.estado && sp.recursoConfigs?.estado !== 'Apagado' && (
+                                                                                    <div className="flex flex-col animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                                        <FieldLabel id="tiempo_operacion" text="Tiempo de Operación" />
+                                                                                        <DualTimeInput 
+                                                                                            value={sp.recursoConfigs?.tiempo_operacion} 
+                                                                                            onChange={val => handleRecursoConfigChange(paso.id, sp.id, 'tiempo_operacion', val)} 
+                                                                                        />
+                                                                                    </div>
+                                                                                )}
+                                                                            </>
+                                                                        )}
+
+                                                                        {isMesa && (
+                                                                            <div className="flex flex-col">
+                                                                                <FieldLabel id="cuadrante" text="Número de Cuadrante" />
+                                                                                <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recursoConfigs?.cuadrante || ''} onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'cuadrante', e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-sm">
+                                                                                    <option value="">(Selecciona Cuadrante)</option>
+                                                                                    {dynSpecs.cuadrantes ? (
+                                                                                        Array.from({ length: parseInt(dynSpecs.cuadrantes) || 0 }).map((_, i) => (
+                                                                                            <option key={`c${i+1}`} value={`Cuadrante ${i+1}`}>Cuadrante {i+1}</option>
+                                                                                        ))
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <option value="Cuadrante 1">Cuadrante 1</option>
+                                                                                            <option value="Cuadrante 2">Cuadrante 2</option>
+                                                                                            <option value="Cuadrante 3">Cuadrante 3</option>
+                                                                                            <option value="Cuadrante 4">Cuadrante 4</option>
+                                                                                            <option value="Cuadrante 5">Cuadrante 5</option>
+                                                                                            <option value="Cuadrante 6">Cuadrante 6</option>
+                                                                                        </>
+                                                                                    )}
+                                                                                </select>
+                                                                            </div>
+                                                                        )}
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* SECCIÓN: INGREDIENTES */}
+                                                    <div className="bg-white/40 border border-dashed rounded-xl p-4" style={{ borderColor: activeTheme.border }}>
+                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-3 text-orange-700">Ingredientes</div>
+                                                        <div className="flex flex-col">
+                                                            <div className="space-y-2">
+                                                                {(() => {
+                                                                    let ings = sp.ingredientesRequeridos;
+                                                                    if (typeof ings === 'string') ings = ings ? ings.split(',').map(i => ({ ingrediente: i.trim(), porcentaje: 100 })) : [];
+                                                                    if (!Array.isArray(ings)) ings = [];
+                                                                    
+                                                                    const hiddenCols = recipeMatrix?.hidden_system_cols || [];
+                                                                    const availableIngs = (recipeMatrix?.columns || [])
+                                                                        .filter(c => c && c.id && c.name && !hiddenCols.includes(c.id))
+                                                                        .map(c => c.name)
+                                                                        .filter(Boolean);
+
+                                                                    const usageMap = {};
+                                                                    pasos.forEach(p => {
+                                                                        p.subpasos?.forEach(subp => {
+                                                                            let iReq = subp.ingredientesRequeridos;
+                                                                            if (typeof iReq === 'string') return;
+                                                                            if (Array.isArray(iReq)) {
+                                                                                iReq.forEach(ir => {
+                                                                                    if (ir.ingrediente && ir.unidad === '%') {
+                                                                                        usageMap[ir.ingrediente] = (usageMap[ir.ingrediente] || 0) + (parseFloat(ir.porcentaje) || 0);
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        });
+                                                                    });
+
+                                                                    return (
+                                                                        <>
+                                                                            {ings.map((item, idx) => (
+                                                                                <div key={idx} className="flex gap-2 animate-in slide-in-from-left-2 duration-200">
+                                                                                    <select 
+                                                                                        value={item?.ingrediente || ''} 
+                                                                                        onChange={e => {
+                                                                                            const newIngs = [...ings];
+                                                                                            newIngs[idx] = { ...newIngs[idx], ingrediente: e.target.value };
+                                                                                            handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', newIngs);
+                                                                                        }}
+                                                                                        className="flex-1 p-3 border rounded-xl bg-white outline-none font-bold text-sm"
+                                                                                        style={{ color: activeTheme.text, borderColor: activeTheme.border }}
+                                                                                    >
+                                                                                        <option value="">Seleccionar ingrediente...</option>
+                                                                                        {availableIngs.map(name => (
+                                                                                            <option key={name} value={name}>{name}</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                    <div className="flex flex-col gap-1">
+                                                                                        <div style={{ borderColor: activeTheme.border }} className={`flex w-44 border-2 rounded-xl overflow-hidden h-11 bg-white shadow-sm transition-all focus-within:ring-2 ${parseFloat(usageMap[item.ingrediente]) > 100 ? 'ring-red-500/20 border-red-500' : 'focus-within:ring-orange-500/20'}`}>
+                                                                                            <input 
+                                                                                                type="number" 
+                                                                                                placeholder="0" 
+                                                                                                value={item?.porcentaje || ''} 
+                                                                                                onChange={e => {
+                                                                                                    const newIngs = [...ings];
+                                                                                                    newIngs[idx] = { ...newIngs[idx], porcentaje: e.target.value };
+                                                                                                    handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', newIngs);
+                                                                                                }}
+                                                                                                className="w-full min-w-0 bg-transparent px-3 py-1 font-mono font-black text-sm outline-none text-right"
+                                                                                                style={{ color: activeTheme.text }}
+                                                                                            />
+                                                                                            <div className="relative w-20 h-full flex items-center justify-center border-l border-black/10 bg-black/5 shrink-0 group">
+                                                                                                <div style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase text-center px-1 pointer-events-none break-words w-full leading-[0.8] tracking-tighter opacity-80">
+                                                                                                    {item?.unidad || '%'}
+                                                                                                </div>
+                                                                                                <select 
+                                                                                                    value={item?.unidad || '%'} 
+                                                                                                    onChange={e => {
+                                                                                                        const newIngs = [...ings];
+                                                                                                        newIngs[idx] = { ...newIngs[idx], unidad: e.target.value };
+                                                                                                        handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', newIngs);
+                                                                                                    }}
+                                                                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                                                                                                >
+                                                                                                    <option style={{ color: '#000' }} value="%">%</option>
+                                                                                                    <option style={{ color: '#000' }} value="g">g</option>
+                                                                                                    <option style={{ color: '#000' }} value="kg">kg</option>
+                                                                                                    <option style={{ color: '#000' }} value="ml">ml</option>
+                                                                                                    <option style={{ color: '#000' }} value="L">L</option>
+                                                                                                    <option style={{ color: '#000' }} value="PZA">PZA</option>
+                                                                                                    <option style={{ color: '#000' }} value="BOLSA">BOLSA</option>
+                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA">SUBB</option>
+                                                                                                    <option style={{ color: '#000' }} value="BOTE">BOTE</option>
+                                                                                                </select>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        {item.ingrediente && item.unidad === '%' && (() => {
+                                                                                            const totalUsed = usageMap[item.ingrediente] || 0;
+                                                                                            const otherStepsUsage = totalUsed - (parseFloat(item.porcentaje) || 0);
+                                                                                            const remaining = Math.max(0, 100 - otherStepsUsage);
+                                                                                            
+                                                                                            if (totalUsed > 100) {
+                                                                                                return (
+                                                                                                    <div className="flex items-center gap-1 text-[9px] font-black text-red-600 animate-pulse">
+                                                                                                        <AlertTriangle size={10} /> EXCESO: {totalUsed}% USADO
+                                                                                                    </div>
+                                                                                                );
+                                                                                            }
+                                                                                            return (
+                                                                                                <div className="text-[9px] font-black opacity-40 uppercase tracking-widest pl-2">
+                                                                                                    Remanente: {remaining}% disponible
+                                                                                                </div>
+                                                                                            );
+                                                                                        })()}
+                                                                                    </div>
+                                                                                    <button 
+                                                                                        onClick={() => {
+                                                                                            const newIngs = ings.filter((_, i) => i !== idx);
+                                                                                            handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', newIngs);
+                                                                                        }}
+                                                                                        className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                                                                    >
+                                                                                        <Trash2 size={16} />
+                                                                                    </button>
+                                                                                </div>
+                                                                            ))}
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    const newIngs = [...ings, { ingrediente: '', porcentaje: 100 }];
+                                                                                    handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', newIngs);
+                                                                                }}
+                                                                                className="text-[10px] font-black uppercase tracking-widest text-orange-600 flex items-center gap-1 hover:underline p-2"
+                                                                            >
+                                                                                <Plus size={14} /> Añadir Ingrediente de Receta
+                                                                            </button>
+                                                                        </>
+                                                                    );
+                                                                })()}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
 
                                             </div>
                                             

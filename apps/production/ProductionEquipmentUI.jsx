@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
     ArrowLeft, Plus, Search, Loader2, Settings2, Trash2, Save, X, Image as ImageIcon,
-    Settings, Box, Key, Hash, FileText, Info, MapPin, Wrench
+    Settings, Box, Key, Hash, FileText, Info, MapPin, Wrench, Sparkles, GripVertical, Activity
 } from 'lucide-react';
 
 const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
@@ -49,16 +49,70 @@ export const ProductionEquipmentUI = ({ onBack }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedEquip, setSelectedEquip] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [draggedItemIndex, setDraggedItemIndex] = useState(null);
 
     const loadEquipments = async () => {
         try {
             const resp = await fetch(`${API_BASE}/production/equipment`);
-            if (resp.ok) setEquipments(await resp.json());
+            if (resp.ok) {
+                const data = await resp.json();
+                const sorted = data.sort((a, b) => {
+                    const idxA = a.dynamic_specs?.order_index || 0;
+                    const idxB = b.dynamic_specs?.order_index || 0;
+                    return idxA - idxB;
+                });
+                setEquipments(sorted);
+            }
         } catch (e) { console.error(e); }
         finally { setIsLoading(false); }
     };
 
     useEffect(() => { loadEquipments(); }, []);
+
+    const handleDragStart = (e, index) => {
+        setDraggedItemIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        // Required for Firefox:
+        e.dataTransfer.setData('text/plain', index.toString());
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDragEnd = () => {
+        setDraggedItemIndex(null);
+    };
+
+    const handleDrop = async (e, dropIndex) => {
+        e.preventDefault();
+        if (draggedItemIndex === null || draggedItemIndex === dropIndex) return;
+
+        const newEquipments = [...equipments];
+        const draggedItem = newEquipments[draggedItemIndex];
+        
+        newEquipments.splice(draggedItemIndex, 1);
+        newEquipments.splice(dropIndex, 0, draggedItem);
+        
+        setEquipments(newEquipments);
+        setDraggedItemIndex(null);
+
+        // Guardado silencioso en background
+        try {
+            await Promise.all(newEquipments.map((eq, idx) => {
+                const updatedSpecs = { ...eq.dynamic_specs, order_index: idx };
+                const payload = { ...eq, dynamic_specs: updatedSpecs };
+                return fetch(`${API_BASE}/production/equipment/${eq.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }));
+        } catch (error) {
+            console.error("Error guardando orden:", error);
+        }
+    };
 
     const filtered = equipments.filter(e => 
         e.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -130,15 +184,28 @@ export const ProductionEquipmentUI = ({ onBack }) => {
                     </div>
                 ) : (
                     <div className="flex flex-col gap-4 max-w-5xl mx-auto">
-                        {filtered.map(equip => {
+                        {filtered.map((equip, index) => {
                             const theme = THEMES[equip.nature] || THEMES['MAQUINARIA'];
                             return (
                                 <div 
                                     key={equip.id}
+                                    draggable={!searchTerm}
+                                    onDragStart={(e) => !searchTerm && handleDragStart(e, index)}
+                                    onDragOver={!searchTerm ? handleDragOver : undefined}
+                                    onDragEnter={(e) => e.preventDefault()}
+                                    onDragEnd={handleDragEnd}
+                                    onDrop={(e) => !searchTerm && handleDrop(e, index)}
                                     onClick={() => { setSelectedEquip({...equip}); setIsModalOpen(true); }}
                                     style={{ backgroundColor: theme.bg }}
-                                    className="group relative border border-black/5 rounded-2xl p-4 hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden flex items-center gap-6"
+                                    className={`group relative border border-black/5 rounded-2xl p-4 hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden flex items-center gap-6 ${draggedItemIndex === index ? 'opacity-30 border-dashed border-2 border-cyan-500 scale-[0.98]' : ''}`}
                                 >
+                                    {/* Handle Drag */}
+                                    {!searchTerm && (
+                                        <div className="opacity-20 group-hover:opacity-60 cursor-grab active:cursor-grabbing hover:scale-125 transition-all text-black shrink-0 -ml-2" onClick={e => e.stopPropagation()}>
+                                            <GripVertical size={20} />
+                                        </div>
+                                    )}
+
                                     {/* Icon / Image */}
                                     <div className="w-12 h-12 rounded-xl bg-white/40 border border-black/5 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
                                         {equip.image_url ? (
@@ -160,6 +227,17 @@ export const ProductionEquipmentUI = ({ onBack }) => {
                                             {equip.model_ref && (
                                                 <span style={{ color: theme.text }} className="text-xs font-bold opacity-60 truncate shrink-0">
                                                     MOD: {equip.model_ref}
+                                                </span>
+                                            )}
+                                            {equip.dynamic_specs?.estado_actual && (
+                                                <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest text-white shrink-0 shadow-sm ${
+                                                    equip.dynamic_specs.estado_actual === 'LISTO' ? 'bg-green-500' :
+                                                    equip.dynamic_specs.estado_actual === 'OCUPADO' ? 'bg-red-500' :
+                                                    equip.dynamic_specs.estado_actual === 'EN LIMPIEZA' ? 'bg-yellow-500' :
+                                                    equip.dynamic_specs.estado_actual === 'EN MANTENIMIENTO' ? 'bg-orange-500' :
+                                                    'bg-gray-500'
+                                                }`}>
+                                                    {equip.dynamic_specs.estado_actual === 'LISTO' ? 'LISTO' : equip.dynamic_specs.estado_actual}
                                                 </span>
                                             )}
                                         </div>
@@ -211,7 +289,9 @@ const EquipmentWizardModal = ({ initialData, onClose, onSuccess }) => {
         { id: 1, label: 'INFORMACIÓN GENERAL', icon: Info },
         { id: 2, label: formData.nature === 'MAQUINARIA' ? 'PARÁMETROS DE OPERACIÓN' : 'ESPECIFICACIONES', icon: Settings },
         { id: 3, label: 'UBICACIÓN', icon: MapPin },
-        { id: 4, label: 'MANTENIMIENTO', icon: Wrench }
+        { id: 4, label: 'LIMPIEZA', icon: Sparkles },
+        { id: 5, label: 'MANTENIMIENTO', icon: Wrench },
+        { id: 6, label: 'ESTADO ACTUAL', icon: Activity }
     ];
 
     const handleSpecChange = (key, value) => {
@@ -352,25 +432,8 @@ const EquipmentWizardModal = ({ initialData, onClose, onSuccess }) => {
                         {/* PESTAÑA 1: GENERAL */}
                         {step === 1 && (
                             <>
-                                {/* Columna Izquierda: Imagen y Naturaleza */}
+                                {/* Columna Izquierda: Fotografía */}
                                 <div className="col-span-1 space-y-6">
-                                    <label className="block">
-                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Naturaleza del Equipo</span>
-                                        <select
-                                            value={formData.nature}
-                                            onChange={e => {
-                                                setFormData({...formData, nature: e.target.value});
-                                            }}
-                                            style={{ backgroundColor: theme.input, color: theme.text }}
-                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-black uppercase tracking-wider"
-                                        >
-                                            <option value="MAQUINARIA">Maquinaria</option>
-                                            <option value="MOBILIARIO">Mobiliario</option>
-                                            <option value="RECIPIENTE">Recipiente</option>
-                                            <option value="UTENSILIO">Utensilio</option>
-                                        </select>
-                                    </label>
-
                                     <div className="space-y-2">
                                         <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Fotografía Física</span>
                                         <div 
@@ -404,6 +467,66 @@ const EquipmentWizardModal = ({ initialData, onClose, onSuccess }) => {
                                             <h3 style={{ color: theme.text }} className="text-xs font-black uppercase tracking-widest">Información General</h3>
                                         </div>
                                         <div className="grid grid-cols-2 gap-6">
+                                            <label className="block">
+                                                <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Naturaleza del Equipo</span>
+                                                <select
+                                                    value={formData.nature}
+                                                    onChange={e => {
+                                                        setFormData({...formData, nature: e.target.value});
+                                                    }}
+                                                    style={{ backgroundColor: theme.input, color: theme.text }}
+                                                    className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-black uppercase tracking-wider"
+                                                >
+                                                    <option value="MAQUINARIA">Maquinaria</option>
+                                                    <option value="MOBILIARIO">Mobiliario</option>
+                                                    <option value="RECIPIENTE">Recipiente</option>
+                                                    <option value="UTENSILIO">Utensilio</option>
+                                                </select>
+                                            </label>
+
+                                            {formData.nature === 'MAQUINARIA' && (
+                                                <label className="block">
+                                                    <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Tipo de Máquina</span>
+                                                    <select 
+                                                        value={formData.dynamic_specs?.tipo_maquina || ''} 
+                                                        onChange={e => handleSpecChange('tipo_maquina', e.target.value)} 
+                                                        style={{ backgroundColor: theme.input, color: theme.text }} 
+                                                        className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold uppercase"
+                                                    >
+                                                        <option value="">(Seleccionar)</option>
+                                                        <option value="BATIDORA">Batidora</option>
+                                                        <option value="AMASADORA">Amasadora</option>
+                                                        <option value="REFINADORA">Refinadora</option>
+                                                        <option value="LICUADORA">Licuadora</option>
+                                                        <option value="LAMINADORA">Laminadora</option>
+                                                        <option value="CORTADORA">Cortadora</option>
+                                                        <option value="BASCULA">Báscula</option>
+                                                    </select>
+                                                </label>
+                                            )}
+
+                                            {formData.nature === 'MOBILIARIO' && (
+                                                <label className="block">
+                                                    <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Tipo de Mobiliario</span>
+                                                    <select 
+                                                        value={formData.dynamic_specs?.tipo_mobiliario || ''} 
+                                                        onChange={e => handleSpecChange('tipo_mobiliario', e.target.value)} 
+                                                        style={{ backgroundColor: theme.input, color: theme.text }} 
+                                                        className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold uppercase"
+                                                    >
+                                                        <option value="">(Seleccionar)</option>
+                                                        <option value="MESA DE TRABAJO">Mesa de Trabajo</option>
+                                                        <option value="CARRITO DE INSUMOS">Carrito de Insumos</option>
+                                                        <option value="CARRO ESPIGUERO">Carro Espiguero</option>
+                                                        <option value="CARRO DE RECICLAJE">Carro de Reciclaje</option>
+                                                    </select>
+                                                </label>
+                                            )}
+
+                                            {(formData.nature === 'RECIPIENTE' || formData.nature === 'UTENSILIO') && (
+                                                <div className="block"></div>
+                                            )}
+
                                             <label className="block col-span-2">
                                                 <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">
                                                     Nombre del Activo <span className="text-red-500">*</span>
@@ -454,24 +577,6 @@ const EquipmentWizardModal = ({ initialData, onClose, onSuccess }) => {
 
                                             {formData.nature === 'MAQUINARIA' && (
                                                 <>
-                                                    <label className="block col-span-2">
-                                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Tipo de Máquina</span>
-                                                        <select 
-                                                            value={formData.dynamic_specs?.tipo_maquina || ''} 
-                                                            onChange={e => handleSpecChange('tipo_maquina', e.target.value)} 
-                                                            style={{ backgroundColor: theme.input, color: theme.text }} 
-                                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold uppercase"
-                                                        >
-                                                            <option value="">(Seleccionar)</option>
-                                                            <option value="BATIDORA">Batidora</option>
-                                                            <option value="AMASADORA">Amasadora</option>
-                                                            <option value="REFINADORA">Refinadora</option>
-                                                            <option value="LICUADORA">Licuadora</option>
-                                                            <option value="LAMINADORA">Laminadora</option>
-                                                            <option value="CORTADORA">Cortadora</option>
-                                                        </select>
-                                                    </label>
-
                                                     <label className="block">
                                                         <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Voltaje (V)</span>
                                                         <input type="text" value={formData.dynamic_specs?.voltaje || ''} onChange={e => handleSpecChange('voltaje', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30" placeholder="Ej: 220V Trifásico" />
@@ -614,6 +719,13 @@ const EquipmentWizardModal = ({ initialData, onClose, onSuccess }) => {
                                                     <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Material Superficie</span>
                                                     <input type="text" value={formData.dynamic_specs?.material || ''} onChange={e => handleSpecChange('material', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30" placeholder="Ej: Placa Acero" />
                                                 </label>
+                                                {formData.dynamic_specs?.tipo_mobiliario === 'MESA DE TRABAJO' && (
+                                                    <label className="block col-span-3">
+                                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Número de Cuadrantes</span>
+                                                        <input type="number" min="1" value={formData.dynamic_specs?.cuadrantes || ''} onChange={e => handleSpecChange('cuadrantes', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30" placeholder="Ej: 6" />
+                                                        <span className="text-[10px] uppercase font-bold opacity-40 ml-4 mt-2 block">Permite a Gemma asignar el espacio de trabajo específico (Ej: "Usa el cuadrante 6").</span>
+                                                    </label>
+                                                )}
                                             </>
                                         )}
 
@@ -709,8 +821,37 @@ const EquipmentWizardModal = ({ initialData, onClose, onSuccess }) => {
                             </div>
                         )}
 
-                        {/* PESTAÑA 4: MANTENIMIENTO */}
+                        {/* PESTAÑA 4: LIMPIEZA */}
                         {step === 4 && (
+                            <div className="col-span-3 space-y-8">
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-2 border-b border-black/10 pb-2">
+                                        <Sparkles size={16} style={{ color: theme.text }} className="opacity-60" />
+                                        <h3 style={{ color: theme.text }} className="text-xs font-black uppercase tracking-widest">
+                                            Gestión de Limpieza
+                                        </h3>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <label className="block">
+                                            <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Encargado de Limpieza</span>
+                                            <input type="text" value={formData.dynamic_specs?.encargado_limpieza || ''} onChange={e => handleSpecChange('encargado_limpieza', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30" placeholder="Ej: Ayudante General, Auxiliar de Limpieza" />
+                                        </label>
+                                        <label className="block">
+                                            <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Material / Productos de Limpieza</span>
+                                            <input type="text" value={formData.dynamic_specs?.productos_limpieza || ''} onChange={e => handleSpecChange('productos_limpieza', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30" placeholder="Ej: Desengrasante, Esponja suave, Jabón neutro" />
+                                        </label>
+                                        <label className="block col-span-2">
+                                            <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Procedimiento / Ciclo de Limpieza</span>
+                                            <textarea value={formData.dynamic_specs?.procedimiento_limpieza || ''} onChange={e => handleSpecChange('procedimiento_limpieza', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30 h-32 resize-none" placeholder="Ej: Lavado diario al finalizar turno. No usar fibras metálicas." />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* PESTAÑA 5: MANTENIMIENTO */}
+                        {step === 5 && (
                             <div className="col-span-3 space-y-8">
                                 <div className="space-y-6">
                                     <div className="flex items-center gap-2 border-b border-black/10 pb-2">
@@ -740,6 +881,56 @@ const EquipmentWizardModal = ({ initialData, onClose, onSuccess }) => {
                                             }} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30 h-32 resize-none" placeholder="Ej: Engrasado semanal de poleas. Cambio de baleros cada 6 meses. Limpieza profunda diaria." />
                                         </label>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* PESTAÑA 6: ESTADO ACTUAL */}
+                        {step === 6 && (
+                            <div className="col-span-3 space-y-8">
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-2 border-b border-black/10 pb-2">
+                                        <Activity size={16} style={{ color: theme.text }} className="opacity-60" />
+                                        <h3 style={{ color: theme.text }} className="text-xs font-black uppercase tracking-widest">
+                                            Estado Actual del Equipo
+                                        </h3>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                        {[
+                                            { id: 'LISTO', label: 'LISTO PARA USAR', color: 'bg-green-500', text: 'text-white' },
+                                            { id: 'OCUPADO', label: 'OCUPADO POR...', color: 'bg-red-500', text: 'text-white' },
+                                            { id: 'EN LIMPIEZA', label: 'EN LIMPIEZA', color: 'bg-yellow-500', text: 'text-black' },
+                                            { id: 'EN MANTENIMIENTO', label: 'EN MANTENIMIENTO', color: 'bg-orange-500', text: 'text-white' },
+                                            { id: 'DESHABILITADO', label: 'DESHABILITADO', color: 'bg-gray-500', text: 'text-white' }
+                                        ].map(st => (
+                                            <button
+                                                key={st.id}
+                                                onClick={() => handleSpecChange('estado_actual', st.id)}
+                                                className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center justify-center gap-3 ${
+                                                    formData.dynamic_specs?.estado_actual === st.id 
+                                                    ? `${st.color} ${st.text} border-transparent shadow-lg scale-105` 
+                                                    : 'bg-white/40 border-black/10 hover:border-black/30'
+                                                }`}
+                                            >
+                                                <div className={`w-4 h-4 rounded-full ${formData.dynamic_specs?.estado_actual === st.id ? 'bg-current opacity-50' : st.color}`} />
+                                                <span className={`text-[10px] font-black uppercase tracking-widest text-center ${formData.dynamic_specs?.estado_actual === st.id ? '' : 'text-gray-600'}`}>{st.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {formData.dynamic_specs?.estado_actual === 'OCUPADO' && (
+                                        <div className="col-span-3 grid grid-cols-2 gap-6 mt-4 p-6 rounded-[40px] border border-black/10 animate-in slide-in-from-top-4" style={{ backgroundColor: theme.input }}>
+                                            <label className="block">
+                                                <span style={{ color: theme.text }} className="text-[11px] font-black uppercase opacity-60 tracking-widest pl-2">¿Quién lo está usando?</span>
+                                                <input type="text" value={formData.dynamic_specs?.estado_ocupado_por || ''} onChange={e => handleSpecChange('estado_ocupado_por', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-4 mt-2 outline-none font-bold placeholder-black/30" placeholder="Ej: Maestro Juan" />
+                                            </label>
+                                            <label className="block">
+                                                <span style={{ color: theme.text }} className="text-[11px] font-black uppercase opacity-60 tracking-widest pl-2">Detalles / Proceso en curso</span>
+                                                <input type="text" value={formData.dynamic_specs?.estado_detalles || ''} onChange={e => handleSpecChange('estado_detalles', e.target.value)} style={{ backgroundColor: theme.input, color: theme.text }} className="w-full border border-black/5 rounded-3xl p-4 mt-2 outline-none font-bold placeholder-black/30" placeholder="Ej: Amasando masa de bisquet" />
+                                            </label>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
