@@ -4,9 +4,14 @@ import { posService } from './services/POSService';
 import { useCart } from './hooks/useCart';
 import { useVision } from './hooks/useVision';
 import { useTerminalLocking } from './hooks/useTerminalLocking';
+import { useBeforeUnload } from './hooks/useBeforeUnload';
+import { useBarcodeScanner } from './hooks/useBarcodeScanner';
+import { useAutoSave } from './hooks/useAutoSave';
 import { CONFIG } from './config';
 
 // Sub-componentes
+import { ProductCard } from './components/ProductCard';
+import { ProductGrid } from './components/ProductGrid';
 import { CategoryBar } from './components/CategoryBar';
 import { SalesReceipt } from './components/SalesReceipt';
 import { VisionVisor } from './components/VisionVisor';
@@ -15,6 +20,7 @@ import { TicketTemplate } from './components/TicketTemplate';
 import { GestorDeCaja } from './components/GestorDeCaja';
 import { TerminalSelector } from './components/TerminalSelector';
 import { ProgramacionPedidoModal } from './components/ProgramacionPedidoModal';
+import { CollisionModal } from './components/CollisionModal';
 import { cashService } from './services/cashService';
 
 import { INITIAL_CATEGORIES, getProductEmoji, terminals } from './utils/posConstants';
@@ -36,6 +42,12 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const [printTicketData, setPrintTicketData] = useState(null);
     const [originalCapturer, setOriginalCapturer] = useState(null);
     const [toastMessage, setToastMessage] = useState(null);
+    // v4.0 ZERO-LOSS: Estado de guardado y loading
+    const [lastSaveStatus, setLastSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'failed'
+    const [lastSaveTime, setLastSaveTime] = useState(null);
+    const [isSendingToPizarron, setIsSendingToPizarron] = useState(false);
+    const [ticketVersion, setTicketVersion] = useState(null); // Versión optimista del ticket activo
+    const [showCollisionModal, setShowCollisionModal] = useState(false);
     const printRef = React.useRef();
     const savedTicketRef = React.useRef(null); // Ref inmediata para datos de impresión (no depende de re-render)
     const cartRef = React.useRef([]);           // Ref para auto-save anti-stale-closure
@@ -43,6 +55,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     const originalCapturerRef = React.useRef(null); // Ref anti-stale para capturista original (v3.0)
     const isGeneratingFolioRef = React.useRef(false); // Flag para bloquear auto-save durante generación
     const isRecoveringRef = React.useRef(false);      // Flag para bloquear auto-save durante recuperación del pizarrón (v3.0)
+    const ticketVersionRef = React.useRef(null); // Ref anti-stale para versión optimista
+    const actionMutexRef = React.useRef(Promise.resolve()); // v4.1: Mutex para serializar llamadas concurrentes a handleTicketAction
 
     // --- Estado de Ocupación de Terminales (Custom Hook) ---
     const { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal } = useTerminalLocking(selectedTerminal, currentUser);
@@ -75,6 +89,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     React.useEffect(() => { cartRef.current = cart; }, [cart]);
     React.useEffect(() => { accountNumRef.current = currentAccountNum; }, [currentAccountNum]);
     React.useEffect(() => { originalCapturerRef.current = originalCapturer; }, [originalCapturer]);
+    React.useEffect(() => { ticketVersionRef.current = ticketVersion; }, [ticketVersion]);
 
     // --- Persistencia de Metadatos de Sesión ---
     useEffect(() => {
@@ -153,7 +168,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 setInitialProducts(activeProducts);
             } catch (error) {
                 console.error("Fetch error:", error);
-                alert("Error conectando con el ERP. Verifique que el servidor este activo.");
+                setToastMessage("❌ Error conectando con el ERP. Verifique el servidor.");
+                setTimeout(() => setToastMessage(null), 5000);
             }
         };
         loadInitialData();
@@ -170,15 +186,15 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
                     const ticket = await posService.reserveTicket(terminalId, currentUser?.id || null);
+                    // v4.3 ANTI-RACE: Sync refs ANTES del setState para que handleTicketAction
+                    // nunca lea un accountNum vacío y genere un folio duplicado.
+                    accountNumRef.current = ticket.account_num;
                     setCurrentAccountNum(ticket.account_num);
-                    if (ticket.captured_by) {
-                        setOriginalCapturer({
-                            id: ticket.captured_by.id,
-                            name: ticket.captured_by.name
-                        });
-                    } else {
-                        setOriginalCapturer(currentUser);
-                    }
+                    const cap = ticket.captured_by
+                        ? { id: ticket.captured_by.id, name: ticket.captured_by.name }
+                        : currentUser;
+                    originalCapturerRef.current = cap;
+                    setOriginalCapturer(cap);
                     return ticket.account_num;
                 } catch (error) {
                     console.error(`Error reservando cuenta (intento ${attempt}/3):`, error);
@@ -188,7 +204,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 }
             }
             
-            alert("⚠️ Error de conexión con el servidor. No se pudo reservar un número de cuenta. Verifique que el servidor esté activo.");
+            setToastMessage("⚠️ Error de conexión. No se pudo reservar folio.");
+            setTimeout(() => setToastMessage(null), 5000);
             throw new Error("No se pudo reservar cuenta después de 3 intentos");
         })();
 
@@ -201,11 +218,28 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
     }, [selectedTerminal, currentUser]);
 
-    // Lazy Reservation Trigger
+    // v4.0 ZERO-LOSS: Save inmediato al primer producto
     const handleAddToCart = (product) => {
         addToCart(product); // UI reacts instantly
         if (!currentAccountNum) {
-            generateNewAccountNum().catch(e => console.error(e));
+            // Generar folio Y guardar inmediatamente al servidor
+            generateNewAccountNum().then(accountNum => {
+                if (accountNum) {
+                    // Delay mínimo para que React procese el addToCart
+                    setTimeout(() => {
+                        console.log('📡 ZERO-LOSS: Guardado inmediato del primer producto');
+                        handleTicketAction('OPEN', null, false)
+                            .then(() => {
+                                setLastSaveStatus('saved');
+                                setLastSaveTime(new Date());
+                            })
+                            .catch(e => {
+                                console.error('⚠️ ZERO-LOSS: Fallo en guardado inmediato:', e);
+                                setLastSaveStatus('failed');
+                            });
+                    }, 100);
+                }
+            }).catch(e => console.error(e));
         }
     };
 
@@ -232,45 +266,20 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
     }, [selectedTerminal, currentAccountNum, generateNewAccountNum]);
 
-    // --- Auto-Guardado en Pizarrón (Garantizar captura) ---
-    // REGLA 2 de POS_TICKET_LIFECYCLE_SPEC v3.0: dependencia DEBE ser `cart` (NO `cart.length`)
-    useEffect(() => {
-        if (!currentAccountNum || cart.length === 0 || showCheckout) return;
+    useAutoSave({
+        currentAccountNum, 
+        cart, 
+        showCheckout, 
+        showCollisionModal,
+        refs: { isGeneratingFolioRef, isRecoveringRef, accountNumRef, cartRef },
+        setLastSaveStatus, 
+        setLastSaveTime, 
+        onSave: () => handleTicketAction('OPEN', null, false)
+    });
 
-        const autoSaveTimer = setInterval(() => {
-            // ANTI-STALE-CLOSURE: Leer valores actuales desde refs, no desde closures
-            if (isGeneratingFolioRef.current) return; // No guardar mientras se genera folio
-            if (isRecoveringRef.current) return; // v3.0: No guardar durante recuperación del pizarrón
-            if (!accountNumRef.current || cartRef.current.length === 0) return;
-            console.log("⏱️ Auto-guardando ticket en Pizarrón...");
-            handleTicketAction('OPEN', null, false).catch(e => console.warn("Auto-save failed:", e));
-        }, 30000); // Cada 30 segundos
+    useBeforeUnload(cartRef, accountNumRef, CONFIG.API_BASE_URL);
 
-        return () => clearInterval(autoSaveTimer);
-    }, [currentAccountNum, cart, showCheckout]); // v3.0: `cart` en vez de `cart.length` para reiniciar timer al cambiar contenido
-
-    // --- Teclado (Barcode) ---
-    useEffect(() => {
-        let buffer = '';
-        let lastTime = Date.now();
-
-        const handleKeys = (e) => {
-            if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
-            const now = Date.now();
-            if (now - lastTime > 100) buffer = '';
-            lastTime = now;
-
-            if (e.key === 'Enter') {
-                if (buffer) {
-                    const prod = PRODUCTS.find(p => p.barcode === buffer || p.id.toString() === buffer);
-                    if (prod) handleAddToCart(prod);
-                    buffer = '';
-                }
-            } else if (e.key.length === 1) buffer += e.key;
-        };
-        window.addEventListener('keydown', handleKeys);
-        return () => window.removeEventListener('keydown', handleKeys);
-    }, [PRODUCTS, addToCart]);
+    useBarcodeScanner(PRODUCTS, handleAddToCart);
 
     // --- Lógica de Negocio (Tickets) ---
 
@@ -318,98 +327,157 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     };
 
     const handleTicketAction = async (status, paymentData = null, finalizeUI = true) => {
-        // v3.0 FIX — REGLA 1: Leer SIEMPRE de refs para evitar stale closures
-        const liveCart = cartRef.current;
-        const liveAccountNum = accountNumRef.current;
-        const liveCapturer = originalCapturerRef.current;
-
-        if (liveCart.length === 0) return alert("El ticket esta vacio.");
+        // v4.1: Adquirir Lock Mutex para evitar self-collisions (ej. auto-save + pagar al mismo tiempo)
+        const previousPromise = actionMutexRef.current;
+        let releaseMutex;
+        actionMutexRef.current = new Promise(resolve => releaseMutex = resolve);
         
-        // Si no hay datos de pago y se intenta cobrar, abrir pantalla de pago
-        if (status === 'PAID' && (!paymentData || paymentData.length === 0)) {
-            setShowCheckout(true);
-            return;
-        }
+        await previousPromise;
 
         try {
-            let targetAccountNum = liveAccountNum;
-            if (!targetAccountNum) {
-                targetAccountNum = await generateNewAccountNum();
+            // REGLA 1: Leer SIEMPRE de refs DESPUÉS de adquirir el lock (la versión pudo cambiar)
+            const liveCart = cartRef.current;
+            const liveAccountNum = accountNumRef.current;
+            const liveCapturer = originalCapturerRef.current;
+            const liveVersion = ticketVersionRef.current;
+
+            if (liveCart.length === 0) {
+                setToastMessage("⚠️ El ticket está vacío.");
+                setTimeout(() => setToastMessage(null), 3000);
+                return;
+            }
+            
+            // Si no hay datos de pago y se intenta cobrar, abrir pantalla de pago
+            if (status === 'PAID' && (!paymentData || paymentData.length === 0)) {
+                setShowCheckout(true);
+                return;
             }
 
-            if (paymentData) setPaymentsHistory(paymentData);
-            const terminalId = selectedTerminal || 'T1';
-            let session = await posService.getActiveSession(terminalId);
-            if (!session) session = await posService.createSession(terminalId);
+            // v4.0: Loading visual para envío al Pizarrón
+            if (finalizeUI && status === 'OPEN') setIsSendingToPizarron(true);
 
-            let payload = {
-                account_num: targetAccountNum,
-                session_id: session.id,
-                items: liveCart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
-                status: status,
-                payment_details: paymentData,
-                cash_session_id: cashSessionId,
-                captured_by_id: liveCapturer?.id || currentUser?.id || null,
-                cashed_by_id: status === 'PAID' ? (currentUser?.id || null) : null,
-                order_type: orderType
-            };
-
-            // Inyectar data del OMS si es pedido
-            if (orderType === 'PEDIDO' && orderData) {
-                payload = { ...payload, ...orderData };
-            }
-
-            let savedTicket = null;
             try {
-                savedTicket = await posService.createTicket(payload);
-            } catch (err) {
-                // El error viene como un objeto Error cuyo mensaje es el 'detail' del servidor
-                const errorMessage = err.message || "";
-                if (errorMessage.includes("ya ha sido pagado")) {
-                    console.warn("⚠️ Colisión de folio detectada en servidor. Autogenerando nuevo folio y reintentando...");
-                    const newAccountNum = await generateNewAccountNum();
-                    targetAccountNum = newAccountNum;
-                    setCurrentAccountNum(newAccountNum);
-                    payload.account_num = newAccountNum;
-                    savedTicket = await posService.createTicket(payload);
-                } else {
-                    throw err;
+                let targetAccountNum = liveAccountNum;
+                if (!targetAccountNum) {
+                    targetAccountNum = await generateNewAccountNum();
                 }
-            }
-            
-            setPrintTicketData(savedTicket); // Actualizar datos de impresión con la respuesta oficial del servidor
-            savedTicketRef.current = savedTicket; // Ref inmediata — disponible sin esperar re-render
-            
-            if (finalizeUI) {
-                if (status === 'PAID') {
-                    console.log("Auto-printing PAID ticket. Response from server:", savedTicket);
-                    handlePrintTicket(savedTicket);
+
+                if (paymentData) setPaymentsHistory(paymentData);
+                const terminalId = selectedTerminal || 'T1';
+                let session = await posService.getActiveSession(terminalId);
+                if (!session) session = await posService.createSession(terminalId);
+
+                let payload = {
+                    account_num: targetAccountNum,
+                    session_id: session.id,
+                    items: liveCart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
+                    status: status,
+                    payment_details: paymentData,
+                    cash_session_id: cashSessionId,
+                    captured_by_id: liveCapturer?.id || currentUser?.id || null,
+                    cashed_by_id: status === 'PAID' ? (currentUser?.id || null) : null,
+                    order_type: orderType,
+                    // v4.3: SIEMPRE enviar version. El mutex serializa las llamadas y
+                    // el sync directo de ticketVersionRef (L424) elimina stale-closures.
+                    // Enviar null permitía que el auto-save sobreescribiera tickets de otros usuarios.
+                    version: liveVersion
+                };
+
+                // Inyectar data del OMS si es pedido
+                if (orderType === 'PEDIDO' && orderData) {
+                    payload = { ...payload, ...orderData };
                 }
-                clearCart();
-                setOriginalCapturer(null);
-                setCurrentAccountNum('');
-                setOrderData(null);
-                setOrderType('VENTA_DIRECTA');
+
+                let savedTicket = null;
                 try {
-                    if (selectedTerminal) localStorage.removeItem(`pos_session_${selectedTerminal}`);
-                } catch (e) { console.warn("Error al limpiar persistencia:", e); }
-                setShowCheckout(false);
-                setPaymentsHistory([]);
-                if (status === 'PAID') {
-                    // Toast no-bloqueante en lugar de alert() que interfería con la impresión
-                    setToastMessage('✅ Venta finalizada exitosamente. Ticket impreso.');
-                    setTimeout(() => setToastMessage(null), 4000);
+                    savedTicket = await posService.createTicket(payload);
+                } catch (err) {
+                    const errorMessage = err.message || "";
+                    if (errorMessage.includes("ya ha sido pagado")) {
+                        console.warn("⚠️ Colisión de folio detectada en servidor. Autogenerando nuevo folio y reintentando...");
+                        const newAccountNum = await generateNewAccountNum();
+                        targetAccountNum = newAccountNum;
+                        // generateNewAccountNum ya sincroniza accountNumRef (v4.3)
+                        payload.account_num = newAccountNum;
+                        payload.version = null; // Ticket nuevo, sin versión
+                        savedTicket = await posService.createTicket(payload);
+                    } else if (errorMessage.includes("Conflicto de versión")) {
+                        // v4.3: SIEMPRE mostrar modal de colisión. El usuario DEBE saber
+                        // que otro operador modificó la cuenta para ir al Pizarrón a re-sincronizar.
+                        // El guard de showCollisionModal en useAutoSave pausará futuros auto-saves.
+                        setShowCollisionModal(true);
+                        throw err;
+                    } else {
+                        throw err;
+                    }
                 }
+                
+                // v4.2: Actualizar versión SINCRÓNICAMENTE en la ref para que
+                // el próximo ciclo del mutex lea la versión fresca.
+                // Antes se hacía solo con setState, y el useEffect que sincroniza
+                // la ref llegaba tarde → siguiente auto-save leía versión stale → 409.
+                if (savedTicket?.version) {
+                    ticketVersionRef.current = savedTicket.version; // SYNC: anti-stale
+                    setTicketVersion(savedTicket.version);          // ASYNC: para UI
+                }
+                
+                setPrintTicketData(savedTicket);
+                savedTicketRef.current = savedTicket;
+                
+                // v4.0 ZERO-LOSS: El carrito solo se limpia DESPUÉS de confirmar el guardado
+                if (finalizeUI) {
+                    if (status === 'PAID') {
+                        console.log("Auto-printing PAID ticket. Response from server:", savedTicket);
+                        handlePrintTicket(savedTicket);
+                    }
+                    if (savedTicket) {
+                        clearCart();
+                        setOriginalCapturer(null);
+                        setCurrentAccountNum('');
+                        setTicketVersion(null);
+                        setOrderData(null);
+                        setOrderType('VENTA_DIRECTA');
+                        setLastSaveStatus('idle');
+                        setLastSaveTime(null);
+                        try {
+                            if (selectedTerminal) localStorage.removeItem(`pos_session_${selectedTerminal}`);
+                        } catch (e) { console.warn("Error al limpiar persistencia:", e); }
+                        setShowCheckout(false);
+                        setPaymentsHistory([]);
+                        if (status === 'PAID') {
+                            setToastMessage('✅ Venta finalizada exitosamente. Ticket impreso.');
+                            setTimeout(() => setToastMessage(null), 4000);
+                        }
+                        if (status === 'OPEN') {
+                            setToastMessage('📌 Cuenta guardada en el Pizarrón exitosamente.');
+                            setTimeout(() => setToastMessage(null), 3000);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Ticket action error:", error);
+                if (finalizeUI) {
+                    const errMsg = error.detail || error.message || "";
+                    if (!errMsg.includes("Conflicto de versión")) {
+                        setToastMessage(`❌ ${errMsg || "Error al procesar el ticket."}`);
+                        setTimeout(() => setToastMessage(null), 5000);
+                    }
+                }
+                throw error;
+            } finally {
+                setIsSendingToPizarron(false);
             }
-        } catch (error) {
-            console.error("Ticket action error:", error);
-            alert(error.detail || error.message || "Error al procesar el ticket. Intente de nuevo.");
-            throw error;
+        } finally {
+            releaseMutex(); // Liberar el candado
         }
     };
 
     const handleRecoverAccount = (account) => {
-        if (!account.rawItems?.length) return alert("Cuenta vacia.");
+        if (!account.rawItems?.length) {
+            setToastMessage("⚠️ Cuenta vacía.");
+            setTimeout(() => setToastMessage(null), 3000);
+            return;
+        }
 
         // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado
         isRecoveringRef.current = true;
@@ -426,15 +494,22 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
             };
         });
         setCart(recovered);
+        // v4.3 ANTI-RACE: Sync TODAS las refs ANTES de los setState.
+        // requestAnimationFrame (L535) puede dispararse antes que los useEffect de sync,
+        // permitiendo que el auto-save lea refs stale si no sincronizamos aquí.
+        accountNumRef.current = account.accountNum;
         setCurrentAccountNum(account.accountNum);
-        // Guardar también quién la capturó originalmente para que persista en el ticket final
         const capturer = account.capturedById ? { 
             id: account.capturedById, 
             name: account.capturedByName 
         } : null;
         
         console.log("Recovering account. Original capturer:", capturer);
-        setOriginalCapturer(capturer || currentUser); 
+        originalCapturerRef.current = capturer || currentUser;
+        setOriginalCapturer(capturer || currentUser);
+        // v4.3: Restaurar versión del ticket con SYNC inmediato para evitar 409 falsos
+        ticketVersionRef.current = account.version || null;
+        setTicketVersion(account.version || null);
         
         // --- Restaurar Order Data si la cuenta es un PEDIDO ---
         if (account.orderType === 'PEDIDO') {
@@ -480,6 +555,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     capturedByName: t.captured_by_name || t.captured_by?.name || 'Desconocido',
                     cashierName: t.cashed_by_name || t.cashed_by?.name || '---',
                     clientName: t.customer_name || 'Público General',
+                    version: t.version || 1, // v4.0: Incluir versión para bloqueo optimista
                     // --- Mapeo OMS ---
                     orderType: t.order_type,
                     orderStatus: t.order_status,
@@ -513,113 +589,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     }
 
     // --- Componentes Locales (Mantenidos para preservar Grid estable) ---
-    const ProductCard = ({ product }) => {
-        const [imgStatus, setImgStatus] = useState(product.hasRealImage ? 'API_IMG' : 'TRY_PNG');
-        const baseStaticUrl = CONFIG.API_BASE_URL.replace('/api/v1', '/static/catalog');
-        const skuPngUrl = `${baseStaticUrl}/${product.sku}.png`;
-        const skuJpgUrl = `${baseStaticUrl}/${product.sku}.jpg`;
-        const legacyPng = `${baseStaticUrl}/Img1118_${product.sku}.png`;
-        const legacyJpg = `${baseStaticUrl}/Img1118_${product.sku}.jpg`;
-
-        return (
-            <button onClick={() => handleAddToCart(product)} className="group relative bg-black hover:bg-[#c1d72e] p-3 rounded-[35px] border border-white/10 transition-all duration-500 flex flex-col items-center justify-between gap-2 hover:scale-105 active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:shadow-[#c1d72e]/20 h-full w-full">
-                {/* Imagen expandida con menos márgenes */}
-                <div className="w-full h-20 2xl:h-24 flex items-center justify-center mt-1">
-                    {imgStatus === 'API_IMG' && (
-                        <img 
-                            src={product.image} 
-                            alt={product.name} 
-                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
-                            onError={() => setImgStatus('TRY_PNG')}
-                        />
-                    )}
-                    {imgStatus === 'TRY_PNG' && (
-                        <img 
-                            src={skuPngUrl} 
-                            alt={product.name} 
-                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
-                            onError={() => setImgStatus('TRY_JPG')}
-                        />
-                    )}
-                    {imgStatus === 'TRY_JPG' && (
-                        <img 
-                            src={skuJpgUrl} 
-                            alt={product.name} 
-                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
-                            onError={() => setImgStatus('LEGACY_PNG')}
-                        />
-                    )}
-                    {imgStatus === 'LEGACY_PNG' && (
-                        <img 
-                            src={legacyPng} 
-                            alt={product.name} 
-                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
-                            onError={() => setImgStatus('LEGACY_JPG')}
-                        />
-                    )}
-                    {imgStatus === 'LEGACY_JPG' && (
-                        <img 
-                            src={legacyJpg} 
-                            alt={product.name} 
-                            className="max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal"
-                            onError={() => setImgStatus('FALLBACK')}
-                        />
-                    )}
-                    {imgStatus === 'FALLBACK' && (
-                        <div className="text-6xl group-hover:scale-110 transition-transform">{product.emoji}</div>
-                    )}
-                </div>
-                
-                {/* Nombre y Precio reestructurados */}
-                <div className="text-center w-full flex flex-col items-center gap-1.5 mb-2">
-                    <p className="text-xs font-black uppercase leading-tight text-white group-hover:text-black line-clamp-2 px-1 text-shadow-sm">{product.name}</p>
-                    <div className="bg-[#c1d72e] group-hover:bg-black px-3 py-0.5 rounded-full shadow-md mt-1">
-                        <p className="text-[14px] font-black text-black group-hover:text-[#c1d72e] italic font-mono tracking-tighter">${(product.price || 0).toFixed(2)}</p>
-                    </div>
-                </div>
-
-                <div className="absolute top-3 right-3 w-6 h-6 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-inner">
-                    <span className="text-black font-black text-xs">+</span>
-                </div>
-            </button>
-        );
-    };
-
-    const ProductGrid = ({ category }) => {
-        const filtered = PRODUCTS
-            .filter(p => {
-                const pCat = p.category ? (typeof p.category === 'string' ? p.category : p.category.name) : 'OTROS';
-                return pCat === category;
-            })
-            .sort((a, b) => {
-                const posA = a.position !== null && a.position !== undefined ? a.position : 9999;
-                const posB = b.position !== null && b.position !== undefined ? b.position : 9999;
-                if (posA !== posB) return posA - posB;
-                return a.name.localeCompare(b.name);
-            });
-        const totalPages = Math.ceil(filtered.length / CONFIG.ITEMS_PER_PAGE);
-        const paginated = filtered.slice((currentPage - 1) * CONFIG.ITEMS_PER_PAGE, currentPage * CONFIG.ITEMS_PER_PAGE);
-
-        return (
-            <div className="flex-1 flex gap-4 overflow-hidden">
-                {totalPages > 1 && (
-                    <div className="w-16 flex flex-col gap-3 py-2 animate-in fade-in slide-in-from-left-4 duration-500">
-                        {Array.from({ length: totalPages }).map((_, i) => (
-                            <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`w-14 h-14 rounded-full flex items-center justify-center font-black text-lg transition-all border-2 ${currentPage === i + 1 ? 'bg-[#c1d72e] text-black border-[#c1d72e] shadow-lg shadow-[#c1d72e]/40 scale-110' : 'bg-black/40 text-white/40 border-white/10 hover:border-white/30'}`}>{i + 1}</button>
-                        ))}
-                    </div>
-                )}
-                <div className="flex-1 overflow-hidden">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 grid-rows-3 gap-4 h-full">
-                        {paginated.map(p => <ProductCard key={p.id} product={p} />)}
-                        {paginated.length < CONFIG.ITEMS_PER_PAGE && Array.from({length: CONFIG.ITEMS_PER_PAGE - paginated.length}).map((_, i) => (
-                            <div key={`empty-${i}`} className="bg-black/5 rounded-[35px] border border-white/2"></div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        );
-    };
+    // ProductCard y ProductGrid han sido extraídos a sus propios archivos.
 
     return (
         <div className="flex flex-col h-full bg-transparent text-white overflow-hidden">
@@ -730,6 +700,22 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                 <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
                                     {visibleAccounts.length} {selectedTerminal === 'CAJA' ? 'TOTALES' : 'MIAS'}
                                 </p>
+                                {/* v4.0 ZERO-LOSS: Badge de estado de guardado */}
+                                {lastSaveStatus === 'failed' && cart.length > 0 && (
+                                    <p className="text-[10px] font-black text-red-500 uppercase tracking-tighter leading-none animate-pulse mt-0.5">
+                                        ⚠️ SIN GUARDAR
+                                    </p>
+                                )}
+                                {lastSaveStatus === 'saving' && (
+                                    <p className="text-[10px] font-black text-yellow-400 uppercase tracking-tighter leading-none mt-0.5">
+                                        ⏳ Guardando...
+                                    </p>
+                                )}
+                                {lastSaveStatus === 'saved' && lastSaveTime && (
+                                    <p className="text-[10px] font-black text-green-400 uppercase tracking-tighter leading-none mt-0.5">
+                                        ✅ {lastSaveTime.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'})}
+                                    </p>
+                                )}
                             </div>
                         </button>
                     </div>
@@ -759,7 +745,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     ) : (
                         <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-left-4 duration-500">
 
-                            <ProductGrid category={activeCategory} />
+                            <ProductGrid 
+                                products={PRODUCTS} 
+                                category={activeCategory} 
+                                currentPage={currentPage} 
+                                setCurrentPage={setCurrentPage} 
+                                onAddToCart={handleAddToCart} 
+                            />
                         </div>
                     )}
                 </div>
@@ -774,6 +766,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     handleCheckout={(method) => handleTicketAction('PAID', method)} 
                     handleHoldAccount={() => handleTicketAction('OPEN')}
                     cashEnabled={isCashEnabled}
+                    isSendingToPizarron={isSendingToPizarron}
                 />
             </div>
 
@@ -783,31 +776,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     total={total}
                     orderData={orderData}
                     onConfirm={async (method) => {
-                        await handleTicketAction('PAID', method, false);
+                        await handleTicketAction('PAID', method, true); // finalizeUI=true maneja impresión y limpieza
                     }}
                     onClose={() => {
                         setShowCheckout(false);
-                    }}
-                    onFinish={() => {
-                        clearCart();
-                        setCurrentAccountNum('');
-                        setShowCheckout(false);
-                        setPaymentsHistory([]);
-                        setOrderData(null);
-                        setOrderType('VENTA_DIRECTA');
-                    }}
-                    onPrint={() => {
-                        console.log("Manual print from CheckoutScreen requested.");
-                        // Usar ref inmediata para garantizar datos actualizados del servidor
-                        const ticketToPrint = savedTicketRef.current || printTicketData;
-                        handlePrintTicket(ticketToPrint);
-                        clearCart();
-                        setCurrentAccountNum('');
-                        setShowCheckout(false);
-                        setPaymentsHistory([]);
-                        setOrderData(null);
-                        setOrderType('VENTA_DIRECTA');
-                        savedTicketRef.current = null; // Limpiar ref después de imprimir
                     }}
                 />
             )}
@@ -887,6 +859,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         {toastMessage}
                     </div>
                 </div>
+            )}
+
+            {/* Modal de Conflicto de Versión */}
+            {showCollisionModal && (
+                <CollisionModal onClose={() => setShowCollisionModal(false)} />
             )}
         </div>
     );

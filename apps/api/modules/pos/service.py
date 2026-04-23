@@ -69,7 +69,8 @@ class POSService:
 
     async def _upsert_ticket_header(self, db: AsyncSession, ticket: schemas.TicketCreate, total: float):
         """Encuentra un ticket existente o inicializa uno nuevo.
-        Usa FOR UPDATE para bloquear la fila y evitar race conditions entre auto-save y cobro."""
+        Usa FOR UPDATE para bloquear la fila y evitar race conditions entre auto-save y cobro.
+        v4.0: Implementa bloqueo optimista con campo `version`."""
         result = await db.execute(
             select(models.Ticket)
             .where(models.Ticket.account_num == ticket.account_num)
@@ -83,12 +84,21 @@ class POSService:
                     status_code=400, 
                     detail=f"El folio {ticket.account_num} ya ha sido pagado y no puede modificarse."
                 )
+            # BLOQUEO OPTIMISTA v4.0: Si el cliente envía una versión, validar que coincida
+            if ticket.version is not None and ticket.version != db_ticket.version:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Conflicto de versión en folio {ticket.account_num}. "
+                           f"Versión del cliente: {ticket.version}, versión actual: {db_ticket.version}. "
+                           f"Otro usuario modificó esta cuenta. Recupere la cuenta del Pizarrón e intente de nuevo."
+                )
             return await self._update_ticket_fields(db, db_ticket, ticket, total)
         
         return await self._initialize_new_ticket(db, ticket, total)
 
     async def _update_ticket_fields(self, db: AsyncSession, db_ticket: models.Ticket, ticket: schemas.TicketCreate, total: float):
-        """Actualiza campos de un ticket existente."""
+        """Actualiza campos de un ticket existente.
+        v4.0: Incrementa version en cada update para bloqueo optimista."""
         db_ticket.total = total
         db_ticket.status = ticket.status
         db_ticket.payment_details = ticket.payment_details
@@ -115,6 +125,9 @@ class POSService:
             session = await db.get(models.TerminalSession, db_ticket.session_id)
             if session:
                 db_ticket.terminal_id = session.terminal_id
+
+        # v4.0 BLOQUEO OPTIMISTA: Incrementar versión en cada update
+        db_ticket.version = (db_ticket.version or 1) + 1
             
         return db_ticket
 

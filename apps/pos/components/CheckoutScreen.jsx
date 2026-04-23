@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
-export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish, onPrint, orderData = null }) => {
+export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, orderData = null }) => {
     const [payments, setPayments] = useState([]);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('EFECTIVO');
     const [cardType, setCardType] = useState('DEBITO'); // DEBITO, CREDITO, QR
-    const [isLiquidado, setIsLiquidado] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
     const [tempEditValue, setTempEditValue] = useState('');
     const [errorMessage, setErrorMessage] = useState(null); // Toast no-bloqueante para errores
@@ -22,7 +22,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
     const handleClear = () => setReceivedAmount('');
 
     const handleAddPayment = () => {
-        if (isLiquidado) return;
+        if (isProcessing) return;
         const amount = parseFloat(receivedAmount);
         if (!amount || amount <= 0) return;
 
@@ -51,13 +51,13 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
     };
 
     const handleDeletePayment = (id) => {
-        if (isLiquidado) return;
+        if (isProcessing) return;
         setPayments(payments.filter(p => p.id !== id));
         if (editingPaymentId === id) setEditingPaymentId(null);
     };
 
     const handleStartEdit = (p) => {
-        if (isLiquidado) return;
+        if (isProcessing) return;
         setEditingPaymentId(p.id);
         setTempEditValue(p.amount.toString());
     };
@@ -85,7 +85,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
     };
 
     const handleFinalize = async () => {
-        if (isLiquidado) return;
+        if (isProcessing) return;
         
         let finalPayments = [...payments];
         const entered = parseFloat(receivedAmount) || 0;
@@ -107,11 +107,14 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
         const totalFinalPaid = finalPayments.reduce((s, p) => s + p.amount, 0);
         
         if (totalFinalPaid >= total) {
+            setIsProcessing(true); // ANTES del await — previene double-click
             try {
+                // Al confirmar, el padre (finalizeUI=true) cerrará este modal y limpiará el carrito
                 await onConfirm(finalPayments);
-                setIsLiquidado(true);
+                // El componente se desmonta aquí — NO hacer setState
             } catch (error) {
                 console.error("Error liquidando:", error);
+                setIsProcessing(false); // Re-habilitar en caso de error
                 setErrorMessage('Error al liquidar la cuenta. Intente de nuevo.');
                 setTimeout(() => setErrorMessage(null), 5000);
             }
@@ -134,7 +137,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
                         <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">SUITE DE <span className="text-[#c1d72e]">COBRO</span></h2>
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.4em] mt-1 italic">Gestión de Pagos Mixtos</p>
                     </div>
-                    <button onClick={isLiquidado ? onFinish : onClose} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-2xl hover:bg-red-500/20 hover:text-red-500 transition-all">✕</button>
+                    <button onClick={onClose} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-2xl hover:bg-red-500/20 hover:text-red-500 transition-all">✕</button>
                 </div>
 
                 <div className="flex flex-row flex-1 overflow-hidden">
@@ -196,22 +199,22 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
                                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, '.', 0].map((num) => (
                                         <button 
                                             key={num}
-                                            disabled={isLiquidado}
+                                            disabled={isProcessing}
                                             onClick={() => handleNumberClick(num.toString())}
-                                            className={`h-12 rounded-xl border text-lg font-black transition-all ${isLiquidado ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 active:scale-90 text-white'}`}
+                                            className={`h-12 rounded-xl border text-lg font-black transition-all ${isProcessing ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 active:scale-90 text-white'}`}
                                         >
                                             {num}
                                         </button>
                                     ))}
-                                    <button disabled={isLiquidado} onClick={handleClear} className={`h-12 rounded-xl text-[10px] font-black uppercase transition-all ${isLiquidado ? 'bg-red-500/5 text-red-500/20 cursor-not-allowed' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}>C</button>
+                                    <button disabled={isProcessing} onClick={handleClear} className={`h-12 rounded-xl text-[10px] font-black uppercase transition-all ${isProcessing ? 'bg-red-500/5 text-red-500/20 cursor-not-allowed' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}>C</button>
                                 </div>
                                 
                                 <button 
-                                    disabled={!receivedAmount || pendingAmount <= 0 || isLiquidado}
+                                    disabled={!receivedAmount || pendingAmount <= 0 || isProcessing}
                                     onClick={handleAddPayment}
-                                    className={`w-24 rounded-xl border transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 text-white shadow-xl'}`}
+                                    className={`w-24 rounded-xl border transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${(!receivedAmount || pendingAmount <= 0 || isProcessing) ? 'bg-white/5 border-white/5 text-gray-700 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 text-white shadow-xl'}`}
                                 >
-                                    <span className={`text-2xl mb-0.5 ${(!receivedAmount || pendingAmount <= 0 || isLiquidado) ? 'opacity-20' : 'opacity-100'}`}>➕</span>
+                                    <span className={`text-2xl mb-0.5 ${(!receivedAmount || pendingAmount <= 0 || isProcessing) ? 'opacity-20' : 'opacity-100'}`}>➕</span>
                                     <div className="flex flex-col items-center leading-none">
                                         <span className="text-[12px] font-black uppercase tracking-tighter">Abonar</span>
                                         <span className="text-[12px] font-black uppercase tracking-tighter">Pago</span>
@@ -239,7 +242,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
                                         </div>
                                     </div>
                                     <div className="flex flex-col items-end gap-2">
-                                        {!isLiquidado && (
+                                        {!isProcessing && (
                                             <button 
                                                 onClick={() => handleDeletePayment(p.id)}
                                                 className="w-10 h-10 flex items-center justify-center text-[16px] text-white/40 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
@@ -269,7 +272,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
                                                     ) : (
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-3xl font-black text-[#c1d72e] font-mono tracking-tight">${p.amount.toFixed(2)}</span>
-                                                            {!isLiquidado && (
+                                                            {!isProcessing && (
                                                                 <button 
                                                                     onClick={() => handleStartEdit(p)}
                                                                     className="p-1.5 opacity-0 group-hover/edit:opacity-100 text-white/40 hover:text-[#c1d72e] transition-all"
@@ -383,7 +386,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
                             </div>
 
                             {/* Aviso PAGADO */}
-                            {isLiquidado && (
+                            {isProcessing && (
                                 <div className="mt-auto bg-[#c1d72e] rounded-2xl px-4 py-3 text-center animate-in zoom-in-95 duration-300">
                                     <p className="text-[10px] font-black uppercase text-black/60 tracking-widest">Estado del Pedido</p>
                                     <p className="text-lg font-black text-black uppercase tracking-tight">✅ PAGADO — EN ESPERA DE PRODUCCIÓN</p>
@@ -395,29 +398,13 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
 
                 {/* Footer Action */}
                 <div className="p-8 bg-black/40 border-t border-white/5 flex gap-4">
-                    {!isLiquidado ? (
-                        <button 
-                            onClick={handleFinalize}
-                            className={`flex-1 py-5 rounded-[25px] text-lg font-black uppercase italic tracking-tighter transition-all shadow-2xl active:scale-95 ${pendingAmount <= 0 || (receivedAmount && parseFloat(receivedAmount) >= pendingAmount) ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-gray-800 text-gray-500 grayscale cursor-not-allowed'}`}
-                        >
-                            {pendingAmount <= 0 ? 'Liquidar Cuenta' : 'Liquidar Cuenta'}
-                        </button>
-                    ) : (
-                        <div className="flex-1 flex gap-4 animate-in slide-in-from-bottom-4 duration-500">
-                            <button 
-                                onClick={onFinish}
-                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-black py-5 rounded-[25px] text-xs uppercase tracking-widest transition-all"
-                            >
-                                CERRAR (SIN TICKET)
-                            </button>
-                            <button 
-                                onClick={onPrint}
-                                className="flex-[2] bg-orange-500 hover:bg-orange-600 text-white font-black py-5 rounded-[25px] text-lg uppercase italic tracking-tighter transition-all shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)]"
-                            >
-                                🖨️ IMPRIMIR TICKET
-                            </button>
-                        </div>
-                    )}
+                    <button 
+                        onClick={handleFinalize}
+                        disabled={isProcessing}
+                        className={`flex-1 py-5 rounded-[25px] text-lg font-black uppercase italic tracking-tighter transition-all shadow-2xl active:scale-95 ${isProcessing ? 'bg-[#c1d72e] text-black cursor-default' : (pendingAmount <= 0 || (receivedAmount && parseFloat(receivedAmount) >= pendingAmount) ? 'bg-[#c1d72e] text-black shadow-[#c1d72e]/20' : 'bg-gray-800 text-gray-500 grayscale cursor-not-allowed')}`}
+                    >
+                        {isProcessing ? 'PROCESANDO PAGO...' : 'Liquidar Cuenta'}
+                    </button>
                 </div>
 
                 {/* Toast de error no-bloqueante */}
@@ -433,7 +420,6 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, onFinish,
     );
 };
 
-/** Fila simple de etiqueta + valor para el panel de detalles del pedido. */
 const OrderDetailRow = ({ label, value, highlight = false }) => (
     <div className="bg-white/5 border border-white/5 rounded-xl px-4 py-2.5">
         <p className="text-[9px] font-black uppercase text-gray-600 tracking-widest mb-0.5">{label}</p>
