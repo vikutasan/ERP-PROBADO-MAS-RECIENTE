@@ -11,7 +11,7 @@
 > sincronización de refs y habilitó bloqueo optimista total (incluido auto-save).
 >
 > Última actualización: 2026-04-23
-> Versión: 4.5 — STALE POLLING FIX
+> Versión: 4.6 — CACHE BUSTING & IDEMPOTENCY WHITESPACE FIX
 
 ---
 
@@ -108,6 +108,21 @@ Además, el auto-save enviaba `version` en TODAS las peticiones, activando la va
 
 **Solución Implementada:** 
 **Fetch Asíncrono en Recuperación**. `handleRecoverAccount` ya no confía en los datos cacheados visualmente en el Pizarrón. Ahora es `async` y hace un `fetch` pidiendo la versión *Live* (fresca) del ticket (`getTicketByAccountNum`) justo antes de inyectarlo en el estado de React. Esto garantiza latencia cero entre terminales.
+
+---
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.6 (CACHE BUSTING & WHITESPACE STRIP)
+
+**Fecha:** 23/Abril/2026
+**Síntoma:** A pesar de la versión 4.5, el "Conflicto de Versión" (HTTP 409) seguía apareciendo constantemente para un mismo usuario (auto-colisión). Además, al enviar un ticket al pizarrón y abrirlo, a veces seguía cargando incompleto.
+
+**Causa raíz (2 bugs interactuando):**
+1. **Caché agresivo del Navegador:** Las llamadas `fetch` a `getOpenTickets` y `getTicketByAccountNum` estaban siendo cacheadas por el navegador. El Pizarrón mostraba datos obsoletos, y al recuperar el ticket, la terminal inyectaba una `version` anticuada. Al hacer auto-save, se enviaba esta versión vieja, desencadenando el conflicto.
+2. **Espacios en Blanco en Terminal IDs:** El Bypass Idempotente de la v4.4 estaba fallando silenciosamente porque `req_terminal_id` y `db_ticket.terminal_id` no coincidían exactamente debido a espacios invisibles (`"T1 "` != `"T1"`), impidiendo que el sistema perdonara la auto-colisión.
+
+**Solución Implementada (Regla 14):** 
+1. **Cache Busting:** Se agregó `{ cache: 'no-store' }` a todas las peticiones `GET` en `POSService.js` para forzar siempre la lectura de la base de datos viva.
+2. **Comparación Segura:** Se agregó `.strip()` a las variables `req_terminal_id` y `db_ticket.terminal_id` en `service.py` antes de validarlas para el bypass idempotente.
 
 ---
 

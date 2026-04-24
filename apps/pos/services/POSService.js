@@ -2,19 +2,19 @@ import { CONFIG } from '../config';
 
 class POSService {
     async getCategories() {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/catalog/categories`);
+        const res = await fetch(`${CONFIG.API_BASE_URL}/catalog/categories`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error cargando categorías");
         return res.json();
     }
 
     async getProducts() {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/catalog/products`);
+        const res = await fetch(`${CONFIG.API_BASE_URL}/catalog/products`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error cargando productos");
         return res.json();
     }
 
     async getActiveSession(terminalId) {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/sessions/${terminalId}/active`);
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/sessions/${terminalId}/active`, { cache: 'no-store' });
         if (res.ok) return res.json();
         return null;
     }
@@ -53,20 +53,20 @@ class POSService {
     }
 
     async getOpenTickets() {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/open`);
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/open`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error cargando pizarron");
         return res.json();
     }
 
     async getTicketByAccountNum(accountNum) {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets?search=${accountNum}`);
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets?search=${accountNum}`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error obteniendo ticket fresco");
         const tickets = await res.json();
         return tickets.length > 0 ? tickets[0] : null;
     }
 
     async getTerminalsStatus() {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/status`);
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/status`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error cargando estado de terminales");
         return res.json();
     }
@@ -116,7 +116,7 @@ class POSService {
     }
 
     async getSystemSettings() {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/settings`);
+        const res = await fetch(`${CONFIG.API_BASE_URL}/settings`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error cargando ajustes");
         return res.json();
     }
