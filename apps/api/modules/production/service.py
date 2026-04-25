@@ -2,6 +2,7 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 from fastapi import HTTPException
 from . import models, schemas
 from modules.catalog import models as catalog_models
@@ -60,6 +61,14 @@ async def update_dough(db: AsyncSession, dough_id: int, data: schemas.DoughCreat
     for key, value in dough_data.items():
         setattr(existing_dough, key, value)
         
+    print(f"DEBUG BACKEND: production_process type is {type(existing_dough.production_process)}")
+    if existing_dough.production_process:
+        print(f"DEBUG BACKEND: production_process length is {len(existing_dough.production_process)}")
+        
+    flag_modified(existing_dough, "recipe_matrix")
+    flag_modified(existing_dough, "production_process")
+
+        
     # Refresh nested relations (simple approach: clear and recreate)
     existing_dough.ingredients = []
     for ing in data.ingredients:
@@ -96,6 +105,8 @@ async def upsert_technical_sheet(db: AsyncSession, data: schemas.TechnicalSheetC
     if sheet:
         for key, value in data.model_dump(exclude_unset=True).items():
             setattr(sheet, key, value)
+        flag_modified(sheet, "bom_extra")
+        flag_modified(sheet, "modifiers")
     else:
         sheet = catalog_models.ProductTechnicalSheet(**data.model_dump())
         db.add(sheet)
