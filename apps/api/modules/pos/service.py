@@ -336,6 +336,25 @@ class POSService:
         # Usar la MISMA función de población que _get_full_ticket
         return [self._populate_flat_fields(t) for t in tickets]
 
+    async def get_ticket_by_account_num(self, db: AsyncSession, account_num: str):
+        """Busca un ticket por account_num EXACTO (no fuzzy).
+        Usado por handleRecoverAccount y auto-heal para obtener la versión fresca."""
+        result = await db.execute(
+            select(models.Ticket)
+            .options(
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
+                selectinload(models.Ticket.session),
+                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
+            )
+            .where(models.Ticket.account_num == account_num)
+        )
+        ticket = result.scalars().first()
+        if not ticket:
+            return None
+        return self._populate_flat_fields(ticket)
+
     async def reserve_ticket(self, db: AsyncSession, terminal_id: str, captured_by_id: int = None):
         """Reserva un ticket vacío o genera uno nuevo con ID correlativo.
         Ahora acepta captured_by_id para trazabilidad desde el primer instante."""

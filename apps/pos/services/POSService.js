@@ -59,10 +59,12 @@ class POSService {
     }
 
     async getTicketByAccountNum(accountNum) {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets?search=${accountNum}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error("Error obteniendo ticket fresco");
-        const tickets = await res.json();
-        return tickets.length > 0 ? tickets[0] : null;
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/by-account/${encodeURIComponent(accountNum)}`, { cache: 'no-store' });
+        if (!res.ok) {
+            if (res.status === 404) return null;
+            throw new Error("Error obteniendo ticket fresco");
+        }
+        return res.json();
     }
 
     async getTerminalsStatus() {

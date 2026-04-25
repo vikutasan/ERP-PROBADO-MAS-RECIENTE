@@ -432,17 +432,18 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                             nature: i.product.nature || originalProd.nature || 'PRODUCTO'
                                         };
                                     });
+                                    cartRef.current = recovered;  // ⚡ SYNC inmediato
                                     setCart(recovered);
                                     ticketVersionRef.current = liveTicket.version;
                                     setTicketVersion(liveTicket.version);
                                     
                                     setToastMessage("⚠️ ¡Atención! El vendedor modificó esta cuenta. Totales actualizados.");
                                     setTimeout(() => setToastMessage(null), 5000);
-                                    setShowCheckout(false); // Sacarlo de la pantalla de pago para que vea el nuevo total
+                                    setShowCheckout(false);
+                                    setIsSendingToPizarron(false);  // ⚡ Limpiar UI (el finally interno no se ejecuta con return)
                                     
                                     requestAnimationFrame(() => {
                                         isRecoveringRef.current = false;
-                                        isActionRunningRef.current = false; // Liberar mutex
                                     });
                                     return; // Abortar este guardado fallido pacíficamente
                                 }
@@ -520,6 +521,21 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     };
 
     const handleRecoverAccount = async (account) => {
+        // ⚡ v4.5 FLUSH DE SEGURIDAD: Si hay una cuenta activa con artículos,
+        // guardarla al servidor ANTES de sobreescribir el carrito.
+        // Esto previene la pérdida de datos cuando el auto-save no alcanzó a disparar
+        // (efecto debounce: el timer se reiniciaba con cada producto escaneado).
+        if (accountNumRef.current && cartRef.current.length > 0) {
+            try {
+                console.log(`🔒 FLUSH: Guardando cuenta activa ${accountNumRef.current} (${cartRef.current.length} items) antes de cambiar...`);
+                await handleTicketAction('OPEN', null, false);
+                console.log(`✅ FLUSH exitoso.`);
+            } catch (e) {
+                console.error(`⚠️ FLUSH falló para ${accountNumRef.current}:`, e);
+                // No abortar la recuperación — los items ya están en cartRef y se pueden reintentar
+            }
+        }
+
         // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado o fetch asíncrono
         isRecoveringRef.current = true;
 
@@ -558,6 +574,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 nature: i.product.nature || originalProd.nature || 'PRODUCTO'
             };
         });
+        cartRef.current = recovered;  // ⚡ SYNC inmediato: el auto-save NUNCA debe leer el carrito viejo
         setCart(recovered);
         // v4.3 ANTI-RACE: Sync TODAS las refs ANTES de los setState.
         // requestAnimationFrame (L535) puede dispararse antes que los useEffect de sync,
