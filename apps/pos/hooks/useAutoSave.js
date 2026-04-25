@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react';
 
 /**
  * Hook: useAutoSave
- * Guardado automático periódico al Pizarrón cada 15s (single-try).
- * Se pausa automáticamente durante checkout, colisiones y recuperaciones.
- * IMPORTANTE: El intervalo es verdadero y no un "debounce" porque usa onSaveRef 
- * en lugar de depender directamente de la función onSave y el estado del cart.
+ * Guardado automático periódico al Pizarrón cada 15s (INTERVALO REAL).
+ * 
+ * v4.5: Se eliminó `cart` de las dependencias del useEffect para evitar
+ * el efecto "debounce" (cada addToCart reiniciaba el timer de 15s).
+ * Ahora el callback se lee desde un ref para siempre tener datos frescos
+ * sin reiniciar el intervalo.
  */
 export const useAutoSave = ({
     currentAccountNum, 
@@ -17,41 +19,42 @@ export const useAutoSave = ({
     setLastSaveTime, 
     onSave
 }) => {
-    // Usar una referencia para onSave para evitar closures obsoletos y 
-    // reinicios constantes del timer cuando onSave o cart cambian en cada render.
+    // v4.5: Ref para el callback de guardado — siempre apunta a la versión más reciente
+    // sin necesidad de incluir `onSave` o `cart` en las dependencias del useEffect.
     const onSaveRef = useRef(onSave);
-    useEffect(() => {
-        onSaveRef.current = onSave;
-    }, [onSave]);
+    useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+
+    const setStatusRef = useRef(setLastSaveStatus);
+    useEffect(() => { setStatusRef.current = setLastSaveStatus; }, [setLastSaveStatus]);
+
+    const setTimeRef = useRef(setLastSaveTime);
+    useEffect(() => { setTimeRef.current = setLastSaveTime; }, [setLastSaveTime]);
 
     useEffect(() => {
-        // v4.8 FIX: Solo verificamos cuenta inicial vacía al montar el intervalo.
-        // Si no hay cuenta, no montamos el intervalo. Si se limpia la cuenta en el futuro,
-        // currentAccountNum cambiará a '', causando que el useEffect se desmonte, 
-        // lo cual es correcto.
-        if (!currentAccountNum || cart.length === 0 || showCheckout || showCollisionModal) return;
+        // Solo crear timer si hay cuenta activa y no estamos en checkout/colisión
+        if (!currentAccountNum || showCheckout || showCollisionModal) return;
 
         const autoSaveTimer = setInterval(async () => {
             if (refs.isGeneratingFolioRef.current) return;
             if (refs.isRecoveringRef.current) return;
-            // Evaluamos la longitud de cartRef en vivo dentro del timer
             if (!refs.accountNumRef.current || refs.cartRef.current.length === 0) return;
 
-            setLastSaveStatus('saving');
+            setStatusRef.current('saving');
 
             try {
                 console.log(`⏱️ Auto-guardando en Pizarrón...`);
                 await onSaveRef.current();
-                setLastSaveStatus('saved');
-                setLastSaveTime(new Date());
+                setStatusRef.current('saved');
+                setTimeRef.current(new Date());
             } catch (e) {
                 console.warn(`Auto-save falló:`, e);
-                setLastSaveStatus('failed');
+                setStatusRef.current('failed');
             }
         }, 15000);
 
-        // Se quitan 'cart' y 'onSave' de las dependencias para evitar
-        // que el temporizador se reinicie (debounce effect) con cada nuevo escaneo.
         return () => clearInterval(autoSaveTimer);
-    }, [currentAccountNum, showCheckout, showCollisionModal, refs, setLastSaveStatus, setLastSaveTime]);
+    }, [currentAccountNum, showCheckout, showCollisionModal, refs]);
+    // ⚡ v4.5: `cart` y `onSave` ELIMINADOS de las dependencias.
+    // El timer ya NO se reinicia al agregar productos — es un INTERVALO REAL de 15s.
+    // Los datos frescos se leen desde refs (cartRef, onSaveRef).
 };

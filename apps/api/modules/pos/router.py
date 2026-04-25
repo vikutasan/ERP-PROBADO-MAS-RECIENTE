@@ -46,6 +46,14 @@ async def get_tickets(
 ):
     return await pos_service.get_tickets(db=db, terminal_id=terminal_id, status=status, search=search, limit=limit)
 
+@router.get("/tickets/by-account/{account_num}", response_model=schemas.TicketResponse)
+async def get_ticket_by_account_num(account_num: str, db: AsyncSession = Depends(get_db)):
+    """Búsqueda EXACTA por account_num (no fuzzy). Usado por recovery y auto-heal."""
+    ticket = await pos_service.get_ticket_by_account_num(db, account_num)
+    if not ticket:
+        raise HTTPException(status_code=404, detail=f"Ticket {account_num} no encontrado")
+    return ticket
+
 @router.get("/tickets/open", response_model=List[schemas.TicketResponse])
 async def get_open_tickets(db: AsyncSession = Depends(get_db)):
     return await pos_service.get_open_tickets(db)
