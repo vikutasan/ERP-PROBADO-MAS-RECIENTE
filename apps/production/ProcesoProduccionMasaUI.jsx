@@ -247,13 +247,99 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
             </div>
         );
     };
+
+    const MilitaryTimeInput = ({ value, onChange }) => {
+        const [hh, mm] = (value || "00:00").split(':');
+
+        const updateTime = (h, m) => {
+            const final = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            onChange(final);
+        };
+
+        return (
+            <div className="flex items-center gap-2 bg-black/10 p-1 rounded-2xl border border-black/10 shadow-inner">
+                <div className="flex-1 flex flex-col">
+                    <input 
+                        type="number" min="0" max="23" placeholder="00"
+                        style={{ color: activeTheme.text }} 
+                        value={hh} 
+                        onChange={e => {
+                            let h = parseInt(e.target.value) || 0;
+                            if (h > 23) h = 23;
+                            updateTime(h, mm);
+                        }} 
+                        className="w-full bg-transparent p-2 outline-none font-black text-center text-sm placeholder-black/20" 
+                    />
+                    <span className="text-[8px] uppercase font-black text-center -mt-1 pb-1 opacity-60" style={{ color: activeTheme.text }}>HRS.</span>
+                </div>
+                <div className="font-black text-xl mb-3 opacity-30" style={{ color: activeTheme.text }}>:</div>
+                <div className="flex-1 flex flex-col">
+                    <input 
+                        type="number" min="0" max="59" placeholder="00"
+                        style={{ color: activeTheme.text }} 
+                        value={mm} 
+                        onChange={e => {
+                            let m = parseInt(e.target.value) || 0;
+                            if (m > 59) m = 59;
+                            updateTime(hh, m);
+                        }} 
+                        className="w-full bg-transparent p-2 outline-none font-black text-center text-sm placeholder-black/20" 
+                    />
+                    <span className="text-[8px] uppercase font-black text-center -mt-1 pb-1 opacity-60" style={{ color: activeTheme.text }}>MIN.</span>
+                </div>
+            </div>
+        );
+    };
+
+    const HoursMinutesInput = ({ value, onChange }) => {
+        const totalMinutes = parseFloat(value) || 0;
+        const hrs = Math.floor(totalMinutes / 60);
+        const mins = Math.round(totalMinutes % 60);
+
+        const updateTime = (h, m) => {
+            const final = (parseFloat(h) * 60) + parseFloat(m);
+            onChange(final.toFixed(4));
+        };
+
+        return (
+            <div className="flex items-center gap-2 bg-black/10 p-1 rounded-2xl border border-black/10 shadow-inner">
+                <div className="flex-1 flex flex-col">
+                    <input 
+                        type="number" min="0" placeholder="0"
+                        style={{ color: activeTheme.text }} 
+                        value={hrs || ''} 
+                        onChange={e => updateTime(e.target.value || 0, mins)} 
+                        className="w-full bg-transparent p-2 outline-none font-black text-center text-sm placeholder-black/20" 
+                    />
+                    <span className="text-[8px] uppercase font-black text-center -mt-1 pb-1 opacity-60" style={{ color: activeTheme.text }}>HRS.</span>
+                </div>
+                <div className="font-black text-xl mb-3 opacity-30" style={{ color: activeTheme.text }}>:</div>
+                <div className="flex-1 flex flex-col">
+                    <input 
+                        type="number" min="0" max="59" placeholder="0"
+                        style={{ color: activeTheme.text }} 
+                        value={mins || ''} 
+                        onChange={e => {
+                            let m = parseInt(e.target.value) || 0;
+                            if (m > 59) m = 59;
+                            updateTime(hrs, m);
+                        }} 
+                        className="w-full bg-transparent p-2 outline-none font-black text-center text-sm placeholder-black/20" 
+                    />
+                    <span className="text-[8px] uppercase font-black text-center -mt-1 pb-1 opacity-60" style={{ color: activeTheme.text }}>MIN.</span>
+                </div>
+            </div>
+        );
+    };
+
     const [pasos, setPasos] = useState(() => {
         const masaName = masaId || 'la masa en cuestión';
         const defaultInstruccion = `Revisa la orden. ¿Cuántas preparaciones de ${masaName} harás hoy?`;
         const defaultQA = `¿Cuántas preparaciones de ${masaName} harás hoy?`;
 
+        let data = [];
         if (initialData && initialData.length > 0) {
-            const data = JSON.parse(JSON.stringify(initialData));
+            data = JSON.parse(JSON.stringify(initialData));
             if (data[0].subpasos && data[0].subpasos.length > 0) {
                 const sub = data[0].subpasos[0];
                 if (sub.instruccionVoz?.includes('¿Cuántas preparaciones harás hoy?') || sub.instruccionVoz?.includes('¿Cuántas preparaciones de masa') || sub.instruccionVoz?.includes('¿Cuántas preparaciones de MASA')) {
@@ -261,44 +347,158 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                     sub.preguntaQA = defaultQA;
                 }
             }
-            return data;
+        } else {
+            data = [
+                {
+                    id: '1',
+                    nombre: 'IDENTIFICAR EL MEP',
+                    idBloque: 'G-MASA-15',
+                    isExpanded: true,
+                    subpasos: [
+                        {
+                            id: '1.1',
+                            nombre: 'Revisar orden de producción',
+                            instruccionVoz: defaultInstruccion,
+                            tHumano: 1.0,
+                            tAutonomo: 0.0,
+                            recurso: '',
+                            recursoConfigs: {},
+                            nivelCritico: 'bajo',
+                            operarioLibre: false,
+                            confirmacionVoz: true,
+                            triggerInicio: 'inicio_turno',
+                            preguntaQA: defaultQA,
+                            tipCoaching: '',
+                            grupoInseparable: '',
+                            temperaturaObjetivo: '',
+                            senalesCompletado: '',
+                            erroresComunes: '',
+                            ingredientesRequeridos: '',
+                            dependenciaPasoPrevio: '',
+                            tiempoHorneadoRelativo: 0,
+                            horaFijaProgramada: '00:00',
+                            habilitarComandos: true,
+                            palabraInicio: 'VOY',
+                            palabraPausa: 'PAUSA',
+                            showAdvanced: false
+                        }
+                    ]
+                }
+            ];
         }
 
-        return [
-            {
-                id: '1',
-                nombre: 'IDENTIFICAR EL MEP',
-                idBloque: 'G-MASA-15',
-                isExpanded: true,
-                subpasos: [
-                    {
-                        id: '1.1',
-                        nombre: 'Revisar orden de producción',
-                        instruccionVoz: defaultInstruccion,
-                        tHumano: 1.0,
-                        tAutonomo: 0.0,
-                        recurso: '',
-                        recursoConfigs: {},
-                        nivelCritico: 'bajo',
-                        operarioLibre: false,
-                        confirmacionVoz: true,
-                        triggerInicio: 'inicio_turno',
-                        preguntaQA: defaultQA,
-                        tipCoaching: '',
-                        grupoInseparable: '',
-                        temperaturaObjetivo: '',
-                        senalesCompletado: '',
-                        erroresComunes: '',
-                        ingredientesRequeridos: '',
-                        dependenciaPasoPrevio: '',
-                        showAdvanced: false
-                    }
-                ]
-            }
-        ];
+        // ASEGURAR QUE TODOS TENGAN INTERNAL ID
+        return data.map(p => ({
+            ...p,
+            internalId: p.internalId || crypto.randomUUID?.() || Math.random().toString(36).substring(7),
+            subpasos: (p.subpasos || []).map(sp => ({
+                ...sp,
+                internalId: sp.internalId || crypto.randomUUID?.() || Math.random().toString(36).substring(7)
+            }))
+        }));
     });
 
+    // SINCRONIZADOR: Si initialData cambia (por un guardado exitoso), actualizar pasos localmente
+    useEffect(() => {
+        if (initialData && initialData.length > 0) {
+            const syncedPasos = initialData.map(p => ({
+                ...p,
+                internalId: p.internalId || crypto.randomUUID?.() || Math.random().toString(36).substring(7),
+                subpasos: (p.subpasos || []).map(sp => ({
+                    ...sp,
+                    internalId: sp.internalId || crypto.randomUUID?.() || Math.random().toString(36).substring(7)
+                }))
+            }));
+            setPasos(syncedPasos);
+        }
+    }, [initialData]);
+
     const fileInputRef = useRef(null);
+
+    const generateVoiceInstruction = (pasoId, spId) => {
+        const paso = pasos.find(p => p.id === pasoId);
+        if (!paso) return;
+        const sp = paso.subpasos.find(s => s.id === spId);
+        if (!sp) return;
+
+        const eq = equipments.find(e => String(e.id) === String(sp.recurso));
+        const eqName = eq ? eq.name.toLowerCase() : 'la máquina';
+        const estado = sp.recursoConfigs?.estado || '';
+        const parseTime = (val) => {
+            const total = parseFloat(val) || 0;
+            const m = Math.floor(total);
+            const s = Math.round((total - m) * 60);
+            return [m, s];
+        };
+
+        const [min, seg] = parseTime(sp.recursoConfigs?.tiempo_operacion);
+        const accion = sp.recursoConfigs?.accionAlConcluir || '';
+
+        let text = "";
+
+        // 1. Acción inicial
+        if (estado.startsWith("ENCENDER A ")) {
+            text += `Enciende la ${eqName} en ${estado.replace("ENCENDER A ", "").toLowerCase()}. `;
+        } else if (estado.startsWith("SIN APAGAR, CAMBIAR A ")) {
+            text += `Sin apagar, cambia la ${eqName} a ${estado.replace("SIN APAGAR, CAMBIAR A ", "").toLowerCase()}. `;
+        } else if (estado === "APAGADA") {
+            text += `Apaga la ${eqName}. `;
+        }
+
+        // 2. Tiempo
+        if (estado !== "APAGADA" && (min > 0 || seg > 0)) {
+            const timeText = min > 0 ? `${min} min${seg > 0 ? ` y ${seg} seg` : ''}` : `${seg} seg`;
+            text = text.trim() + `. Programaré ${timeText} y `;
+        }
+
+        // 3. Fase 2 (Si existe)
+        if (accion === "AVISAR AL OPERARIO Y NUEVA VELOCIDAD SIN APAGAR" && sp.recursoConfigs?.nextVelocidad) {
+            const nextVel = sp.recursoConfigs.nextVelocidad.replace("SIN APAGAR, CAMBIAR A ", "").toLowerCase();
+            const [nMin, nSeg] = parseTime(sp.recursoConfigs.nextTiempo);
+            const nextAccion = sp.recursoConfigs.nextAccion || '';
+
+            const timeText = min > 0 ? `${min} min${seg > 0 ? ` y ${seg} seg` : ''}` : `${seg} seg`;
+            text = `Enciende la ${eqName} en ${estado.replace("ENCENDER A ", "").toLowerCase()}. Programaré ${timeText} y te avisaré para que, sin apagar, cambies a ${nextVel}. `;
+            
+            const nextTimeText = nMin > 0 ? `${nMin} min${nSeg > 0 ? ` y ${nSeg} seg` : ''}` : `${nSeg} seg`;
+            text += `Programaré ${nextTimeText} más y `;
+
+            // 4. Conclusión Fase 2
+            if (nextAccion === "AVISAR AL OPERARIO Y APAGAR") {
+                text += "te avisaré para que apagues.";
+            } else if (nextAccion === "AVISAR AL OPERARIO Y ADICIONAR INGREDIENTE SIN APAGAR") {
+                text += "te avisaré para añadir ingredientes.";
+            } else {
+                text += "te avisaré al concluir.";
+            }
+        } else {
+            // 4. Conclusión Fase 1 (Solo si no hay Fase 2)
+            if (estado.startsWith("ENCENDER A ")) {
+                text = `Enciende la ${eqName} en ${estado.replace("ENCENDER A ", "").toLowerCase()}. `;
+            } else if (estado.startsWith("SIN APAGAR, CAMBIAR A ")) {
+                text = `Sin apagar, cambia la ${eqName} a ${estado.replace("SIN APAGAR, CAMBIAR A ", "").toLowerCase()}. `;
+            } else if (estado === "APAGADA") {
+                text = `Apaga la ${eqName}. `;
+            }
+
+            if (estado !== "APAGADA" && (min > 0 || seg > 0)) {
+                const timeText = min > 0 ? `${min} min${seg > 0 ? ` y ${seg} seg` : ''}` : `${seg} seg`;
+                text += `Programaré ${timeText} y `;
+            }
+
+            if (accion === "AVISAR AL OPERARIO Y APAGAR") {
+                text += "te avisaré para que apagues.";
+            } else if (accion === "AVISAR AL OPERARIO Y NUEVA VELOCIDAD SIN APAGAR") {
+                text += "te avisaré para el cambio de velocidad.";
+            } else if (accion === "AVISAR AL OPERARIO Y ADICIONAR INGREDIENTE SIN APAGAR") {
+                text += "te avisaré para añadir ingredientes.";
+            }
+        }
+
+        if (text) {
+            handleSubpasoChange(pasoId, spId, 'instruccionVoz', text.trim());
+        }
+    };
 
     const handleExport = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(pasos, null, 2));
@@ -455,6 +655,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                 ...p,
                 subpasos: [...p.subpasos, {
                     id: newId,
+                    internalId: crypto.randomUUID?.() || Math.random().toString(36).substring(7),
                     nombre: 'Nuevo Subpaso',
                     instruccionVoz: '',
                     tHumano: 0.5,
@@ -462,17 +663,22 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                     recurso: '',
                     recursoConfigs: {},
                     nivelCritico: 'bajo',
-                    operarioLibre: false,
+                    operarioLibre: false, // Default to 'Ocupado' as requested by user
                     confirmacionVoz: true,
                     triggerInicio: 'confirmacion_anterior',
-                    preguntaQA: '',
+                    preguntaQA: 'LISTO',
                     tipCoaching: '',
+                    habilitarComandos: true,
+                    palabraInicio: 'VOY',
+                    palabraPausa: 'PAUSA',
                     grupoInseparable: '',
                     temperaturaObjetivo: '',
                     senalesCompletado: '',
                     erroresComunes: '',
                     ingredientesRequeridos: '',
                     dependenciaPasoPrevio: '',
+                    tiempoHorneadoRelativo: 0,
+                    horaFijaProgramada: '00:00',
                     showAdvanced: false
                 }]
             };
@@ -483,6 +689,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
         const newId = `${pasos.length + 1}`;
         setPasos([...pasos, {
             id: newId,
+            internalId: crypto.randomUUID?.() || Math.random().toString(36).substring(7),
             nombre: 'Nuevo Paso',
             idBloque: '',
             isExpanded: true,
@@ -496,6 +703,107 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
             return {
                 ...p,
                 subpasos: p.subpasos.filter(sp => sp.id !== subpasoId)
+            };
+        }));
+    };
+
+    const handlePasoReorder = (pasoInternalId, newOrderStr) => {
+        let newOrder = parseInt(newOrderStr);
+        if (isNaN(newOrder) || newOrder < 1) return;
+        
+        const oldIndex = pasos.findIndex(p => p.internalId === pasoInternalId);
+        if (oldIndex === -1) return;
+
+        let targetIndex = newOrder - 1;
+        if (targetIndex >= pasos.length) targetIndex = pasos.length - 1;
+
+        const newPasos = [...pasos];
+        const [movedItem] = newPasos.splice(oldIndex, 1);
+        newPasos.splice(targetIndex, 0, movedItem);
+
+        // Renormalizar IDs basados en el nuevo orden de la matriz
+        const normalized = newPasos.map((p, idx) => {
+            const newId = `${idx + 1}`;
+            const newSubpasos = (p.subpasos || []).map((sp, spIdx) => ({
+                ...sp,
+                id: `${newId}.${spIdx + 1}`
+            }));
+            return { ...p, id: newId, subpasos: newSubpasos };
+        });
+
+        setPasos(normalized);
+    };
+
+    const handleSubpasoReorder = (oldPasoInternalId, subpasoInternalId, newFullOrderStr) => {
+        let targetPasoId = "";
+        let targetSubOrder = 0;
+
+        if (newFullOrderStr.includes('.')) {
+            const parts = newFullOrderStr.split('.');
+            targetPasoId = parts[0].trim();
+            targetSubOrder = parseInt(parts[1]) || 0;
+        } else {
+            // Si solo ponen un número, asumimos que es el mismo paso actual
+            const currentPaso = pasos.find(p => p.internalId === oldPasoInternalId);
+            targetPasoId = currentPaso?.id || "";
+            targetSubOrder = parseInt(newFullOrderStr) || 0;
+        }
+
+        if (targetSubOrder < 1) return;
+
+        // 1. Verificar que el paso destino existe
+        const targetPasoExists = pasos.some(p => p.id === targetPasoId);
+        if (!targetPasoExists) return;
+
+        // 2. Extraer el subpaso
+        let movedSubpaso = null;
+        const pasosWithoutSub = pasos.map(p => {
+            const idx = p.subpasos.findIndex(sp => sp.internalId === subpasoInternalId);
+            if (idx === -1) return p;
+            
+            const subs = [...p.subpasos];
+            [movedSubpaso] = subs.splice(idx, 1);
+            return { ...p, subpasos: subs };
+        });
+
+        if (!movedSubpaso) return;
+
+        // 3. Insertar en destino
+        const pasosWithSub = pasosWithoutSub.map(p => {
+            if (p.id !== targetPasoId) return p;
+
+            const subs = [...p.subpasos];
+            let targetIdx = targetSubOrder - 1;
+            if (targetIdx > subs.length) targetIdx = subs.length;
+            
+            subs.splice(targetIdx, 0, movedSubpaso);
+            return { ...p, subpasos: subs };
+        });
+
+        // 4. Renormalizar TODO
+        const normalized = pasosWithSub.map((p, idx) => {
+            const newId = `${idx + 1}`;
+            const newSubpasos = (p.subpasos || []).map((sp, spIdx) => ({
+                ...sp,
+                id: `${newId}.${spIdx + 1}`
+            }));
+            return { ...p, id: newId, subpasos: newSubpasos };
+        });
+
+        setPasos(normalized);
+    };
+
+    const duplicateSubpaso = (pasoId, subpaso) => {
+        setPasos(pasos.map(p => {
+            if (p.id !== pasoId) return p;
+            const newId = `${p.id}.${p.subpasos.length + 1}`;
+            // Deep copy to avoid reference issues
+            const duplicated = JSON.parse(JSON.stringify(subpaso));
+            duplicated.id = newId;
+            duplicated.nombre = `${duplicated.nombre} (Copia)`;
+            return {
+                ...p,
+                subpasos: [...p.subpasos, duplicated]
             };
         }));
     };
@@ -576,7 +884,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
 
                 {/* PASOS */}
                 {pasos.map((paso, index) => (
-                    <div key={paso.id} style={{ backgroundColor: activeTheme.input, borderColor: activeTheme.border }} className="border rounded-3xl mb-6 shadow-sm overflow-hidden transition-all duration-300">
+                    <div key={paso.internalId} style={{ backgroundColor: activeTheme.input, borderColor: activeTheme.border }} className="border rounded-3xl mb-6 shadow-sm overflow-hidden transition-all duration-300">
                         {/* Step Header */}
                         <div 
                             style={{ borderBottomColor: activeTheme.border }}
@@ -585,8 +893,16 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                 if(e.target.tagName !== 'INPUT') toggleStep(paso.id);
                             }}
                         >
-                            <div style={{ backgroundColor: activeTheme.text, color: activeTheme.bg }} className="w-10 h-10 rounded-xl flex items-center justify-center font-black italic shrink-0 shadow-md">
-                                {paso.id}
+                            <div style={{ backgroundColor: activeTheme.text, color: activeTheme.bg }} className="w-12 h-12 rounded-xl flex items-center justify-center font-black italic shrink-0 shadow-md overflow-hidden">
+                                <input 
+                                    type="text"
+                                    className="w-full h-full bg-transparent text-center outline-none cursor-text focus:bg-white/20"
+                                    defaultValue={paso.id}
+                                    key={`paso-id-${paso.id}`}
+                                    onClick={e => e.stopPropagation()}
+                                    onBlur={e => handlePasoReorder(paso.internalId, e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handlePasoReorder(paso.internalId, e.target.value)}
+                                />
                             </div>
                             <div className="flex-1 flex flex-col max-w-[500px]">
                                 <FieldLabel id="nombrePaso" text="Nombre del Paso Principal" isMain />
@@ -638,7 +954,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                     const autoPct = totalTime > 0 ? (tA / totalTime) * 100 : 0;
 
                                     return (
-                                        <div key={sp.id} style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderColor: activeTheme.border }} className="border rounded-2xl p-4 mb-4 flex gap-4 shadow-sm relative transition-all">
+                                        <div key={sp.internalId} style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderColor: activeTheme.border }} className="border rounded-2xl p-4 mb-4 flex gap-4 shadow-sm relative transition-all">
                                             {sp.operarioLibre && (
                                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500 rounded-l-2xl"></div>
                                             )}
@@ -659,8 +975,15 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                         <div className="col-span-2 flex flex-col">
                                                             <FieldLabel id="nombreSubpaso" text="Nombre del Subpaso" />
                                                             <div className="flex gap-2">
-                                                                <div style={{ backgroundColor: activeTheme.text, color: '#fff' }} className="flex items-center justify-center px-4 rounded-xl font-black text-lg shadow-md shrink-0 tracking-widest">
-                                                                    {index + 1}.{spIndex + 1}
+                                                                <div style={{ backgroundColor: activeTheme.text, color: '#fff' }} className="flex items-center justify-center rounded-xl font-black text-lg shadow-md shrink-0 tracking-widest w-28 overflow-hidden group">
+                                                                    <input 
+                                                                        type="text"
+                                                                        className="w-full bg-transparent outline-none text-center px-2 hover:bg-white/10 transition-colors"
+                                                                        defaultValue={sp.id}
+                                                                        key={`sub-id-${sp.id}`}
+                                                                        onBlur={e => handleSubpasoReorder(paso.internalId, sp.internalId, e.target.value)}
+                                                                        onKeyDown={e => e.key === 'Enter' && handleSubpasoReorder(paso.internalId, sp.internalId, e.target.value)}
+                                                                    />
                                                                 </div>
                                                                 <input type="text" style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.nombre} onChange={e => handleSubpasoChange(paso.id, sp.id, 'nombre', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm flex-1 min-w-0" />
                                                             </div>
@@ -668,19 +991,41 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                         <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
                                                             <FieldLabel id="triggerInicio" text="Trigger de Inicio" />
                                                             <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.triggerInicio} onChange={e => handleSubpasoChange(paso.id, sp.id, 'triggerInicio', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm truncate">
-                                                                <option value="confirmacion_anterior">Confirmación Anterior</option>
-                                                                <option value="inicio_turno">Inicio de Turno</option>
-                                                                <option value="fin_temporizador">Fin Temporizador Autónomo</option>
-                                                                <option value="temp_alcanzada">Temperatura Alcanzada</option>
-                                                                <option value="paso_externo">Fin de Paso en Otra Masa</option>
-                                                                <option value="hora_fija">Hora Fija / Programada</option>
+                                                                <option value="confirmacion_anterior">CONFIRMACIÓN ANTERIOR</option>
+                                                                <option value="inicio_turno">INICIO DE TURNO</option>
+                                                                <option value="fin_temporizador">FIN TEMPORIZADOR AUTÓNOMO</option>
+                                                                <option value="temp_alcanzada">TEMPERATURA ALCANZADA</option>
+                                                                <option value="paso_externo">FIN DE PASO EN OTRA MASA</option>
+                                                                <option value="hora_fija">HORA FIJA / PROGRAMADA</option>
+                                                                <option value="ia_coach_decision">A CONSIDERACIÓN DEL COACH DE IA</option>
+                                                                <option value="tiempo_horneado">A X TIEMPO DE INICIO DE HORNEADO</option>
                                                             </select>
                                                         </div>
+
+                                                        {sp.triggerInicio === 'tiempo_horneado' && (
+                                                            <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1 animate-in slide-in-from-top-2">
+                                                                <FieldLabel id="tiempoHorneadoRelativo" text="Anticipación (H:M)" />
+                                                                <HoursMinutesInput 
+                                                                    value={sp.tiempoHorneadoRelativo || 0} 
+                                                                    onChange={val => handleSubpasoChange(paso.id, sp.id, 'tiempoHorneadoRelativo', val)} 
+                                                                />
+                                                            </div>
+                                                        )}
+
+                                                        {sp.triggerInicio === 'hora_fija' && (
+                                                            <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1 animate-in slide-in-from-top-2">
+                                                                <FieldLabel id="horaFijaProgramada" text="Hora Inicio (24h)" />
+                                                                <MilitaryTimeInput 
+                                                                    value={sp.horaFijaProgramada || "00:00"} 
+                                                                    onChange={val => handleSubpasoChange(paso.id, sp.id, 'horaFijaProgramada', val)} 
+                                                                />
+                                                            </div>
+                                                        )}
                                                         <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
                                                             <FieldLabel id="dependenciaPasoPrevio" text="Dependencia (Opc.)" />
                                                             <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.dependenciaPasoPrevio || ''} onChange={e => handleSubpasoChange(paso.id, sp.id, 'dependenciaPasoPrevio', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm truncate">
-                                                                <option value="">Ninguno</option>
-                                                                <option value="inmediato_anterior">Inmediato Anterior</option>
+                                                                <option value="">NINGUNO</option>
+                                                                <option value="inmediato_anterior">INMEDIATO ANTERIOR</option>
                                                             </select>
                                                         </div>
                                                         <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
@@ -690,9 +1035,9 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                         <div className="flex flex-col col-span-2 md:col-span-1 lg:col-span-1">
                                                             <FieldLabel id="nivelCritico" text="Nivel de Criticidad" />
                                                             <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.nivelCritico} onChange={e => handleSubpasoChange(paso.id, sp.id, 'nivelCritico', e.target.value)} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm truncate">
-                                                                <option value="bajo">Bajo (Normal)</option>
-                                                                <option value="medio">Medio (Firme)</option>
-                                                                <option value="alto">Alto (Enfático)</option>
+                                                                <option value="bajo">BAJO (NORMAL)</option>
+                                                                <option value="medio">MEDIO (FIRME)</option>
+                                                                <option value="alto">ALTO (ENFÁTICO)</option>
                                                             </select>
                                                         </div>
                                                     </div>
@@ -717,43 +1062,22 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                 style={{ color: activeTheme.text, borderColor: activeTheme.text }}
                                                                 value={sp.instruccionVoz} 
                                                                 onChange={e => handleSubpasoChange(paso.id, sp.id, 'instruccionVoz', e.target.value)} 
-                                                                className="w-full py-4 pl-12 pr-3 border rounded-xl bg-white outline-none border-l-4 font-black text-sm shadow-sm" 
+                                                                className="w-full py-4 pl-12 pr-16 border rounded-xl bg-white outline-none border-l-4 font-black text-sm shadow-sm" 
                                                             />
+                                                            <button 
+                                                                onClick={() => generateVoiceInstruction(paso.id, sp.id)}
+                                                                title="Auto-generar instrucción con IA"
+                                                                className="absolute inset-y-0 right-0 px-4 flex items-center text-orange-500 hover:text-orange-600 hover:scale-125 transition-all"
+                                                            >
+                                                                <Wand2 size={20} className="drop-shadow-sm" />
+                                                            </button>
                                                         </div>
                                                     </div>
 
-                                                    <div style={{ backgroundColor: 'rgba(255,255,255,0.4)', borderColor: activeTheme.border }} className="flex items-center gap-6 p-3 rounded-xl border border-dashed">
-                                                        <div className="flex items-center gap-2">
-                                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                                <input type="checkbox" style={{ accentColor: activeTheme.text }} checked={sp.confirmacionVoz} onChange={e => handleSubpasoChange(paso.id, sp.id, 'confirmacionVoz', e.target.checked)} className="w-5 h-5 rounded border-black/10 cursor-pointer" />
-                                                                <span style={{ color: activeTheme.text }} className="text-sm font-black uppercase tracking-widest opacity-80">Confirmación por Voz</span>
-                                                            </label>
-                                                            <button onClick={(e) => { e.stopPropagation(); setInfoModalField('confirmacionVoz'); }} className="w-4 h-4 rounded-full bg-orange-500 text-white flex items-center justify-center hover:scale-125 transition-all shadow-sm">
-                                                                <Info size={10} fill="currentColor" />
-                                                            </button>
-                                                        </div>
-
-                                                        {sp.confirmacionVoz && (
-                                                            <div className="flex items-center gap-2 ml-4">
-                                                                <span style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase tracking-widest opacity-50">Palabra:</span>
-                                                                <select 
-                                                                    style={{ color: activeTheme.text, borderColor: activeTheme.border }} 
-                                                                    value={sp.palabraConfirmacion || 'listo'} 
-                                                                    onChange={e => handleSubpasoChange(paso.id, sp.id, 'palabraConfirmacion', e.target.value)} 
-                                                                    className="p-1 px-2 border rounded-lg bg-white outline-none font-black text-xs uppercase"
-                                                                >
-                                                                    <option value="hecho">HECHO</option>
-                                                                    <option value="listo">LISTO</option>
-                                                                    <option value="siguiente">SIGUIENTE</option>
-                                                                    <option value="inicio_ciclo">INICIO CICLO</option>
-                                                                </select>
-                                                            </div>
-                                                        )}
-
-                                                        <div className="flex-1"></div>
-
+                                                    {/* BOTÓN DE OPCIONES AVANZADAS (ÚNICO CONTROL DE ESTA SECCIÓN AHORA) */}
+                                                    <div className="flex justify-end mt-2">
                                                         <button onClick={() => toggleAdvanced(paso.id, sp.id)} style={{ color: activeTheme.text }} className="text-xs font-black uppercase tracking-widest hover:underline flex items-center gap-1 opacity-70">
-                                                            <Settings size={14} /> {sp.showAdvanced ? 'Ocultar' : 'Mostrar'} Avanzados
+                                                            <Settings size={14} /> {sp.showAdvanced ? 'Ocultar' : 'Mostrar'} Parámetros de Calidad y Coaching
                                                         </button>
                                                     </div>
 
@@ -869,7 +1193,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                         subpasos: p.subpasos.map(subp => subp.id === sp.id ? { ...subp, recurso: e.target.value, recursoConfigs: {} } : subp)
                                                                     } : p));
                                                                 }} className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-sm">
-                                                                    <option value="">(Selecciona equipo)</option>
+                                                                    <option value="">(SELECCIONA EQUIPO)</option>
                                                                     {equipments.map(eq => (
                                                                         <option key={eq.id} value={eq.id}>{eq.name} {eq.model_ref ? `(${eq.model_ref})` : ''}</option>
                                                                     ))}
@@ -898,9 +1222,9 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                             <div className="flex flex-col">
                                                                                 <FieldLabel id="accesorio" text="Accesorio a Usar" />
                                                                                 <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recursoConfigs?.accesorio || ''} onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'accesorio', e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-sm">
-                                                                                    <option value="">(Selecciona Accesorio)</option>
+                                                                                    <option value="">(SELECCIONA ACCESORIO)</option>
                                                                                     {dynSpecs.accesorios.split(',').map(a => a.trim()).filter(Boolean).map(acc => (
-                                                                                        <option key={acc} value={acc}>{acc}</option>
+                                                                                        <option key={acc} value={acc}>{acc.toUpperCase()}</option>
                                                                                     ))}
                                                                                 </select>
                                                                             </div>
@@ -911,31 +1235,88 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                                 <div className="flex flex-col">
                                                                                     <FieldLabel id="estado" text="Estado / Velocidad" />
                                                                                     <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recursoConfigs?.estado || ''} onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'estado', e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-sm">
-                                                                                        <option value="">(Selecciona Estado)</option>
-                                                                                        <option value="Apagado">Apagado</option>
-                                                                                        <option value="Encendido">Encendido (Genérico)</option>
-                                                                                        {dynSpecs.velocidades ? (
-                                                                                            Array.from({ length: parseInt(dynSpecs.velocidades) || 0 }).map((_, i) => (
-                                                                                                <option key={`v${i+1}`} value={`Velocidad ${i+1}`}>Velocidad {i+1}</option>
-                                                                                            ))
-                                                                                        ) : (
-                                                                                            <>
-                                                                                                <option value="Velocidad Baja">Velocidad Baja (1)</option>
-                                                                                                <option value="Velocidad Media">Velocidad Media (2)</option>
-                                                                                                <option value="Velocidad Alta">Velocidad Alta (3)</option>
-                                                                                            </>
-                                                                                        )}
+                                                                                        <option value="">(SELECCIONA ESTADO)</option>
+                                                                                        <option value="APAGADA">APAGADA</option>
+                                                                                        <option value="ENCENDER A VELOCIDAD 1">ENCENDER A VELOCIDAD 1</option>
+                                                                                        <option value="ENCENDER A VELOCIDAD 2">ENCENDER A VELOCIDAD 2</option>
+                                                                                        <option value="ENCENDER A VELOCIDAD 3">ENCENDER A VELOCIDAD 3</option>
+                                                                                        <option value="SIN APAGAR, CAMBIAR A VELOCIDAD 1">SIN APAGAR, CAMBIAR A VELOCIDAD 1</option>
+                                                                                        <option value="SIN APAGAR, CAMBIAR A VELOCIDAD 2">SIN APAGAR, CAMBIAR A VELOCIDAD 2</option>
+                                                                                        <option value="SIN APAGAR, CAMBIAR A VELOCIDAD 3">SIN APAGAR, CAMBIAR A VELOCIDAD 3</option>
                                                                                     </select>
                                                                                 </div>
 
-                                                                                {sp.recursoConfigs?.estado && sp.recursoConfigs?.estado !== 'Apagado' && (
-                                                                                    <div className="flex flex-col animate-in fade-in slide-in-from-left-2 duration-300">
-                                                                                        <FieldLabel id="tiempo_operacion" text="Tiempo de Operación" />
-                                                                                        <DualTimeInput 
-                                                                                            value={sp.recursoConfigs?.tiempo_operacion} 
-                                                                                            onChange={val => handleRecursoConfigChange(paso.id, sp.id, 'tiempo_operacion', val)} 
-                                                                                        />
-                                                                                    </div>
+                                                                                {sp.recursoConfigs?.estado && sp.recursoConfigs?.estado !== 'APAGADA' && (
+                                                                                    <>
+                                                                                        <div className="flex flex-col animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                                            <FieldLabel id="tiempo_operacion" text="Tiempo de Operación" />
+                                                                                            <DualTimeInput 
+                                                                                                value={sp.recursoConfigs?.tiempo_operacion} 
+                                                                                                onChange={val => handleRecursoConfigChange(paso.id, sp.id, 'tiempo_operacion', val)} 
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        <div className="flex flex-col animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                                            <FieldLabel id="accion_concluir" text="Acción al Concluir" />
+                                                                                            <select 
+                                                                                                style={{ color: activeTheme.text, borderColor: activeTheme.border }} 
+                                                                                                value={sp.recursoConfigs?.accionAlConcluir || ''} 
+                                                                                                onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'accionAlConcluir', e.target.value)} 
+                                                                                                className="w-full p-4 border rounded-xl bg-white outline-none font-bold text-[10px] uppercase tracking-tighter"
+                                                                                            >
+                                                                                                <option value="">(SELECCIONA ACCIÓN)</option>
+                                                                                                <option value="AVISAR AL OPERARIO Y APAGAR">AVISAR AL OPERARIO Y APAGAR</option>
+                                                                                                <option value="AVISAR AL OPERARIO Y NUEVA VELOCIDAD SIN APAGAR">AVISAR AL OPERARIO Y NUEVA VELOCIDAD SIN APAGAR</option>
+                                                                                                <option value="AVISAR AL OPERARIO Y ADICIONAR INGREDIENTE SIN APAGAR">AVISAR AL OPERARIO Y ADICIONAR INGREDIENTE SIN APAGAR</option>
+                                                                                            </select>
+                                                                                        </div>
+
+                                                                                        {/* FASE 2: CONTINUACIÓN DE SECUENCIA */}
+                                                                                        {sp.recursoConfigs?.accionAlConcluir === "AVISAR AL OPERARIO Y NUEVA VELOCIDAD SIN APAGAR" && (
+                                                                                            <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-2 p-4 bg-orange-500/5 border border-dashed border-orange-500/30 rounded-2xl animate-in zoom-in-95 duration-300">
+                                                                                                <div className="flex items-center gap-2 mb-3">
+                                                                                                    <div className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-[10px] font-black">2</div>
+                                                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">Fase 2 (Continuación de Secuencia)</span>
+                                                                                                </div>
+                                                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                                                                    <div className="flex flex-col">
+                                                                                                        <FieldLabel id="nextVelocidad" text="Nueva Velocidad" />
+                                                                                                        <select 
+                                                                                                            style={{ color: activeTheme.text, borderColor: activeTheme.border }} 
+                                                                                                            value={sp.recursoConfigs?.nextVelocidad || ''} 
+                                                                                                            onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'nextVelocidad', e.target.value)} 
+                                                                                                            className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-[10px] uppercase"
+                                                                                                        >
+                                                                                                            <option value="">(SELECCIONA VELOCIDAD)</option>
+                                                                                                            <option value="SIN APAGAR, CAMBIAR A VELOCIDAD 1">SIN APAGAR, CAMBIAR A VELOCIDAD 1</option>
+                                                                                                            <option value="SIN APAGAR, CAMBIAR A VELOCIDAD 2">SIN APAGAR, CAMBIAR A VELOCIDAD 2</option>
+                                                                                                            <option value="SIN APAGAR, CAMBIAR A VELOCIDAD 3">SIN APAGAR, CAMBIAR A VELOCIDAD 3</option>
+                                                                                                        </select>
+                                                                                                    </div>
+                                                                                                    <div className="flex flex-col">
+                                                                                                        <FieldLabel id="nextTiempo" text="Tiempo Fase 2" />
+                                                                                                        <DualTimeInput 
+                                                                                                            value={sp.recursoConfigs?.nextTiempo} 
+                                                                                                            onChange={val => handleRecursoConfigChange(paso.id, sp.id, 'nextTiempo', val)} 
+                                                                                                        />
+                                                                                                    </div>
+                                                                                                    <div className="flex flex-col">
+                                                                                                        <FieldLabel id="nextAccion" text="Acción al Concluir Fase 2" />
+                                                                                                        <select 
+                                                                                                            style={{ color: activeTheme.text, borderColor: activeTheme.border }} 
+                                                                                                            value={sp.recursoConfigs?.nextAccion || ''} 
+                                                                                                            onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'nextAccion', e.target.value)} 
+                                                                                                            className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-[10px] uppercase"
+                                                                                                        >
+                                                                                                            <option value="">(SELECCIONA ACCIÓN)</option>
+                                                                                                            <option value="AVISAR AL OPERARIO Y APAGAR">AVISAR AL OPERARIO Y APAGAR</option>
+                                                                                                            <option value="AVISAR AL OPERARIO Y ADICIONAR INGREDIENTE SIN APAGAR">AVISAR AL OPERARIO Y ADICIONAR INGREDIENTE SIN APAGAR</option>
+                                                                                                        </select>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </>
                                                                                 )}
                                                                             </>
                                                                         )}
@@ -944,19 +1325,19 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                             <div className="flex flex-col">
                                                                                 <FieldLabel id="cuadrante" text="Número de Cuadrante" />
                                                                                 <select style={{ color: activeTheme.text, borderColor: activeTheme.border }} value={sp.recursoConfigs?.cuadrante || ''} onChange={e => handleRecursoConfigChange(paso.id, sp.id, 'cuadrante', e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none font-bold text-sm">
-                                                                                    <option value="">(Selecciona Cuadrante)</option>
+                                                                                    <option value="">(SELECCIONA CUADRANTE)</option>
                                                                                     {dynSpecs.cuadrantes ? (
                                                                                         Array.from({ length: parseInt(dynSpecs.cuadrantes) || 0 }).map((_, i) => (
-                                                                                            <option key={`c${i+1}`} value={`Cuadrante ${i+1}`}>Cuadrante {i+1}</option>
+                                                                                            <option key={`c${i+1}`} value={`Cuadrante ${i+1}`}>CUADRANTE {i+1}</option>
                                                                                         ))
                                                                                     ) : (
                                                                                         <>
-                                                                                            <option value="Cuadrante 1">Cuadrante 1</option>
-                                                                                            <option value="Cuadrante 2">Cuadrante 2</option>
-                                                                                            <option value="Cuadrante 3">Cuadrante 3</option>
-                                                                                            <option value="Cuadrante 4">Cuadrante 4</option>
-                                                                                            <option value="Cuadrante 5">Cuadrante 5</option>
-                                                                                            <option value="Cuadrante 6">Cuadrante 6</option>
+                                                                                            <option value="Cuadrante 1">CUADRANTE 1</option>
+                                                                                            <option value="Cuadrante 2">CUADRANTE 2</option>
+                                                                                            <option value="Cuadrante 3">CUADRANTE 3</option>
+                                                                                            <option value="Cuadrante 4">CUADRANTE 4</option>
+                                                                                            <option value="Cuadrante 5">CUADRANTE 5</option>
+                                                                                            <option value="Cuadrante 6">CUADRANTE 6</option>
                                                                                         </>
                                                                                     )}
                                                                                 </select>
@@ -1121,7 +1502,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                 }} style={{ color: '#10b981', borderColor: '#a7f3d0' }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-emerald-50 transition-all shadow-sm" title="Guardar Respaldo Rápido">
                                                     <Save size={16} />
                                                 </button>
-                                                <button style={{ color: activeTheme.text, borderColor: activeTheme.border }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-white transition-all shadow-sm" title="Duplicar">
+                                                <button onClick={() => duplicateSubpaso(paso.id, sp)} style={{ color: activeTheme.text, borderColor: activeTheme.border }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-white transition-all shadow-sm" title="Duplicar Subpaso">
                                                     <Copy size={16} />
                                                 </button>
                                                 <button onClick={() => setSubpasoToDelete({ pasoId: paso.id, subpasoId: sp.id, nombre: sp.nombre })} style={{ color: '#ef4444', borderColor: '#fca5a5' }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-red-50 transition-all shadow-sm" title="Eliminar">
