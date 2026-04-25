@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
     ArrowLeft, Save, ChevronDown, ChevronRight, Plus, 
-    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered, Info, X, Download, Upload, Table, AlertTriangle
+    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered, Info, X, Download, Upload, Table, AlertTriangle, Loader2
 } from 'lucide-react';
 
 const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
@@ -166,13 +166,16 @@ const FIELD_INFO_DATA = {
     }
 };
 
-export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, onSave, initialData, recipeMatrix }) => {
+export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, onSave, onSaveDB, initialData, recipeMatrix }) => {
     // If theme is not provided (safety fallback), we use a default neutral theme
     const activeTheme = theme || { bg: '#f3f4f6', input: '#ffffff', text: '#1f2937', border: '#e5e7eb' };
 
     // Initial state matching the 28-column schema we defined
     const [infoModalField, setInfoModalField] = useState(null);
     const [equipments, setEquipments] = useState([]);
+    const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved'
+    const [subpasoToDelete, setSubpasoToDelete] = useState(null);
+    const [pasoToDelete, setPasoToDelete] = useState(null);
 
     useEffect(() => {
         const fetchEquipments = async () => {
@@ -552,9 +555,16 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                             <ArrowLeft size={16} /> Volver
                         </button>
                         <button 
-                            onClick={() => { 
-                                if(onSave) onSave(pasos);
-                                onClose(); 
+                            onClick={async () => { 
+                                setSaveStatus('saving');
+                                try {
+                                    if(onSaveDB) await onSaveDB(pasos);
+                                    else if(onSave) onSave(pasos);
+                                    setSaveStatus('saved');
+                                    setTimeout(() => { setSaveStatus('idle'); onClose(); }, 1000);
+                                } catch(e) {
+                                    setSaveStatus('idle');
+                                }
                             }}
                             style={{ backgroundColor: activeTheme.text, color: activeTheme.bg }}
                             className="px-6 py-3 rounded-2xl hover:scale-105 transition-all flex items-center gap-2 font-black uppercase text-xs tracking-widest shadow-xl"
@@ -600,7 +610,17 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                 />
                             </div>
                             <div className="flex-1"></div>
-                            {paso.isExpanded ? <ChevronDown size={24} style={{ color: activeTheme.text }} /> : <ChevronRight size={24} style={{ color: activeTheme.text }} />}
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPasoToDelete({ id: paso.id, nombre: paso.nombre });
+                                }}
+                                className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all mr-2 shrink-0"
+                                title="Eliminar Paso Principal"
+                            >
+                                <X size={20} />
+                            </button>
+                            {paso.isExpanded ? <ChevronDown size={24} style={{ color: activeTheme.text }} className="shrink-0" /> : <ChevronRight size={24} style={{ color: activeTheme.text }} className="shrink-0" />}
                         </div>
 
                         {/* Step Body (Subpasos) */}
@@ -1088,14 +1108,24 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                             
                                             {/* Actions Side */}
                                             <div className="flex flex-col gap-2 pt-1">
-                                                <button onClick={() => { if(onSave) onSave(pasos); }} style={{ color: '#10b981', borderColor: '#a7f3d0' }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-emerald-50 transition-all shadow-sm" title="Guardar Respaldo Rápido">
+                                                <button onClick={async () => { 
+                                                    setSaveStatus('saving');
+                                                    try {
+                                                        if(onSaveDB) await onSaveDB(pasos);
+                                                        else if(onSave) onSave(pasos);
+                                                        setSaveStatus('saved');
+                                                        setTimeout(() => setSaveStatus('idle'), 1500);
+                                                    } catch (e) {
+                                                        setSaveStatus('idle');
+                                                    }
+                                                }} style={{ color: '#10b981', borderColor: '#a7f3d0' }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-emerald-50 transition-all shadow-sm" title="Guardar Respaldo Rápido">
                                                     <Save size={16} />
                                                 </button>
                                                 <button style={{ color: activeTheme.text, borderColor: activeTheme.border }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-white transition-all shadow-sm" title="Duplicar">
                                                     <Copy size={16} />
                                                 </button>
-                                                <button onClick={() => removeSubpaso(paso.id, sp.id)} style={{ color: '#ef4444', borderColor: '#fca5a5' }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-red-50 transition-all shadow-sm" title="Eliminar">
-                                                    <Trash2 size={16} />
+                                                <button onClick={() => setSubpasoToDelete({ pasoId: paso.id, subpasoId: sp.id, nombre: sp.nombre })} style={{ color: '#ef4444', borderColor: '#fca5a5' }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-red-50 transition-all shadow-sm" title="Eliminar">
+                                                    <X size={18} />
                                                 </button>
                                             </div>
                                         </div>
@@ -1175,6 +1205,101 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                     </div>
                 );
             })()}
+
+            {/* SAVE STATUS MODAL */}
+            {saveStatus !== 'idle' && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-[30px] p-8 shadow-2xl flex flex-col items-center justify-center min-w-[300px] border border-black/10">
+                        {saveStatus === 'saving' ? (
+                            <>
+                                <Loader2 size={48} className="animate-spin text-emerald-500 mb-4" />
+                                <h3 className="text-xl font-black italic uppercase text-slate-800 tracking-tighter">Guardando...</h3>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mt-2">Respaldando progreso</p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+                                    <Save size={32} className="text-emerald-500" />
+                                </div>
+                                <h3 className="text-xl font-black italic uppercase text-slate-800 tracking-tighter">¡Guardado!</h3>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mt-2">Respaldo exitoso</p>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* DELETE CONFIRMATION MODAL (SUBPASO) */}
+            {subpasoToDelete && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+                    <div style={{ backgroundColor: activeTheme.input }} className="max-w-md w-full rounded-[30px] p-8 shadow-2xl border border-black/10 relative overflow-hidden text-center">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-red-500"></div>
+                        <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <AlertTriangle size={40} />
+                        </div>
+                        <h3 style={{ color: activeTheme.text }} className="text-2xl font-black italic uppercase tracking-tighter mb-2">
+                            ¿Borrar Subpaso?
+                        </h3>
+                        <p className="text-sm font-bold opacity-70 mb-6" style={{ color: activeTheme.text }}>
+                            Estás a punto de eliminar el subpaso <span className="text-red-500 uppercase">"{subpasoToDelete.nombre}"</span>. Esta acción no se puede deshacer.
+                        </p>
+                        <div className="flex gap-4">
+                            <button 
+                                onClick={() => setSubpasoToDelete(null)}
+                                style={{ color: activeTheme.text, borderColor: activeTheme.border }}
+                                className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-widest border-2 hover:bg-black/5 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    removeSubpaso(subpasoToDelete.pasoId, subpasoToDelete.subpasoId);
+                                    setSubpasoToDelete(null);
+                                }}
+                                className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-widest bg-red-500 text-white hover:bg-red-600 hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-red-500/30"
+                            >
+                                Sí, borrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* DELETE CONFIRMATION MODAL (PASO PRINCIPAL) */}
+            {pasoToDelete && (
+                <div className="fixed inset-0 z-[210] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+                    <div style={{ backgroundColor: activeTheme.input }} className="max-w-md w-full rounded-[30px] p-8 shadow-2xl border border-black/10 relative overflow-hidden text-center">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-red-600"></div>
+                        <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <AlertTriangle size={40} />
+                        </div>
+                        <h3 style={{ color: activeTheme.text }} className="text-2xl font-black italic uppercase tracking-tighter mb-2">
+                            ¿Eliminar Paso Principal?
+                        </h3>
+                        <p className="text-sm font-bold opacity-70 mb-6" style={{ color: activeTheme.text }}>
+                            Borrarás el paso <span className="text-red-600 uppercase font-black">"{pasoToDelete.nombre}"</span> y TODOS sus subpasos asociados. Esta acción es definitiva.
+                        </p>
+                        <div className="flex gap-4">
+                            <button 
+                                onClick={() => setPasoToDelete(null)}
+                                style={{ color: activeTheme.text, borderColor: activeTheme.border }}
+                                className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-widest border-2 hover:bg-black/5 transition-colors"
+                            >
+                                Mantener
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    setPasos(pasos.filter(p => p.id !== pasoToDelete.id));
+                                    setPasoToDelete(null);
+                                }}
+                                className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-widest bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-red-600/30"
+                            >
+                                Confirmar Borrado
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -199,7 +199,7 @@ async def force_terminal_unlock(terminal_id: str, req: LockRequest, db: AsyncSes
         if not is_admin and not has_cash_perm:
             logger.warning(f"🚫 FORCE UNLOCK CAJA DENEGADO: {emp.name} (id={emp.id}) intentó desbloquear CAJA en {tid} sin permiso pos_force_cash_unlock")
             raise HTTPException(status_code=403, detail="No tienes permiso para forzar el desbloqueo de terminales con CAJA activa.")
-
+    
     # ── 2. OBTENER DATOS DEL OCUPANTE ANTERIOR (para auditoría) ─────────
     prev_lock = await db.execute(
         select(TerminalLock).where(TerminalLock.terminal_id == tid)

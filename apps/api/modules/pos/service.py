@@ -95,8 +95,8 @@ class POSService:
                 # BYPASS v4.4: Falsos positivos por timeout de red ("Hora Pico")
                 # Si la petición viene de la MISMA terminal que ya es dueña del ticket, 
                 # es un reintento idempotente tras un fallo de red. Se perdona el conflicto.
-                safe_req_tid = req_terminal_id.strip() if req_terminal_id else ""
-                safe_db_tid = db_ticket.terminal_id.strip() if db_ticket.terminal_id else ""
+                safe_req_tid = req_terminal_id.strip().upper() if req_terminal_id else ""
+                safe_db_tid = db_ticket.terminal_id.strip().upper() if db_ticket.terminal_id else ""
                 if safe_req_tid and safe_req_tid == safe_db_tid:
                     import logging
                     logging.getLogger("pos.optimistic_lock").info(

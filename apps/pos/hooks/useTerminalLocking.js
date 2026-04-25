@@ -9,9 +9,10 @@ import { posService } from '../services/POSService';
  * - Limpieza automática al desmontar (liberar terminal)
  * - Heartbeat para renovar TTL del candado
  * 
- * CAMBIO CRÍTICO: Ya NO expulsa automáticamente al usuario.
+ * CAMBIO CRÍTICO (v4.4): Ya NO expulsa automáticamente al usuario.
  * Solo el admin puede forzar la desconexión via force_unlock.
  * El polling de seguridad ahora solo muestra una advertencia visual.
+ * ANTI-PING-PONG: Ya no intenta re-adquirir candados automáticamente.
  */
 export const useTerminalLocking = (selectedTerminal, currentUser) => {
     const [terminalStatuses, setTerminalStatuses] = useState({});

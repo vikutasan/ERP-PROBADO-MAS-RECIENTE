@@ -409,9 +409,49 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         payload.version = null; // Ticket nuevo, sin versión
                         savedTicket = await posService.createTicket(payload);
                     } else if (errorMessage.includes("Conflicto de versión")) {
-                        // v4.3: SIEMPRE mostrar modal de colisión. El usuario DEBE saber
-                        // que otro operador modificó la cuenta para ir al Pizarrón a re-sincronizar.
-                        // El guard de showCollisionModal en useAutoSave pausará futuros auto-saves.
+                        // v4.7: AUTO-HEALING UI
+                        // Si la terminal detecta conflicto (ej. cajero carga ticket incompleto y vendedor lo termina),
+                        // en lugar de bloquear con el modal, auto-descargamos la versión más reciente
+                        // y actualizamos la pantalla del cajero instantáneamente.
+                        if (targetAccountNum) {
+                            try {
+                                console.log(`🔄 Auto-Healing: Descargando versión fresca de ${targetAccountNum}...`);
+                                const liveTicket = await posService.getTicketByAccountNum(targetAccountNum);
+                                if (liveTicket && liveTicket.items) {
+                                    // Setear isRecoveringRef para evitar auto-saves accidentales
+                                    isRecoveringRef.current = true;
+                                    
+                                    const recovered = liveTicket.items.map(i => {
+                                        const originalProd = initialProducts.find(p => p.id === i.product.id) || {};
+                                        return {
+                                            id: i.product.id,
+                                            name: i.product.name,
+                                            price: i.product.price,
+                                            quantity: i.quantity,
+                                            category: i.product.category?.name || 'OTROS',
+                                            nature: i.product.nature || originalProd.nature || 'PRODUCTO'
+                                        };
+                                    });
+                                    setCart(recovered);
+                                    ticketVersionRef.current = liveTicket.version;
+                                    setTicketVersion(liveTicket.version);
+                                    
+                                    setToastMessage("⚠️ ¡Atención! El vendedor modificó esta cuenta. Totales actualizados.");
+                                    setTimeout(() => setToastMessage(null), 5000);
+                                    setShowCheckout(false); // Sacarlo de la pantalla de pago para que vea el nuevo total
+                                    
+                                    requestAnimationFrame(() => {
+                                        isRecoveringRef.current = false;
+                                        isActionRunningRef.current = false; // Liberar mutex
+                                    });
+                                    return; // Abortar este guardado fallido pacíficamente
+                                }
+                            } catch (e) {
+                                console.error("Error auto-recovering ticket", e);
+                            }
+                        }
+
+                        // Si el auto-heal falla por desconexión, caemos al modal original como fallback
                         setShowCollisionModal(true);
                         throw err;
                     } else {
