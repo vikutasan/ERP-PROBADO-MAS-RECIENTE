@@ -398,6 +398,21 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
         }));
     });
 
+    // SINCRONIZADOR: Si initialData cambia (por un guardado exitoso), actualizar pasos localmente
+    useEffect(() => {
+        if (initialData && initialData.length > 0) {
+            const syncedPasos = initialData.map(p => ({
+                ...p,
+                internalId: p.internalId || crypto.randomUUID?.() || Math.random().toString(36).substring(7),
+                subpasos: (p.subpasos || []).map(sp => ({
+                    ...sp,
+                    internalId: sp.internalId || crypto.randomUUID?.() || Math.random().toString(36).substring(7)
+                }))
+            }));
+            setPasos(syncedPasos);
+        }
+    }, [initialData]);
+
     const fileInputRef = useRef(null);
 
     const generateVoiceInstruction = (pasoId, spId) => {

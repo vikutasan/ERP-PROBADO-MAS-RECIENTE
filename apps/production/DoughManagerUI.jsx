@@ -720,82 +720,93 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         setLoading(true);
         try {
             const dataToSave = overrideData || formData;
-            const derivedBatches = (dataToSave?.recipe_matrix?.rows || []).map(r => ({
-                name: r.name || `${r.baston_qty || 1}B`,
-                baston_qty: r.baston_qty || 1
-            }));
+            
+            // LIMPIEZA QUIRÚRGICA: Purificamos cada campo para cumplir estrictamente con el esquema del servidor
+            const cleanPayload = () => {
+                const source = dataToSave;
+                
+                // SEGURO DE INTEGRIDAD: Si los campos críticos están vacíos o corruptos, ABORTAMOS
+                if (!source.code || !source.name || source.code === 'undefined' || source.name === 'undefined') {
+                    console.error("ERROR DE INTEGRIDAD: Datos críticos corruptos.");
+                    return null;
+                }
 
-            // RECONSTRUCCIÓN ATÓMICA: Creamos un objeto nuevo desde cero para evitar cualquier rastro de circularidad
-            const rebuildPayload = () => {
-                const base = {
-                    id: formData?.id || initialData?.id,
-                    code: formData.code || '',
-                    name: formData.name || '',
-                    description: formData.description || '',
-                    dough_type: formData.dough_type || 'MASA SALADA',
-                    requires_rest: !!formData.requires_rest,
-                    rest_container: formData.rest_container || '',
-                    rest_warehouse: formData.rest_warehouse || '',
-                    rest_time_min: parseInt(formData.rest_time_min) || 0,
-                    theoretical_yield: parseFloat(formData.theoretical_yield) || 0,
-                    expected_waste: parseFloat(formData.expected_waste) || 0,
-                    theme_id: formData.theme_id || 'C01',
-                    recipe_matrix: formData.recipe_matrix ? JSON.parse(JSON.stringify(formData.recipe_matrix)) : null
-                };
-
-                // Reconstruir pasos extrayendo solo campos primitivos
-                const production_process = (dataToSave.pasosProduccion || []).map(p => ({
-                    id: p.id,
-                    nombre: p.nombre,
-                    idBloque: p.idBloque,
-                    subpasos: (p.subpasos || []).map(sp => ({
-                        id: sp.id,
-                        nombre: sp.nombre,
-                        instruccionVoz: sp.instruccionVoz,
-                        tHumano: parseFloat(sp.tHumano) || 0,
-                        tAutonomo: parseFloat(sp.tAutonomo) || 0,
-                        recurso: sp.recurso,
-                        recursoConfigs: sp.recursoConfigs ? JSON.parse(JSON.stringify(sp.recursoConfigs)) : {},
-                        nivelCritico: sp.nivelCritico,
-                        operarioLibre: !!sp.operarioLibre,
-                        confirmacionVoz: !!sp.confirmacionVoz,
-                        triggerInicio: sp.triggerInicio,
-                        preguntaQA: sp.preguntaQA,
-                        tipCoaching: sp.tipCoaching,
-                        grupoInseparable: sp.grupoInseparable,
-                        temperaturaObjetivo: sp.temperaturaObjetivo,
-                        senalesCompletado: sp.senalesCompletado,
-                        erroresComunes: sp.erroresComunes,
-                        ingredientesRequeridos: sp.ingredientesRequeridos,
-                        dependenciaPasoPrevio: sp.dependenciaPasoPrevio,
-                        tiempoHorneadoRelativo: sp.tiempoHorneadoRelativo,
-                        horaFijaProgramada: sp.horaFijaProgramada,
-                        habilitarComandos: !!sp.habilitarComandos,
-                        palabraInicio: sp.palabraInicio,
-                        palabraPausa: sp.palabraPausa
-                    }))
+                // 1. Purificar Proceso de Producción (JSONB)
+                const rawPasos = source.pasosProduccion || source.production_process || [];
+                const production_process = rawPasos.map(p => ({
+                    id: String(p.id),
+                    nombre: String(p.nombre || ''),
+                    idBloque: String(p.idBloque || ''),
+                    subpasos: (p.subpasos || []).map(sp => {
+                        const cleanSp = {};
+                        const safeFields = [
+                            'id', 'nombre', 'instruccionVoz', 'tHumano', 'tAutonomo', 
+                            'recurso', 'recursoConfigs', 'nivelCritico', 'operarioLibre', 
+                            'confirmacionVoz', 'triggerInicio', 'preguntaQA', 'tipCoaching', 
+                            'grupoInseparable', 'temperaturaObjetivo', 'senalesCompletado', 
+                            'erroresComunes', 'ingredientesRequeridos', 'dependenciaPasoPrevio', 
+                            'tiempoHorneadoRelativo', 'horaFijaProgramada', 'habilitarComandos', 
+                            'palabraInicio', 'palabraPausa'
+                        ];
+                        safeFields.forEach(f => {
+                            if (sp[f] !== undefined) {
+                                if (f === 'tHumano' || f === 'tAutonomo') cleanSp[f] = parseFloat(sp[f]) || 0;
+                                else cleanSp[f] = sp[f];
+                            }
+                        });
+                        return cleanSp;
+                    })
                 }));
 
-                const batches = (formData?.recipe_matrix?.rows || []).map(r => ({
-                    name: r.name || `${r.baston_qty || 1}B`,
-                    baston_qty: r.baston_qty || 1
+                if (production_process.length === 0 && rawPasos.length > 0) return null;
+
+                // 2. Purificar Ingredientes, Tandas y Relaciones
+                const ingredients = (source.ingredients || []).map(i => ({
+                    name: String(i.name),
+                    qty_per_baston: parseFloat(i.qty_per_baston) || 0,
+                    unit: String(i.unit || 'g'),
+                    mep_type: i.mep_type,
+                    preferment_id: i.preferment_id
                 }));
 
-                const dough_relations = (formData.dough_relations || []).map(r => ({
-                    related_dough_id: r.id,
-                    qty_per_baston: parseFloat(r.qty_per_baston) || 0
+                const batches = (source.batches || []).map(b => ({
+                    name: String(b.name),
+                    baston_qty: parseFloat(b.baston_qty) || 1,
+                    unit: String(b.unit || 'BST')
+                }));
+
+                const product_relations = (source.product_relations || []).map(r => ({
+                    product_id: parseInt(r.product_id),
+                    grams_per_piece: parseFloat(r.grams_per_piece) || 0,
+                    pieces_per_baston: r.pieces_per_baston ? parseInt(r.pieces_per_baston) : null
                 }));
 
                 return {
-                    ...base,
+                    code: String(source.code),
+                    name: String(source.name),
+                    description: source.description || '',
+                    dough_type: source.dough_type || 'MASA SALADA',
+                    requires_rest: !!source.requires_rest,
+                    rest_time_min: parseInt(source.rest_time_min) || 0,
+                    theoretical_yield: parseFloat(source.theoretical_yield) || 0,
+                    expected_waste: parseFloat(source.expected_waste) || 0,
+                    theme_id: source.theme_id || 'C01',
                     production_process,
+                    ingredients,
                     batches,
-                    ingredients: [],
-                    dough_relations
+                    product_relations
                 };
             };
 
-            const payload = rebuildPayload();
+            const payload = cleanPayload();
+            if (!payload) {
+                setLoading(false);
+                return;
+            }
+
+            console.log(`DEBUG: Enviando ${payload.production_process.length} pasos al servidor.`);
+
+            console.log(`DEBUG: Enviando ${payload.production_process.length} pasos al servidor.`);
 
             const isUpdate = !!(formData?.id || initialData?.id);
             const targetId = formData?.id || initialData?.id;
@@ -804,13 +815,12 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 console.error("Falta ID para actualización");
                 throw new Error("ID_MISSING");
             }
-
             const url = isUpdate
                 ? `${API_BASE}/production/doughs/${targetId}`
                 : `${API_BASE}/production/doughs`;
 
-            console.log(`Intentando guardar en: ${url} (${isUpdate ? 'UPDATE' : 'CREATE'})`);
-
+            console.log(`Intentando guardar en: ${url}`);
+            
             const resp = await fetch(url, {
                 method: isUpdate ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -818,10 +828,15 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
             });
 
             if (resp.ok) {
-                const responseData = await resp.json();
-                if (!isUpdate && responseData && responseData.id) {
-                    setFormData(prev => ({ ...prev, id: responseData.id }));
-                }
+                const resData = await resp.json();
+                
+                // SINCRONIZACIÓN CRÍTICA: Actualizar el estado local con la respuesta del servidor
+                const syncedData = {
+                    ...formData,
+                    ...resData,
+                    pasosProduccion: resData.production_process || resData.pasosProduccion || formData.pasosProduccion
+                };
+                setFormData(syncedData);
 
                 if (!silent) {
                     showNotify("ÉXITO", "Masa guardada correctamente", "success");
@@ -834,7 +849,15 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 throw new Error("Save failed");
             }
         } catch (e) {
-            if (!silent) showNotify("ERROR DE CONEXIÓN", "El servidor no responde (Puerto 5001)", "error");
+            console.error("Error en handleSave:", e);
+            const urlAttempted = isUpdate ? `${API_BASE}/production/doughs/${targetId}` : `${API_BASE}/production/doughs`;
+            
+            // FORZAR ALERTA SIEMPRE PARA DIAGNÓSTICO
+            alert("❌ ERROR DE CONEXIÓN DETECTADO\n\nDestino: " + urlAttempted + "\n\nSi ves este mensaje, el navegador no pudo llegar al servidor. Verifica que estés en la red correcta.");
+            
+            if (!silent) {
+                showNotify("ERROR DE CONEXIÓN", "Error interno en el guardado.", "error");
+            }
             throw e;
         } finally {
             setLoading(false);
@@ -1368,13 +1391,13 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                 </div>
                                 
                                 <div className="space-y-6 max-w-4xl mx-auto pb-10">
-                                    {(formData.pasosProduccion || []).length === 0 ? (
+                                    {((formData.pasosProduccion || formData.production_process || [])).length === 0 ? (
                                         <div style={{ backgroundColor: theme.input }} className="p-12 rounded-[40px] border border-dashed border-black/20 text-center">
                                             <ClipboardList size={48} className="mx-auto mb-4 opacity-20" style={{ color: theme.text }}/>
                                             <p style={{ color: theme.text }} className="text-xs font-black uppercase tracking-widest opacity-40">No se ha definido el proceso de producción detallado</p>
                                         </div>
                                     ) : (
-                                        formData.pasosProduccion.map((p, pIdx) => (
+                                        (formData.pasosProduccion || formData.production_process || []).map((p, pIdx) => (
                                             <div key={p.id} style={{ backgroundColor: theme.input }} className="p-8 rounded-[40px] border border-black/5 shadow-sm">
                                                 <div className="flex items-center gap-4 mb-4">
                                                     <div style={{ backgroundColor: theme.text, color: theme.bg }} className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-black italic shrink-0">
@@ -1648,7 +1671,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                         )}
                         
                         <button 
-                            onClick={handleSave}
+                            onClick={() => handleSave()}
                             disabled={loading || !formData.name}
                             style={{ 
                                 backgroundColor: loading || !formData.name ? 'rgba(0,0,0,0.1)' : theme.text,
