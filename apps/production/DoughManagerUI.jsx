@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
     ArrowLeft, Plus, Search, Filter, Loader2, ChefHat, Info, 
-    Save, X, ChevronRight, ChevronLeft, Beaker, Zap, Timer, 
+    Save, X, ChevronRight, ChevronLeft, Beaker, Zap, Timer, Mic,
     Scale, Trash2, ListOrdered, Settings2, Package, ArrowRight, Edit2, GripVertical, ClipboardList,
     Eye, EyeOff, Download, Table, Upload
 } from 'lucide-react';
 import { PedidosPendientesUI } from './PedidosPendientesUI';
 import { ProcesoProduccionMasaUI } from './ProcesoProduccionMasaUI';
+import GlobalAgentSettingsUI from './GlobalAgentSettingsUI';
 
 /**
  * DOUGH MANAGER UI (INDUSTRIAL EDITION)
@@ -79,7 +80,8 @@ export const getTheme = (theme_id) => {
     };
 };
 
-const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
+const API_BASE = window.location.origin.replace(':5000', ':5001') + '/api/v1';
+console.log("R de Rico API Base detectada:", API_BASE);
 
 // Sistema inteligente de de-hardcoding de imágenes para red local
 const resolveImageUrl = (url) => {
@@ -472,6 +474,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
     const [loading, setLoading] = useState(false);
     const [editingColumnId, setEditingColumnId] = useState(null);
     const [isConfiguringProduction, setIsConfiguringProduction] = useState(false);
+    const [isConfiguringGlobalAgent, setIsConfiguringGlobalAgent] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [showMepSelector, setShowMepSelector] = useState(false);
 
@@ -609,7 +612,8 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
 
     // Auto-calcula la RECETA BASE (1 Unidad) basada en el promedio de las tandas activas
     useEffect(() => {
-        if (!formData?.recipe_matrix?.rows) return;
+        if (!formData?.recipe_matrix?.columns || !formData?.recipe_matrix?.rows) return;
+        
         const rows = formData.recipe_matrix.rows;
         const columns = formData.recipe_matrix.columns;
         const productionRows = rows.filter(r => r.id !== 'row_base_reference');
@@ -635,12 +639,12 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 }
             });
 
-            const avgRatio = validRowsCount > 0 ? Math.round((totalRatio / validRowsCount) * 100) / 100 : 0;
+            const avgRatio = validRowsCount > 0 ? Math.round((totalRatio / validRowsCount) * 100) / 100 : null;
             
             // Sincronizar unidad con la primera tanda disponible
             const firstUnit = productionRows.find(r => r.values[col.id]?.unit)?.values[col.id]?.unit || 'g';
             
-            if (newBaseValues[col.id]?.qty !== avgRatio || newBaseValues[col.id]?.unit !== firstUnit) {
+            if (avgRatio !== null && (newBaseValues[col.id]?.qty !== avgRatio || newBaseValues[col.id]?.unit !== firstUnit)) {
                 newBaseValues[col.id] = { ...newBaseValues[col.id], qty: avgRatio, unit: firstUnit };
                 needsUpdate = true;
             }
@@ -676,7 +680,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         if (!formData?.recipe_matrix?.columns) return;
         const newRowId = 'r_' + Date.now();
         const newRow = { id: newRowId, name: '', baston_qty: 1, unit: 'BST', values: {} };
-        formData.recipe_matrix.columns.forEach(col => {
+        formData.recipe_matrix.columns?.forEach(col => {
             newRow.values[col.id] = { qty: 0, unit: 'g' };
         });
         setFormData({...formData, recipe_matrix: { ...formData.recipe_matrix, rows: [...(formData.recipe_matrix.rows || []), newRow] } });
@@ -687,12 +691,15 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         const newColId = 'c_' + Date.now();
         const newCol = { id: newColId, name: 'NUEVO INSUMO', type: 'INGREDIENTE DIRECTO' };
         
-        const newRows = formData.recipe_matrix.rows.map(r => ({
+        const newRows = formData.recipe_matrix.rows?.map(r => ({
             ...r,
             values: { ...r.values, [newColId]: { qty: 0, unit: 'g' } }
-        }));
+        })) || [];
         
-        setFormData({...formData, recipe_matrix: { columns: [...(formData.recipe_matrix.columns || []), newCol], rows: newRows } });
+        setFormData({...formData, recipe_matrix: { 
+            columns: [...(formData?.recipe_matrix?.columns || []), newCol], 
+            rows: newRows 
+        } });
         setEditingColumnId(newColId);
     };
 
@@ -713,30 +720,124 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         if (type === 'success') setTimeout(() => setNotification(null), 3000);
     };
 
-    const handleSave = async () => {
+    const handleSave = async (overrideData = null, silent = false) => {
         setLoading(true);
         try {
-            const derivedBatches = (formData?.recipe_matrix?.rows || []).map(r => ({
-                name: r.name || `${r.baston_qty || 1}B`,
-                baston_qty: r.baston_qty || 1
-            }));
+            const dataToSave = overrideData || formData;
+            
+            // LIMPIEZA QUIRÚRGICA: Purificamos cada campo para cumplir estrictamente con el esquema del servidor
+            const cleanPayload = () => {
+                const source = dataToSave;
+                
+                // SEGURO DE INTEGRIDAD: Si los campos críticos están vacíos o corruptos, ABORTAMOS
+                if (!source.code || !source.name || source.code === 'undefined' || source.name === 'undefined') {
+                    console.error("ERROR DE INTEGRIDAD: Datos críticos corruptos.");
+                    return null;
+                }
 
-            const payload = {
-                ...formData,
-                production_process: formData.pasosProduccion,
-                batches: derivedBatches,
-                ingredients: [], // Empty to phase out the old linear config
-                dough_relations: formData.dough_relations.map(r => ({
-                    related_dough_id: r.id,
-                    qty_per_baston: r.qty_per_baston || 0
-                }))
+                // 0. SINCRONIZACIÓN DE MATRIZ: Vaciamos la matriz en los campos de persistencia
+                const rows = source.recipe_matrix?.rows || [];
+                const columns = source.recipe_matrix?.columns || [];
+                const baseRow = rows.find(r => r.id === 'row_base_reference');
+                
+                let ingredients = [];
+                if (baseRow) {
+                    columns.forEach(col => {
+                        const cell = baseRow.values[col.id];
+                        if (cell) {
+                            ingredients.push({
+                                name: col.name.trim().toUpperCase(),
+                                qty_per_baston: parseFloat(cell.qty) || 0,
+                                unit: cell.unit || 'g',
+                                mep_type: col.type || 'INGREDIENTE DIRECTO'
+                            });
+                        }
+                    });
+                }
+
+                const batches = rows.filter(r => r.id !== 'row_base_reference').map(r => ({
+                    name: r.name,
+                    baston_qty: r.baston_qty,
+                    unit: r.unit || 'BST'
+                }));
+
+                // 1. Purificar Proceso de Producción (JSONB)
+                const rawPasos = source.pasosProduccion || source.production_process || [];
+                const production_process = rawPasos.map(p => ({
+                    id: String(p.id),
+                    nombre: String(p.nombre || ''),
+                    idBloque: String(p.idBloque || ''),
+                    subpasos: (p.subpasos || []).map(sp => {
+                        const cleanSp = {};
+                        const safeFields = [
+                            'id', 'nombre', 'instruccionVoz', 'tHumano', 'tAutonomo', 
+                            'recurso', 'recursoConfigs', 'nivelCritico', 'operarioLibre', 
+                            'confirmacionVoz', 'triggerInicio', 'preguntaQA', 'tipCoaching', 
+                            'grupoInseparable', 'temperaturaObjetivo', 'senalesCompletado', 
+                            'erroresComunes', 'ingredientesRequeridos', 'dependenciaPasoPrevio', 
+                            'tiempoHorneadoRelativo', 'horaFijaProgramada', 'habilitarComandos', 
+                            'palabraInicio', 'palabraPausa'
+                        ];
+                        safeFields.forEach(f => {
+                            if (sp[f] !== undefined) {
+                                if (f === 'tHumano' || f === 'tAutonomo') cleanSp[f] = parseFloat(sp[f]) || 0;
+                                else cleanSp[f] = sp[f];
+                            }
+                        });
+                        return cleanSp;
+                    })
+                }));
+
+                if (production_process.length === 0 && rawPasos.length > 0) return null;
+
+                const product_relations = (source.product_relations || []).map(r => ({
+                    product_id: parseInt(r.product_id),
+                    grams_per_piece: parseFloat(r.grams_per_piece) || 0,
+                    pieces_per_baston: r.pieces_per_baston ? parseInt(r.pieces_per_baston) : null
+                }));
+
+                return {
+                    id: source.id || initialData?.id,
+                    code: String(source.code),
+                    name: String(source.name),
+                    description: source.description || '',
+                    dough_type: source.dough_type || 'MASA SALADA',
+                    requires_rest: !!source.requires_rest,
+                    rest_time_min: parseInt(source.rest_time_min) || 0,
+                    theoretical_yield: parseFloat(source.theoretical_yield) || 0,
+                    expected_waste: parseFloat(source.expected_waste) || 0,
+                    theme_id: source.theme_id || 'C01',
+                    production_process,
+                    ingredients,
+                    batches,
+                    product_relations,
+                    recipe_matrix: source.recipe_matrix 
+                };
             };
 
-            const isUpdate = !!initialData?.id;
+            const payload = cleanPayload();
+            if (!payload) {
+                setLoading(false);
+                return;
+            }
+
+            console.log(`DEBUG: Enviando ${payload.production_process.length} pasos al servidor.`);
+
+            console.log(`DEBUG: Enviando ${payload.production_process.length} pasos al servidor.`);
+
+            const isUpdate = !!(formData?.id || initialData?.id);
+            const targetId = formData?.id || initialData?.id;
+            
+            if (!targetId && isUpdate) {
+                console.error("Falta ID para actualización");
+                throw new Error("ID_MISSING");
+            }
             const url = isUpdate
-                ? `${API_BASE}/production/doughs/${initialData.id}`
+                ? `${API_BASE}/production/doughs/${targetId}`
                 : `${API_BASE}/production/doughs`;
 
+            console.log(`Intentando guardar en: ${url}`);
+            
             const resp = await fetch(url, {
                 method: isUpdate ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -744,14 +845,41 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
             });
 
             if (resp.ok) {
-                showNotify("ÉXITO", "Masa guardada correctamente", "success");
-                setTimeout(onSuccess, 1500);
+                const resData = await resp.json();
+                
+                // SINCRONIZACIÓN CRÍTICA: Actualizar el estado local con la respuesta del servidor
+                // Mantenemos nuestra recipe_matrix local ya que el servidor no la maneja directamente
+                const syncedData = {
+                    ...formData,
+                    ...resData,
+                    recipe_matrix: formData.recipe_matrix, 
+                    pasosProduccion: resData.production_process || resData.pasosProduccion || formData.pasosProduccion
+                };
+                setFormData(syncedData);
+
+                if (!silent) {
+                    showNotify("ÉXITO", `Masa guardada (${payload.ingredients.length} ingr, ${payload.batches.length} tandas)`, "success");
+                    // No cerramos el modal para permitir verificación visual
+                    // setTimeout(onSuccess, 1500); 
+                    loadCatalog(); // Recargamos catálogos locales
+                }
+                return true;
             } else {
                 const err = await resp.json();
                 showNotify("ERROR DE MOTOR", err.detail || "No se pudo guardar la masa", "error");
+                throw new Error("Save failed");
             }
         } catch (e) {
-            showNotify("ERROR DE CONEXIÓN", "El servidor no responde (Puerto 5001)", "error");
+            console.error("Error en handleSave:", e);
+            const urlAttempted = isUpdate ? `${API_BASE}/production/doughs/${targetId}` : `${API_BASE}/production/doughs`;
+            
+            // FORZAR ALERTA SIEMPRE PARA DIAGNÓSTICO
+            alert("❌ ERROR DE CONEXIÓN DETECTADO\n\nDestino: " + urlAttempted + "\n\nSi ves este mensaje, el navegador no pudo llegar al servidor. Verifica que estés en la red correcta.");
+            
+            if (!silent) {
+                showNotify("ERROR DE CONEXIÓN", "Error interno en el guardado.", "error");
+            }
+            throw e;
         } finally {
             setLoading(false);
         }
@@ -765,7 +893,9 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         { id: 5, label: 'VÍNCULOS', icon: Zap }
     ];
 
-    const theme = getTheme(formData.theme_id);
+    // Blindaje de seguridad para el tema visual
+    const themeId = formData?.theme_id || initialData?.theme_id || 'C01';
+    const theme = getTheme(themeId) || MASTER_PALETTE['C01'];
 
     return (
         <>
@@ -777,7 +907,19 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 initialData={formData.pasosProduccion}
                 recipeMatrix={formData.recipe_matrix}
                 onSave={(pasos) => setFormData({...formData, pasosProduccion: pasos})}
+                onSaveDB={async (pasos) => {
+                    const newData = {...formData, pasosProduccion: pasos};
+                    setFormData(newData);
+                    await handleSave(newData, true);
+                }}
                 onClose={() => setIsConfiguringProduction(false)} 
+            />
+        )}
+        
+        {isConfiguringGlobalAgent && (
+            <GlobalAgentSettingsUI 
+                activeTheme={theme} 
+                onClose={() => setIsConfiguringGlobalAgent(false)} 
             />
         )}
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-8" style={{ display: isConfiguringProduction ? 'none' : 'flex' }}>
@@ -791,15 +933,30 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 <div className="p-8 pb-4 flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <div>
-                            <h2 style={{ color: theme.text }} className="text-5xl font-black italic uppercase tracking-tighter">
+                            <h2 style={{ color: theme.text }} className="text-2xl font-black uppercase tracking-tighter flex flex-col leading-none">
+                                <span className="opacity-40 text-xs tracking-[0.3em] mb-1">PRODUCCIÓN INDUSTRIAL V1.15</span>
                                 {formData.name || 'NUEVA MASA'}
                             </h2>
                             <p style={{ color: theme.text }} className="text-[10px] font-bold uppercase tracking-[0.4em] mt-1 opacity-60">Configuración Maestra Industrial</p>
                         </div>
                     </div>
-                    <button onClick={onClose} style={{ backgroundColor: theme.input, color: theme.text }} className="p-4 rounded-full hover:scale-110 transition-all">
-                        <X size={24} />
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <button 
+                            onClick={() => {
+                                const p = cleanPayload();
+                                alert("CONTENIDO QUE SE ENVIARÁ AL SERVIDOR:\n\n" + 
+                                      "- Ingredientes: " + p.ingredients.length + "\n" +
+                                      "- Tandas: " + p.batches.length + "\n\n" +
+                                      "Detalle:\n" + JSON.stringify(p, (key, value) => key === 'production_process' ? undefined : value, 2));
+                            }}
+                            className="px-6 py-3 bg-orange-500/20 text-orange-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-500 hover:text-white transition-all shadow-sm border border-orange-500/30"
+                        >
+                            Ver Datos de Guardado
+                        </button>
+                        <button onClick={onClose} style={{ backgroundColor: theme.input, color: theme.text }} className="p-4 rounded-full hover:scale-110 transition-all">
+                            <X size={24} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Stepper Progress - Theme aware */}
@@ -939,7 +1096,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                 </div>
                                                 <div className="grid grid-cols-10 gap-2">
                                                     {Object.entries(MASTER_PALETTE).map(([cid, colorData]) => {
-                                                        const isUsed = allDoughs.some(d => d.id !== initialData?.id && d.theme_id === cid);
+                                                        const isUsed = allDoughs.some(d => d.id !== (formData?.id || initialData?.id) && d.theme_id === cid);
                                                         const isSelected = formData.theme_id === cid;
                                                         
                                                         return (
@@ -1029,11 +1186,11 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                     <div className="min-w-max">
                                         {/* Table Header */}
                                         <div className="flex gap-1 mb-1">
-                                            <div className="w-32 shrink-0 flex items-end pb-1">
+                                            <div className="w-56 shrink-0 flex items-end pb-1">
                                                 <span style={{ color: theme.text }} className="text-[11px] font-black uppercase tracking-tighter opacity-60 leading-none">Matriz de Producción</span>
                                             </div>
-                                            {formData.recipe_matrix.columns.filter(col => !col.id.startsWith('mep_') || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map((col, cIdx) => (
-                                                <div key={col.id} className="w-32 shrink-0 relative group flex items-center gap-1">
+                                            {formData.recipe_matrix?.columns?.filter(col => !col.id.startsWith('mep_') || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map((col, cIdx) => (
+                                                <div key={col.id} className="w-40 shrink-0 relative group flex items-center gap-1">
                                                     <div style={{ backgroundColor: theme.input }} className="flex-1 p-1 text-center rounded-xl border-2 border-black/20 flex flex-col h-12 justify-center shadow-sm relative overflow-visible">
                                                         {editingColumnId === col.id ? (
                                                             <input 
@@ -1070,7 +1227,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                             }}
                                                                             className="p-1.5 bg-red-500 text-white rounded-lg hover:scale-110 transition-all"
                                                                         >
-                                                                            <Trash2 size={12}/>
+                                                                            <X size={12}/>
                                                                         </button>
                                                                     </div>
                                                                 )}
@@ -1096,7 +1253,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                             backgroundColor: row.id === 'row_base_reference' ? theme.text : theme.input,
                                                             borderColor: row.id === 'row_base_reference' ? theme.text : 'rgba(0,0,0,0.2)'
                                                         }} 
-                                                        className={`w-32 shrink-0 flex items-center gap-1 p-1.5 rounded-xl border-2 shadow-sm relative transition-all h-10`}
+                                                        className={`w-56 shrink-0 flex items-center gap-1 p-1.5 rounded-xl border-2 shadow-sm relative transition-all h-10 overflow-hidden`}
                                                     >
                                                         {row.id === 'row_base_reference' ? (
                                                             <div className="flex-1 flex flex-col items-center justify-center -space-y-1">
@@ -1141,12 +1298,20 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                 newRows[rIdx].unit = e.target.value;
                                                                 setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
                                                             }}
-                                                            style={{ color: row.id === 'row_base_reference' ? theme.bg : theme.text }}
-                                                            className="bg-transparent text-[10px] font-black uppercase mt-1 tracking-widest opacity-60 outline-none appearance-none cursor-pointer"
+                                                            style={{ 
+                                                                color: row.id === 'row_base_reference' ? theme.bg : theme.text,
+                                                                backgroundColor: row.id === 'row_base_reference' ? 'transparent' : 'rgba(0,0,0,0.05)'
+                                                            }}
+                                                            className="text-[10px] font-black uppercase px-2 py-1 rounded-lg tracking-widest outline-none cursor-pointer hover:bg-black/10 transition-colors"
                                                         >
-                                                            <option value="BST"></option>
-                                                            <option value="TND">TND</option>
-                                                            <option value="1/2 TND">1/2 TND</option>
+                                                            <option style={{ color: '#000' }} value="BST">BST</option>
+                                                            <option style={{ color: '#000' }} value="TND">TND</option>
+                                                            <option style={{ color: '#000' }} value="1/2 TND">1/2 TND</option>
+                                                            <option style={{ color: '#000' }} value="KG">KG</option>
+                                                            <option style={{ color: '#000' }} value="G">G</option>
+                                                            <option style={{ color: '#000' }} value="L">L</option>
+                                                            <option style={{ color: '#000' }} value="ML">ML</option>
+                                                            <option style={{ color: '#000' }} value="PZA">PZA</option>
                                                         </select>
                                                         
                                                         {row.id !== 'row_base_reference' && (
@@ -1157,13 +1322,13 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                 }}
                                                                 className="absolute -left-4 p-1 bg-red-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
                                                             >
-                                                                <Trash2 size={12}/>
+                                                                <X size={12}/>
                                                             </button>
                                                         )}
                                                     </div>
 
                                                     {/* Ingredient Cells */}
-                                                    {formData.recipe_matrix.columns.filter(col => !col.id.startsWith('mep_') || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map(col => {
+                                                    {formData.recipe_matrix?.columns?.filter(col => !col.id.startsWith('mep_') || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map(col => {
                                                         const cell = row.values[col.id] || { qty: 0, unit: 'g' };
                                                         const isBase = row.id === 'row_base_reference';
                                                         return (
@@ -1173,34 +1338,70 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                     backgroundColor: isBase ? theme.text : 'white',
                                                                     borderColor: isBase ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
                                                                 }}
-                                                                className={`w-32 shrink-0 flex items-center border-2 rounded-xl overflow-hidden h-10 ${isBase ? '' : 'focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-black'} transition-all shadow-sm`}
+                                                                className={`w-40 shrink-0 flex items-center border-2 rounded-xl overflow-hidden h-10 ${isBase ? '' : 'focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-black'} transition-all shadow-sm`}
                                                             >
                                                                 {isBase ? (
                                                                     <div style={{ color: theme.bg }} className="w-full px-2 py-1 font-mono font-black text-base text-right opacity-90 select-none">
                                                                         {cell.qty || 0}
                                                                     </div>
                                                                 ) : (
-                                                                    <input 
-                                                                        type="number"
-                                                                        value={cell.qty === 0 ? '' : cell.qty}
-                                                                        placeholder="0"
-                                                                        onChange={e => {
-                                                                            const val = Number(e.target.value);
-                                                                            const newRows = [...formData.recipe_matrix.rows];
-                                                                            newRows[rIdx].values[col.id] = { ...cell, qty: val };
-                                                                            setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
-                                                                        }}
-                                                                        style={{ color: '#000' }}
-                                                                        className="w-full min-w-0 bg-transparent px-1 py-1 font-mono font-black text-sm outline-none text-right"
-                                                                    />
+                                                                    <div className="flex-1 flex items-center h-full">
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                let val = parseFloat(cell.qty) || 0;
+                                                                                val = Math.max(0, val - 1);
+                                                                                val = Math.round(val * 1000) / 1000;
+                                                                                const newRows = [...formData.recipe_matrix.rows];
+                                                                                newRows[rIdx].values[col.id] = { ...cell, qty: val };
+                                                                                setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
+                                                                            }}
+                                                                            className="w-6 h-full flex items-center justify-center text-black/30 hover:text-black hover:bg-black/5 transition-colors font-black select-none shrink-0"
+                                                                        >-</button>
+                                                                        <input 
+                                                                            type="text"
+                                                                            inputMode="decimal"
+                                                                            value={cell.qty === 0 ? '' : cell.qty}
+                                                                            placeholder="0"
+                                                                            autoComplete="off"
+                                                                            role="presentation"
+                                                                            name={`qty_${Math.random().toString(36).substring(7)}`}
+                                                                            id={`qty_${Math.random().toString(36).substring(7)}`}
+                                                                            data-form-type="other"
+                                                                            data-1p-ignore="true"
+                                                                            data-lpignore="true"
+                                                                            data-bwignore="true"
+                                                                            data-gramm="false"
+                                                                            spellCheck="false"
+                                                                            onChange={e => {
+                                                                                const valStr = e.target.value.replace(/[^0-9.]/g, '');
+                                                                                const val = valStr === '' ? 0 : parseFloat(valStr);
+                                                                                const newRows = [...formData.recipe_matrix.rows];
+                                                                                newRows[rIdx].values[col.id] = { ...cell, qty: val };
+                                                                                setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
+                                                                            }}
+                                                                            style={{ color: '#000', outline: 'none', padding: '0 2px', backgroundImage: 'none', boxShadow: 'none' }}
+                                                                            className="w-full min-w-0 bg-transparent font-mono font-black text-sm text-center relative z-10"
+                                                                        />
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                let val = parseFloat(cell.qty) || 0;
+                                                                                val = val + 1;
+                                                                                val = Math.round(val * 1000) / 1000;
+                                                                                const newRows = [...formData.recipe_matrix.rows];
+                                                                                newRows[rIdx].values[col.id] = { ...cell, qty: val };
+                                                                                setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
+                                                                            }}
+                                                                            className="w-6 h-full flex items-center justify-center text-black/30 hover:text-black hover:bg-black/5 transition-colors font-black select-none shrink-0"
+                                                                        >+</button>
+                                                                    </div>
                                                                 )}
                                                                 {isBase ? (
-                                                                    <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: theme.bg }} className="text-[11px] font-black uppercase w-16 px-0.5 py-1 opacity-60 border-l border-white/10 select-none text-center flex items-center justify-center leading-[0.8] break-words tracking-tighter">
+                                                                    <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: theme.bg }} className="text-[10px] font-black uppercase w-16 px-0.5 py-1 opacity-60 border-l border-white/10 select-none text-center flex items-center justify-center leading-[0.8] break-words tracking-tighter shrink-0">
                                                                         {cell.unit}
                                                                     </div>
                                                                 ) : (
                                                                     <div className="relative w-16 h-full flex items-center justify-center border-l border-black/10 bg-black/5 shrink-0">
-                                                                        <div style={{ color: '#000' }} className="text-[11px] font-black uppercase text-center px-0.5 pointer-events-none break-words w-full leading-[0.8] tracking-tighter">
+                                                                        <div style={{ color: '#000' }} className={`font-black uppercase text-center px-0.5 pointer-events-none break-words w-full leading-[0.8] tracking-tighter ${cell.unit?.length > 4 ? 'text-[7px]' : 'text-[11px]'}`}>
                                                                             {cell.unit}
                                                                         </div>
                                                                         <select 
@@ -1210,8 +1411,8 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                                 newRows[rIdx].values[col.id] = { ...cell, unit: e.target.value };
                                                                                 setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
                                                                             }}
-                                                                            style={{ color: '#000', backgroundColor: '#fff' }}
-                                                                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                                                            style={{ color: '#000', backgroundColor: '#fff', WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none' }}
+                                                                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full appearance-none"
                                                                         >
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="g">g</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="kg">kg</option>
@@ -1251,31 +1452,42 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                             <div className="space-y-4 animate-in fade-in duration-500 flex flex-col h-full">
                                 <div className="flex justify-between items-center mb-2 shrink-0 gap-4">
                                     <h3 style={{ color: theme.text }} className="text-2xl font-black italic uppercase border-b border-black/10 pb-2 flex-1">Proceso de <span className="opacity-40 ml-2">Revoltura</span></h3>
-                                    <button 
-                                        onClick={() => setIsConfiguringProduction(true)} 
-                                        style={{ backgroundColor: theme.text, color: theme.bg }} 
-                                        className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
-                                    >
-                                        <Settings2 size={14}/> Establecer Proceso
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            onClick={() => setIsConfiguringGlobalAgent(true)} 
+                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
+                                            className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
+                                        >
+                                            <Mic size={14}/> Parámetros Generales
+                                        </button>
+                                        <button 
+                                            onClick={() => setIsConfiguringProduction(true)} 
+                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
+                                            className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
+                                        >
+                                            <Settings2 size={14}/> Establecer Proceso
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 <div className="space-y-6 max-w-4xl mx-auto pb-10">
-                                    {(formData.pasosProduccion || []).length === 0 ? (
+                                    {(formData.pasosProduccion || formData.production_process || []).length === 0 ? (
                                         <div style={{ backgroundColor: theme.input }} className="p-12 rounded-[40px] border border-dashed border-black/20 text-center">
                                             <ClipboardList size={48} className="mx-auto mb-4 opacity-20" style={{ color: theme.text }}/>
                                             <p style={{ color: theme.text }} className="text-xs font-black uppercase tracking-widest opacity-40">No se ha definido el proceso de producción detallado</p>
                                         </div>
                                     ) : (
-                                        formData.pasosProduccion.map((p, pIdx) => (
+                                        (formData.pasosProduccion || formData.production_process || []).map((p, pIdx) => (
                                             <div key={p.id} style={{ backgroundColor: theme.input }} className="p-8 rounded-[40px] border border-black/5 shadow-sm">
                                                 <div className="flex items-center gap-4 mb-4">
                                                     <div style={{ backgroundColor: theme.text, color: theme.bg }} className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-black italic shrink-0">
                                                         {pIdx + 1}
                                                     </div>
                                                     <h4 style={{ color: theme.text }} className="text-lg font-black uppercase italic">{String(p.nombre || '').replace(/nan/gi, '')}</h4>
-                                                    <div className="ml-auto px-4 py-1.5 rounded-full bg-black/5 border border-black/5 text-[10px] font-black uppercase tracking-widest opacity-60">
-                                                        {(!p.idBloque || String(p.idBloque).toUpperCase() === 'NAN') ? '---' : p.idBloque}
+                                                    <div className="ml-auto flex items-center gap-3">
+                                                        <div className="px-4 py-1.5 rounded-full bg-black/5 border border-black/5 text-[10px] font-black uppercase tracking-widest opacity-60">
+                                                            {(!p.idBloque || String(p.idBloque).toUpperCase() === 'NAN') ? '---' : p.idBloque}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-1 gap-3 pl-12">
@@ -1539,7 +1751,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                         )}
                         
                         <button 
-                            onClick={handleSave}
+                            onClick={() => handleSave()}
                             disabled={loading || !formData.name}
                             style={{ 
                                 backgroundColor: loading || !formData.name ? 'rgba(0,0,0,0.1)' : theme.text,

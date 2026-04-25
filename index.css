@@ -29,3 +29,20 @@
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
+
+/* Forzar aparición de flechitas y bloquear artefactos de extensiones */
+.clean-input {
+  background-image: none !important;
+  box-shadow: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+}
+.clean-input::-webkit-calendar-picker-indicator,
+.clean-input::-webkit-search-cancel-button,
+.clean-input::-webkit-search-results-button,
+.clean-input::-webkit-search-decoration,
+.clean-input::-ms-reveal,
+.clean-input::-ms-clear {
+  display: none !important;
+}
