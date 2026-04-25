@@ -50,6 +50,41 @@ async def seed_settings(db: AsyncSession):
             "description": "Frecuencia con la que el POS verifica si aún conserva su bloqueo (ms).",
             "category": "polling",
             "input_type": "number"
+        },
+        {
+            "key": "ai_agent_start_word",
+            "value": "VOY",
+            "description": "Palabra para confirmar inicio de tarea.",
+            "category": "ai_agent",
+            "input_type": "text"
+        },
+        {
+            "key": "ai_agent_completion_word",
+            "value": "LISTO",
+            "description": "Palabra para confirmar fin de tarea.",
+            "category": "ai_agent",
+            "input_type": "text"
+        },
+        {
+            "key": "ai_agent_pause_word",
+            "value": "PAUSA",
+            "description": "Palabra para pausar o indicar contratiempo.",
+            "category": "ai_agent",
+            "input_type": "text"
+        },
+        {
+            "key": "ai_agent_start_retry_mins",
+            "value": "1.0",
+            "description": "Tiempo para re-preguntar inicio en caso de pausa (minutos).",
+            "category": "ai_agent",
+            "input_type": "number"
+        },
+        {
+            "key": "ai_agent_completion_retry_mins",
+            "value": "2.0",
+            "description": "Tiempo para re-preguntar cumplimiento en caso de pausa (minutos).",
+            "category": "ai_agent",
+            "input_type": "number"
         }
     ]
     

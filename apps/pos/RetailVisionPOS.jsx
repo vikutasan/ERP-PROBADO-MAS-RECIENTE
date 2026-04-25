@@ -190,6 +190,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     // nunca lea un accountNum vacío y genere un folio duplicado.
                     accountNumRef.current = ticket.account_num;
                     setCurrentAccountNum(ticket.account_num);
+                    
+                    // v4.4 Bugfix: Sincronizar versión del ticket reciclado para evitar 
+                    // que el primer auto-save envíe version=null y rompa el tracking
+                    const v = ticket.version || 1;
+                    ticketVersionRef.current = v;
+                    setTicketVersion(v);
+
                     const cap = ticket.captured_by
                         ? { id: ticket.captured_by.id, name: ticket.captured_by.name }
                         : currentUser;
@@ -402,9 +409,49 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                         payload.version = null; // Ticket nuevo, sin versión
                         savedTicket = await posService.createTicket(payload);
                     } else if (errorMessage.includes("Conflicto de versión")) {
-                        // v4.3: SIEMPRE mostrar modal de colisión. El usuario DEBE saber
-                        // que otro operador modificó la cuenta para ir al Pizarrón a re-sincronizar.
-                        // El guard de showCollisionModal en useAutoSave pausará futuros auto-saves.
+                        // v4.7: AUTO-HEALING UI
+                        // Si la terminal detecta conflicto (ej. cajero carga ticket incompleto y vendedor lo termina),
+                        // en lugar de bloquear con el modal, auto-descargamos la versión más reciente
+                        // y actualizamos la pantalla del cajero instantáneamente.
+                        if (targetAccountNum) {
+                            try {
+                                console.log(`🔄 Auto-Healing: Descargando versión fresca de ${targetAccountNum}...`);
+                                const liveTicket = await posService.getTicketByAccountNum(targetAccountNum);
+                                if (liveTicket && liveTicket.items) {
+                                    // Setear isRecoveringRef para evitar auto-saves accidentales
+                                    isRecoveringRef.current = true;
+                                    
+                                    const recovered = liveTicket.items.map(i => {
+                                        const originalProd = initialProducts.find(p => p.id === i.product.id) || {};
+                                        return {
+                                            id: i.product.id,
+                                            name: i.product.name,
+                                            price: i.product.price,
+                                            quantity: i.quantity,
+                                            category: i.product.category?.name || 'OTROS',
+                                            nature: i.product.nature || originalProd.nature || 'PRODUCTO'
+                                        };
+                                    });
+                                    setCart(recovered);
+                                    ticketVersionRef.current = liveTicket.version;
+                                    setTicketVersion(liveTicket.version);
+                                    
+                                    setToastMessage("⚠️ ¡Atención! El vendedor modificó esta cuenta. Totales actualizados.");
+                                    setTimeout(() => setToastMessage(null), 5000);
+                                    setShowCheckout(false); // Sacarlo de la pantalla de pago para que vea el nuevo total
+                                    
+                                    requestAnimationFrame(() => {
+                                        isRecoveringRef.current = false;
+                                        isActionRunningRef.current = false; // Liberar mutex
+                                    });
+                                    return; // Abortar este guardado fallido pacíficamente
+                                }
+                            } catch (e) {
+                                console.error("Error auto-recovering ticket", e);
+                            }
+                        }
+
+                        // Si el auto-heal falla por desconexión, caemos al modal original como fallback
                         setShowCollisionModal(true);
                         throw err;
                     } else {
@@ -472,17 +519,35 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         }
     };
 
-    const handleRecoverAccount = (account) => {
-        if (!account.rawItems?.length) {
+    const handleRecoverAccount = async (account) => {
+        // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado o fetch asíncrono
+        isRecoveringRef.current = true;
+
+        // ⚡ FIX: Eliminar delay de polling obteniendo siempre la versión más fresca directamente
+        let freshItems = account.rawItems;
+        let freshVersion = account.version;
+        let freshCapturer = account.capturedById ? { id: account.capturedById, name: account.capturedByName } : null;
+        
+        try {
+            const liveTicket = await posService.getTicketByAccountNum(account.accountNum);
+            if (liveTicket && liveTicket.items) {
+                console.log("⚡ Cuenta recuperada (Live Data):", liveTicket);
+                freshItems = liveTicket.items;
+                freshVersion = liveTicket.version;
+                freshCapturer = liveTicket.captured_by_id ? { id: liveTicket.captured_by_id, name: liveTicket.captured_by_name || liveTicket.captured_by?.name } : freshCapturer;
+            }
+        } catch (e) {
+            console.warn("⚠️ No se pudo obtener la versión fresca del ticket, usando datos del Pizarrón", e);
+        }
+
+        if (!freshItems?.length) {
             setToastMessage("⚠️ Cuenta vacía.");
             setTimeout(() => setToastMessage(null), 3000);
+            isRecoveringRef.current = false;
             return;
         }
 
-        // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado
-        isRecoveringRef.current = true;
-
-        const recovered = account.rawItems.map(i => {
+        const recovered = freshItems.map(i => {
             const originalProd = initialProducts.find(p => p.id === i.product.id) || {};
             return {
                 id: i.product.id,
@@ -499,17 +564,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
         // permitiendo que el auto-save lea refs stale si no sincronizamos aquí.
         accountNumRef.current = account.accountNum;
         setCurrentAccountNum(account.accountNum);
-        const capturer = account.capturedById ? { 
-            id: account.capturedById, 
-            name: account.capturedByName 
-        } : null;
         
-        console.log("Recovering account. Original capturer:", capturer);
-        originalCapturerRef.current = capturer || currentUser;
-        setOriginalCapturer(capturer || currentUser);
+        console.log("Recovering account. Original capturer:", freshCapturer);
+        originalCapturerRef.current = freshCapturer || currentUser;
+        setOriginalCapturer(freshCapturer || currentUser);
         // v4.3: Restaurar versión del ticket con SYNC inmediato para evitar 409 falsos
-        ticketVersionRef.current = account.version || null;
-        setTicketVersion(account.version || null);
+        ticketVersionRef.current = freshVersion || null;
+        setTicketVersion(freshVersion || null);
         
         // --- Restaurar Order Data si la cuenta es un PEDIDO ---
         if (account.orderType === 'PEDIDO') {

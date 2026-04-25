@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
     ArrowLeft, Plus, Search, Filter, Loader2, ChefHat, Info, 
-    Save, X, ChevronRight, ChevronLeft, Beaker, Zap, Timer, 
+    Save, X, ChevronRight, ChevronLeft, Beaker, Zap, Timer, Mic,
     Scale, Trash2, ListOrdered, Settings2, Package, ArrowRight, Edit2, GripVertical, ClipboardList,
     Eye, EyeOff, Download, Table, Upload
 } from 'lucide-react';
 import { PedidosPendientesUI } from './PedidosPendientesUI';
 import { ProcesoProduccionMasaUI } from './ProcesoProduccionMasaUI';
+import GlobalAgentSettingsUI from './GlobalAgentSettingsUI';
 
 /**
  * DOUGH MANAGER UI (INDUSTRIAL EDITION)
@@ -79,7 +80,8 @@ export const getTheme = (theme_id) => {
     };
 };
 
-const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
+const API_BASE = window.location.origin.replace(':5000', ':5001') + '/api/v1';
+console.log("R de Rico API Base detectada:", API_BASE);
 
 // Sistema inteligente de de-hardcoding de imágenes para red local
 const resolveImageUrl = (url) => {
@@ -472,6 +474,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
     const [loading, setLoading] = useState(false);
     const [editingColumnId, setEditingColumnId] = useState(null);
     const [isConfiguringProduction, setIsConfiguringProduction] = useState(false);
+    const [isConfiguringGlobalAgent, setIsConfiguringGlobalAgent] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [showMepSelector, setShowMepSelector] = useState(false);
 
@@ -713,29 +716,100 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         if (type === 'success') setTimeout(() => setNotification(null), 3000);
     };
 
-    const handleSave = async () => {
+    const handleSave = async (overrideData = null, silent = false) => {
         setLoading(true);
         try {
-            const derivedBatches = (formData?.recipe_matrix?.rows || []).map(r => ({
+            const dataToSave = overrideData || formData;
+            const derivedBatches = (dataToSave?.recipe_matrix?.rows || []).map(r => ({
                 name: r.name || `${r.baston_qty || 1}B`,
                 baston_qty: r.baston_qty || 1
             }));
 
-            const payload = {
-                ...formData,
-                production_process: formData.pasosProduccion,
-                batches: derivedBatches,
-                ingredients: [], // Empty to phase out the old linear config
-                dough_relations: formData.dough_relations.map(r => ({
+            // RECONSTRUCCIÓN ATÓMICA: Creamos un objeto nuevo desde cero para evitar cualquier rastro de circularidad
+            const rebuildPayload = () => {
+                const base = {
+                    id: formData?.id || initialData?.id,
+                    code: formData.code || '',
+                    name: formData.name || '',
+                    description: formData.description || '',
+                    dough_type: formData.dough_type || 'MASA SALADA',
+                    requires_rest: !!formData.requires_rest,
+                    rest_container: formData.rest_container || '',
+                    rest_warehouse: formData.rest_warehouse || '',
+                    rest_time_min: parseInt(formData.rest_time_min) || 0,
+                    theoretical_yield: parseFloat(formData.theoretical_yield) || 0,
+                    expected_waste: parseFloat(formData.expected_waste) || 0,
+                    theme_id: formData.theme_id || 'C01',
+                    recipe_matrix: formData.recipe_matrix ? JSON.parse(JSON.stringify(formData.recipe_matrix)) : null
+                };
+
+                // Reconstruir pasos extrayendo solo campos primitivos
+                const production_process = (dataToSave.pasosProduccion || []).map(p => ({
+                    id: p.id,
+                    nombre: p.nombre,
+                    idBloque: p.idBloque,
+                    subpasos: (p.subpasos || []).map(sp => ({
+                        id: sp.id,
+                        nombre: sp.nombre,
+                        instruccionVoz: sp.instruccionVoz,
+                        tHumano: parseFloat(sp.tHumano) || 0,
+                        tAutonomo: parseFloat(sp.tAutonomo) || 0,
+                        recurso: sp.recurso,
+                        recursoConfigs: sp.recursoConfigs ? JSON.parse(JSON.stringify(sp.recursoConfigs)) : {},
+                        nivelCritico: sp.nivelCritico,
+                        operarioLibre: !!sp.operarioLibre,
+                        confirmacionVoz: !!sp.confirmacionVoz,
+                        triggerInicio: sp.triggerInicio,
+                        preguntaQA: sp.preguntaQA,
+                        tipCoaching: sp.tipCoaching,
+                        grupoInseparable: sp.grupoInseparable,
+                        temperaturaObjetivo: sp.temperaturaObjetivo,
+                        senalesCompletado: sp.senalesCompletado,
+                        erroresComunes: sp.erroresComunes,
+                        ingredientesRequeridos: sp.ingredientesRequeridos,
+                        dependenciaPasoPrevio: sp.dependenciaPasoPrevio,
+                        tiempoHorneadoRelativo: sp.tiempoHorneadoRelativo,
+                        horaFijaProgramada: sp.horaFijaProgramada,
+                        habilitarComandos: !!sp.habilitarComandos,
+                        palabraInicio: sp.palabraInicio,
+                        palabraPausa: sp.palabraPausa
+                    }))
+                }));
+
+                const batches = (formData?.recipe_matrix?.rows || []).map(r => ({
+                    name: r.name || `${r.baston_qty || 1}B`,
+                    baston_qty: r.baston_qty || 1
+                }));
+
+                const dough_relations = (formData.dough_relations || []).map(r => ({
                     related_dough_id: r.id,
-                    qty_per_baston: r.qty_per_baston || 0
-                }))
+                    qty_per_baston: parseFloat(r.qty_per_baston) || 0
+                }));
+
+                return {
+                    ...base,
+                    production_process,
+                    batches,
+                    ingredients: [],
+                    dough_relations
+                };
             };
 
-            const isUpdate = !!initialData?.id;
+            const payload = rebuildPayload();
+
+            const isUpdate = !!(formData?.id || initialData?.id);
+            const targetId = formData?.id || initialData?.id;
+            
+            if (!targetId && isUpdate) {
+                console.error("Falta ID para actualización");
+                throw new Error("ID_MISSING");
+            }
+
             const url = isUpdate
-                ? `${API_BASE}/production/doughs/${initialData.id}`
+                ? `${API_BASE}/production/doughs/${targetId}`
                 : `${API_BASE}/production/doughs`;
+
+            console.log(`Intentando guardar en: ${url} (${isUpdate ? 'UPDATE' : 'CREATE'})`);
 
             const resp = await fetch(url, {
                 method: isUpdate ? 'PUT' : 'POST',
@@ -744,14 +818,24 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
             });
 
             if (resp.ok) {
-                showNotify("ÉXITO", "Masa guardada correctamente", "success");
-                setTimeout(onSuccess, 1500);
+                const responseData = await resp.json();
+                if (!isUpdate && responseData && responseData.id) {
+                    setFormData(prev => ({ ...prev, id: responseData.id }));
+                }
+
+                if (!silent) {
+                    showNotify("ÉXITO", "Masa guardada correctamente", "success");
+                    setTimeout(onSuccess, 1500);
+                }
+                return true;
             } else {
                 const err = await resp.json();
                 showNotify("ERROR DE MOTOR", err.detail || "No se pudo guardar la masa", "error");
+                throw new Error("Save failed");
             }
         } catch (e) {
-            showNotify("ERROR DE CONEXIÓN", "El servidor no responde (Puerto 5001)", "error");
+            if (!silent) showNotify("ERROR DE CONEXIÓN", "El servidor no responde (Puerto 5001)", "error");
+            throw e;
         } finally {
             setLoading(false);
         }
@@ -765,7 +849,9 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         { id: 5, label: 'VÍNCULOS', icon: Zap }
     ];
 
-    const theme = getTheme(formData.theme_id);
+    // Blindaje de seguridad para el tema visual
+    const themeId = formData?.theme_id || initialData?.theme_id || 'C01';
+    const theme = getTheme(themeId) || MASTER_PALETTE['C01'];
 
     return (
         <>
@@ -777,7 +863,19 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 initialData={formData.pasosProduccion}
                 recipeMatrix={formData.recipe_matrix}
                 onSave={(pasos) => setFormData({...formData, pasosProduccion: pasos})}
+                onSaveDB={async (pasos) => {
+                    const newData = {...formData, pasosProduccion: pasos};
+                    setFormData(newData);
+                    await handleSave(newData, true);
+                }}
                 onClose={() => setIsConfiguringProduction(false)} 
+            />
+        )}
+        
+        {isConfiguringGlobalAgent && (
+            <GlobalAgentSettingsUI 
+                activeTheme={theme} 
+                onClose={() => setIsConfiguringGlobalAgent(false)} 
             />
         )}
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-8" style={{ display: isConfiguringProduction ? 'none' : 'flex' }}>
@@ -1070,7 +1168,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                             }}
                                                                             className="p-1.5 bg-red-500 text-white rounded-lg hover:scale-110 transition-all"
                                                                         >
-                                                                            <Trash2 size={12}/>
+                                                                            <X size={12}/>
                                                                         </button>
                                                                     </div>
                                                                 )}
@@ -1157,7 +1255,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                 }}
                                                                 className="absolute -left-4 p-1 bg-red-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
                                                             >
-                                                                <Trash2 size={12}/>
+                                                                <X size={12}/>
                                                             </button>
                                                         )}
                                                     </div>
@@ -1251,13 +1349,22 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                             <div className="space-y-4 animate-in fade-in duration-500 flex flex-col h-full">
                                 <div className="flex justify-between items-center mb-2 shrink-0 gap-4">
                                     <h3 style={{ color: theme.text }} className="text-2xl font-black italic uppercase border-b border-black/10 pb-2 flex-1">Proceso de <span className="opacity-40 ml-2">Revoltura</span></h3>
-                                    <button 
-                                        onClick={() => setIsConfiguringProduction(true)} 
-                                        style={{ backgroundColor: theme.text, color: theme.bg }} 
-                                        className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
-                                    >
-                                        <Settings2 size={14}/> Establecer Proceso
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            onClick={() => setIsConfiguringGlobalAgent(true)} 
+                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
+                                            className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
+                                        >
+                                            <Mic size={14}/> Parámetros Generales
+                                        </button>
+                                        <button 
+                                            onClick={() => setIsConfiguringProduction(true)} 
+                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
+                                            className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
+                                        >
+                                            <Settings2 size={14}/> Establecer Proceso
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 <div className="space-y-6 max-w-4xl mx-auto pb-10">
@@ -1274,8 +1381,10 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                         {pIdx + 1}
                                                     </div>
                                                     <h4 style={{ color: theme.text }} className="text-lg font-black uppercase italic">{String(p.nombre || '').replace(/nan/gi, '')}</h4>
-                                                    <div className="ml-auto px-4 py-1.5 rounded-full bg-black/5 border border-black/5 text-[10px] font-black uppercase tracking-widest opacity-60">
-                                                        {(!p.idBloque || String(p.idBloque).toUpperCase() === 'NAN') ? '---' : p.idBloque}
+                                                    <div className="ml-auto flex items-center gap-3">
+                                                        <div className="px-4 py-1.5 rounded-full bg-black/5 border border-black/5 text-[10px] font-black uppercase tracking-widest opacity-60">
+                                                            {(!p.idBloque || String(p.idBloque).toUpperCase() === 'NAN') ? '---' : p.idBloque}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-1 gap-3 pl-12">

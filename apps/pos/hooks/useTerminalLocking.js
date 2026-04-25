@@ -9,9 +9,10 @@ import { posService } from '../services/POSService';
  * - Limpieza automática al desmontar (liberar terminal)
  * - Heartbeat para renovar TTL del candado
  * 
- * CAMBIO CRÍTICO: Ya NO expulsa automáticamente al usuario.
+ * CAMBIO CRÍTICO (v4.4): Ya NO expulsa automáticamente al usuario.
  * Solo el admin puede forzar la desconexión via force_unlock.
  * El polling de seguridad ahora solo muestra una advertencia visual.
+ * ANTI-PING-PONG: Ya no intenta re-adquirir candados automáticamente.
  */
 export const useTerminalLocking = (selectedTerminal, currentUser) => {
     const [terminalStatuses, setTerminalStatuses] = useState({});
@@ -77,25 +78,16 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
                 const myStatus = data[selectedTerminal];
                 
                 if (!myStatus || myStatus.occupier_id !== currentUser?.id) {
-                    // El candado se perdió — intentar re-adquirirlo silenciosamente
-                    console.warn("Candado no encontrado en servidor. Intentando re-adquirir...");
-                    try {
-                        await posService.lockTerminal(selectedTerminal, currentUser?.id, currentUser?.name || 'SISTEMA');
-                        console.log("Candado re-adquirido exitosamente.");
-                        setLockWarning(false);
-                    } catch (lockErr) {
-                        // Si no se puede re-adquirir, significa que alguien más la tomó
-                        console.error("No se pudo re-adquirir el candado:", lockErr);
-                        setLockWarning(true);
-                        
-                        // Verificar si fue un force_unlock explícito del admin
-                        // (la terminal ahora pertenece a otra persona)
-                        if (myStatus && myStatus.occupier_id !== currentUser?.id) {
-                            // Un admin transfirió la terminal a otra persona → expulsar
-                            setForceLogoutModal(true);
-                        }
-                        // Si simplemente no hay nadie (la terminal está libre), 
-                        // intentar re-adquirir se hizo arriba y falló por otra razón
+                    // El candado se perdió (por TTL o inicio de sesión en otra terminal).
+                    // NO re-adquirimos silenciosamente para evitar efecto "ping-pong".
+                    console.warn("Candado no encontrado en servidor o ocupado por otra persona.");
+                    setLockWarning(true);
+                    
+                    // Verificar si fue un force_unlock explícito del admin
+                    // (la terminal ahora pertenece a otra persona)
+                    if (myStatus && myStatus.occupier_id !== currentUser?.id) {
+                        // Un admin transfirió la terminal a otra persona → expulsar
+                        setForceLogoutModal(true);
                     }
                 } else {
                     setLockWarning(false); // Todo normal
@@ -126,10 +118,9 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
         const sendHeartbeat = () => {
             posService.heartbeatTerminal(selectedTerminal, currentUser.id)
                 .catch(e => {
-                    console.warn("Heartbeat failed, intentando re-lock...", e);
-                    // Si el heartbeat falla, intentar re-adquirir el lock
-                    posService.lockTerminal(selectedTerminal, currentUser.id, currentUser.name || 'SISTEMA')
-                        .catch(lockErr => console.warn("Re-lock after heartbeat fail also failed:", lockErr));
+                    console.warn("Heartbeat network request failed:", e);
+                    // No intentamos re-adquirir el candado aquí para evitar 
+                    // robo involuntario si el usuario se movió de terminal.
                 });
         };
 

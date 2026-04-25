@@ -12,6 +12,7 @@ class LockRequest(BaseModel):
     occupier_name: str
 
 from .occupancy import get_all_locks, lock_terminal, unlock_terminal, force_unlock, heartbeat
+from .models import TerminalLock
 from modules.settings.service import get_setting_by_key
 
 router = APIRouter()
@@ -147,29 +148,94 @@ async def release_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSes
 @router.post("/terminals/{terminal_id}/force_unlock")
 async def force_terminal_unlock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
     """
-    Fuerza la liberación de una terminal bloqueada.
-    Transfiere la propiedad de la CashSession activa al administrador que fuerza el desbloqueo,
-    según la Regla de Negocio "TRASPUESTA DE TITULARIDAD DE CAJA".
+    Fuerza la liberación de una terminal bloqueada (hardened v4.4).
+    
+    Seguridad:
+      1. Valida permisos del usuario en el backend (no solo en frontend).
+      2. Si la terminal tiene CashSession activa, requiere permiso pos_force_cash_unlock.
+      3. Transfiere titularidad de CashSession al desbloqueador (Traspuesta de Titularidad).
+      4. Registra auditoría de quién desbloqueó qué, a quién le quitó, y cuándo.
     """
-    tid = terminal_id.strip()
-    await force_unlock(db, tid)
-    
-    # TRASPUESTA DE TITULARIDAD DE CAJA
+    import logging
+    from datetime import datetime
     from modules.cash.models import CashSession
+    from modules.security.models import Employee, SecurityProfile
     from sqlalchemy.future import select
+    from sqlalchemy.orm import selectinload
+
+    logger = logging.getLogger("pos.force_unlock")
+    tid = terminal_id.strip()
+
+    # ── 1. VALIDAR PERMISOS EN BACKEND ──────────────────────────────────
+    employee = await db.execute(
+        select(Employee)
+        .options(selectinload(Employee.profile))
+        .where(Employee.id == req.occupier_id)
+    )
+    emp = employee.scalars().first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado.")
     
-    result = await db.execute(select(CashSession).where(
+    permissions = {}
+    if emp.profile and emp.profile.permissions:
+        permissions = emp.profile.permissions
+    
+    is_admin = (emp.role or "").strip().upper() == "ADMIN"
+    has_unlock_perm = permissions.get("pos_force_unlock") in ("full", True)
+    
+    if not is_admin and not has_unlock_perm:
+        logger.warning(f"🚫 FORCE UNLOCK DENEGADO: {emp.name} (id={emp.id}) intentó desbloquear {tid} sin permisos")
+        raise HTTPException(status_code=403, detail="No tienes permiso para forzar el desbloqueo de terminales.")
+    
+    # Verificar permiso de caja si la terminal tiene CashSession activa
+    result_cash = await db.execute(select(CashSession).where(
         CashSession.terminal_id == tid,
         CashSession.status == "OPEN"
     ))
-    cash_session = result.scalars().first()
+    cash_session = result_cash.scalars().first()
     
+    if cash_session:
+        has_cash_perm = permissions.get("pos_force_cash_unlock") in ("full", True)
+        if not is_admin and not has_cash_perm:
+            logger.warning(f"🚫 FORCE UNLOCK CAJA DENEGADO: {emp.name} (id={emp.id}) intentó desbloquear CAJA en {tid} sin permiso pos_force_cash_unlock")
+            raise HTTPException(status_code=403, detail="No tienes permiso para forzar el desbloqueo de terminales con CAJA activa.")
+    
+    # ── 2. OBTENER DATOS DEL OCUPANTE ANTERIOR (para auditoría) ─────────
+    prev_lock = await db.execute(
+        select(TerminalLock).where(TerminalLock.terminal_id == tid)
+    )
+    previous_occupier = prev_lock.scalars().first()
+    prev_name = previous_occupier.occupier_name if previous_occupier else "NADIE"
+    prev_id = previous_occupier.occupier_id if previous_occupier else None
+
+    # ── 3. TRANSACCIÓN ATÓMICA: unlock + traspuesta + auditoría ─────────
+    # Todo dentro del mismo commit para evitar estados inconsistentes
+    await force_unlock(db, tid)
+    
+    cash_transferred = False
     if cash_session:
         cash_session.employee_id = req.occupier_id
         cash_session.employee_name = req.occupier_name
-        await db.commit()
+        cash_transferred = True
 
-    return {"status": "unlocked", "terminal_id": terminal_id}
+    # ── 4. LOG DE AUDITORÍA ─────────────────────────────────────────────
+    logger.warning(
+        f"🔓 FORCE UNLOCK: Terminal={tid} | "
+        f"Ejecutado por: {emp.name} (id={emp.id}) | "
+        f"Quitado a: {prev_name} (id={prev_id}) | "
+        f"CashSession transferida: {cash_transferred} | "
+        f"Timestamp: {datetime.utcnow().isoformat()}"
+    )
+
+    await db.commit()
+
+    return {
+        "status": "unlocked", 
+        "terminal_id": tid,
+        "previous_occupier": prev_name,
+        "cash_session_transferred": cash_transferred,
+        "unlocked_by": emp.name
+    }
 
 @router.post("/terminals/{terminal_id}/heartbeat")
 async def heartbeat_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSession = Depends(get_db)):
