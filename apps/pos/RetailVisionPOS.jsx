@@ -520,6 +520,18 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
     };
 
     const handleRecoverAccount = async (account) => {
+        // v4.8 FIX: Guardado de seguridad (Flush) de la cuenta actual antes de abandonarla
+        // Si el operador estaba capturando rápido y el auto-save aún no se disparaba, 
+        // forzamos el guardado de la cuenta actual antes de sobrescribir el carrito.
+        if (accountNumRef.current && cartRef.current.length > 0 && accountNumRef.current !== account.accountNum) {
+            console.log(`💾 Realizando flush de seguridad para cuenta ${accountNumRef.current} antes de cambiar a ${account.accountNum}...`);
+            try {
+                await handleTicketAction('OPEN', null, false);
+            } catch (e) {
+                console.warn(`⚠️ No se pudo realizar el flush de seguridad de la cuenta actual:`, e);
+            }
+        }
+
         // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación de estado o fetch asíncrono
         isRecoveringRef.current = true;
 

@@ -169,38 +169,39 @@ items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
 captured_by_id: originalCapturer?.id || currentUser?.id || null,
 ```
 
-### ⚡ REGLA 2 — AUTO-SAVE: DEPENDENCIAS COMPLETAS
+### ⚡ REGLA 2 — AUTO-SAVE: INTERVALO VERDADERO (ANTI-DEBOUNCE)
 
 ```
-⛔ PROHIBIDO: useEffect deps = [currentAccountNum, cart.length, showCheckout]
-✅ OBLIGATORIO: useEffect deps = [currentAccountNum, cart, showCheckout]
+⛔ PROHIBIDO: useEffect deps = [currentAccountNum, cart, showCheckout] (crea efecto Debounce)
+✅ OBLIGATORIO: Usar useRef para onSave y NO incluir cart en las dependencias del timer
 ```
 
-**¿Por qué?** Si la dependencia es `cart.length` (un número), y el carrito viejo
-tiene 5 items y el carrito nuevo también tiene 5 items (pero DIFERENTES), React
-NO reinicia el useEffect. El timer viejo sigue corriendo con la versión vieja
-de `handleTicketAction` que tiene el carrito viejo en su closure.
+**¿Por qué?** Si `cart` está en el array de dependencias del `useEffect` que maneja el temporizador `setInterval`, cada vez que el usuario escanea un nuevo producto (mutando `cart`), React destruye el temporizador y lo reinicia desde cero. Esto convierte el auto-save en un **Debounce**: si el operador escanea 10 artículos seguidos en intervalos menores a 15 segundos, el auto-save NUNCA se disparará hasta que deje de escanear por 15 segundos completos, provocando pérdida de datos si cierra la pestaña o cambia de cuenta rápido.
 
-Al usar `cart` (el array completo), React compara por referencia. Cada `setCart()`
-crea un nuevo array, por lo que el timer SIEMPRE se reinicia.
+Para evitar *stale closures* sin destruir el timer, `onSave` DEBE guardarse en un `useRef`.
 
-**Además**, el auto-save DEBE respetar el flag `isRecoveringRef`:
+**Estructura OBLIGATORIA del hook de auto-save (`useAutoSave`):**
 ```javascript
+const onSaveRef = useRef(onSave);
+useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+
 useEffect(() => {
-    if (!currentAccountNum || cart.length === 0 || showCheckout) return;
+    // Solo verificar condiciones iniciales para montar el intervalo
+    if (!currentAccountNum || cart.length === 0 || showCheckout || showCollisionModal) return;
 
     const autoSaveTimer = setInterval(() => {
         if (isGeneratingFolioRef.current) return;
-        if (isRecoveringRef.current) return;  // ← OBLIGATORIO
+        if (isRecoveringRef.current) return;
+        
+        // Evaluar refs vivas dentro del timer
         if (!accountNumRef.current || cartRef.current.length === 0) return;
-        handleTicketAction('OPEN', null, false).catch(e => {
-            console.warn("Auto-save failed:", e);
-            setLastSaveStatus('failed');  // ← v4.0: feedback visual obligatorio
-        });
-    }, 15000);  // ← v4.0: reducido de 30s a 15s
+        
+        onSaveRef.current().catch(e => setLastSaveStatus('failed'));
+    }, 15000);
 
+    // ⛔ PROHIBIDO incluir 'cart' aquí
     return () => clearInterval(autoSaveTimer);
-}, [currentAccountNum, cart, showCheckout]);  // ← cart, NO cart.length
+}, [currentAccountNum, showCheckout, showCollisionModal]);
 ```
 
 ### ⚡ REGLA 3 — RECUPERACIÓN DEL PIZARRÓN: PROTOCOLO ANTI-OVERWRITE
