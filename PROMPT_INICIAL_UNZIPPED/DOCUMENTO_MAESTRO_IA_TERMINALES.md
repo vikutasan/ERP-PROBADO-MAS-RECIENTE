@@ -67,6 +67,11 @@ const fallbackNum = `V${num}`;
 temp_num = f"TEMP_{uuid.uuid4().hex[:4]}"
 ```
 
+### Anti-Patrón 6: Inicialización de estado vs Efectos (Sobreescritura de Datos)
+* **Historia del Error (resuelto 2026-05-02):** Cuando el cajero perdía la conexión de red (o había un "mal cable LAN"), el sistema guardaba el ticket offline en `localStorage`. Si el cajero presionaba `F5` y volvía a seleccionar su terminal, el sistema inicializaba el estado de React del carrito como vacío (`[]`), y *luego* ejecutaba el `useEffect` para guardar en `localStorage`. Esto sobrescribía silenciosamente los datos guardados, borrando el ticket por completo.
+* **Archivo corregido:** `apps/pos/hooks/useCart.js` — Se introdujo una máquina de estados `cartState` que guarda tanto el `storageKey` como los `items`.
+* **Regla Estricta:** El `useEffect` encargado de **GUARDAR** al disco local `localStorage` **SIEMPRE** debe estar protegido por un candado de sincronización de llave (`if (cartState.key === storageKey)`). NUNCA debes confiar en la inicialización estática de `useState` cuando la llave de almacenamiento (`storageKey`) dependa de una prop dinámica (`selectedTerminal`). Al cambiar la llave, primero debes cargar los datos antes de permitir cualquier operación de guardado.
+
 ---
 
 ## 3. LÓGICA Y ESTADOS DE TERMINAL (MATRIZ DE INTERACCIÓN)

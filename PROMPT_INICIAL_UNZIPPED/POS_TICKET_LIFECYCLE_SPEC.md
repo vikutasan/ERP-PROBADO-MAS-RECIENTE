@@ -10,12 +10,25 @@
 > el ticket recuperado con el carrito viejo. También reemplaza la búsqueda fuzzy
 > (`ilike`) de `getTicketByAccountNum` con un endpoint de búsqueda exacta.
 >
-> Última actualización: 2026-04-25
-> Versión: 4.5 — CART-REF SYNC + EXACT SEARCH
+> Última actualización: 2026-05-02
+> Versión: 4.6 — ANTI-WIPE (STORAGE KEY SYNC)
 
 ---
 
-## ⛔ INCIDENTE QUE ORIGINÓ ESTA VERSIÓN
+---
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.6 (OFFLINE DATA WIPE)
+
+**Fecha:** 02/Mayo/2026
+**Síntoma:** El sistema "expulsaba" a los usuarios de sus terminales y borraba la información de los tickets que habían capturado (fenómeno reportado en Terminal 2 por sospecha de un "mal cable LAN").
+
+**Causa raíz:** Un defecto de sincronización de estado en React (`useCart.js`). Cuando la red fallaba y el sistema se congelaba, el usuario presionaba `F5`. Al regresar y hacer clic en su terminal, el componente `useCart` se inicializaba con un carrito vacío `[]` y *antes* de cargar los datos de `localStorage`, disparaba el `useEffect` de guardado. El carrito vacío sobrescribía el ticket original en el disco local instantáneamente, y el mecanismo "anti-zombie" de la UI borraba también el folio.
+
+**Solución Implementada (Regla 16):**
+1. Implementación de una máquina de estado interna (`cartState`) que almacena explícitamente el `storageKey` junto con los artículos.
+2. Un candado lógico (`if (cartState.key === storageKey)`) en el `useEffect` de guardado prohíbe las operaciones de escritura en disco a menos que el estado ya haya sido sincronizado con la llave activa del terminal.
+
+## ⛔ INCIDENTE QUE ORIGINÓ ESTA VERSIÓN (v4.5)
 
 **Fecha:** 21/Abril/2026 ~7:19 PM
 **Ticket:** V11906 (#906)
@@ -786,6 +799,7 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 - [ ] ¿El `heartbeat()` purga locks expirados y limpia locks del mismo usuario en otras terminales? (REGLA 13)
 - [ ] ¿El endpoint `/terminals/status` deduplica usuarios entre `terminal_locks` y `cash_sessions`? (REGLA 13)
 - [ ] ¿Las CashSessions >24h se marcan como expiradas? (REGLA 13)
+- [ ] ¿El `useEffect` que guarda el `localStorage` del carrito está protegido contra inicializaciones estáticas usando un candado de `cartState.key`? (v4.6 Anti-Wipe)
 
 ---
 

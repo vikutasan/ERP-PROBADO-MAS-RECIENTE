@@ -4,25 +4,50 @@ export const useCart = (PRODUCTS, terminalId = 'DEFAULT') => {
     // LLave única por terminal para evitar conflictos
     const storageKey = `pos_cart_${terminalId}`;
 
-    // 1. Inicialización: Intentar cargar desde LocalStorage al arrancar
-    const [cart, setCart] = useState(() => {
+    const [cartState, setCartState] = useState(() => {
         try {
             const saved = localStorage.getItem(storageKey);
-            return saved ? JSON.parse(saved) : [];
+            return { key: storageKey, items: saved ? JSON.parse(saved) : [] };
         } catch (error) {
             console.error("Error loading cart from LocalStorage:", error);
-            return [];
+            return { key: storageKey, items: [] };
         }
     });
 
+    // 1.5 Sincronización al cambiar de terminal (Bugfix Anti-Borrado)
+    useEffect(() => {
+        if (cartState.key !== storageKey) {
+            try {
+                const saved = localStorage.getItem(storageKey);
+                setCartState({ key: storageKey, items: saved ? JSON.parse(saved) : [] });
+            } catch (error) {
+                setCartState({ key: storageKey, items: [] });
+            }
+        }
+    }, [storageKey, cartState.key]);
+
     // 2. Persistencia: Guardar en LocalStorage cada vez que cambie el carrito
     useEffect(() => {
-        try {
-            localStorage.setItem(storageKey, JSON.stringify(cart));
-        } catch (error) {
-            console.error("Error saving cart to LocalStorage:", error);
+        // SOLO guardar si el estado interno ya se sincronizó con la llave actual.
+        // Esto evita que React sobrescriba los datos guardados con un array vacío
+        // durante la transición de cambio de terminal.
+        if (cartState.key === storageKey) {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(cartState.items));
+            } catch (error) {
+                console.error("Error saving cart to LocalStorage:", error);
+            }
         }
-    }, [cart, storageKey]);
+    }, [cartState, storageKey]);
+
+    const cart = cartState.key === storageKey ? cartState.items : [];
+
+    const setCart = (setter) => {
+        setCartState(prev => {
+            const newItems = typeof setter === 'function' ? setter(prev.items) : setter;
+            return { ...prev, items: newItems };
+        });
+    };
 
     const total = useMemo(() => 
         cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
