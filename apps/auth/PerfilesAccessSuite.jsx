@@ -7,6 +7,7 @@ const SYSTEM_MODULES = [
     { id: 'pos_force_unlock', name: 'Desbloqueo de Terminales', icon: '🔓' },
     { id: 'pos_force_cash_unlock', name: 'Forzar Desbloqueo de Caja', icon: '💰🔐' },
     { id: 'access_any_terminal', name: 'Acceso a Cualquier Terminal', icon: '🖥️' },
+    { id: 'access_terminal_manager', name: 'Acceso a Gestor de Terminales', icon: '⚙️' },
     { id: 'pos_retail', name: 'Punto de Venta IA', icon: '🛒' },
     { id: 'inventory', name: 'Gestión de Productos', icon: '📦' },
     { id: 'inventory_delete', name: 'Eliminar Productos', icon: '🗑️' },

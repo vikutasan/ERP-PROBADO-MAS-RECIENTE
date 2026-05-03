@@ -22,6 +22,7 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
     const [unlockingTerminal, setUnlockingTerminal] = useState(null);
     const [deniedModal, setDeniedModal] = useState(null);
     const [showManager, setShowManager] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(null);
     const [terminalList, setTerminalList] = useState(terminals);
     const [editingId, setEditingId] = useState(null);
     const [editName, setEditName] = useState('');
@@ -32,7 +33,7 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
     const isAdmin = userRole === 'ADMIN';
     const isManager = userRole === 'MANAGER';
     const canAccessAny = isAdmin || currentUser?.permissions?.access_any_terminal === 'full';
-    const canManage = isAdmin || isManager;
+    const canManage = isAdmin || currentUser?.permissions?.access_terminal_manager === 'full';
 
     useEffect(() => {
         loadTerminalsConfig().then(c => setTerminalList([...c]));
@@ -64,15 +65,30 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
         cancelEdit();
     };
 
-    const addTerminal = () => {
-        const nextNum = terminalList.filter(t => t.id.startsWith('T')).length + 1;
-        const newId = `T${nextNum}`;
-        setTerminalList(prev => [{ id: newId, name: `Terminal ${nextNum}`, icon: '🖥️' }, ...prev]);
+    const addTerminal = (position = 'end') => {
+        const nums = terminalList.filter(t => t.id.startsWith('T')).map(t => parseInt(t.id.replace('T','')) || 0);
+        const nextNum = (nums.length > 0 ? Math.max(...nums) : 0) + 1;
+        const newT = { id: `T${nextNum}`, name: `Terminal ${nextNum}`, icon: '🖥️' };
+        setTerminalList(prev => position === 'start' ? [newT, ...prev] : [...prev, newT]);
     };
 
     const removeTerminal = (tid) => {
-        if (!confirm(`¿Eliminar ${tid}? Los tickets existentes con este ID no se afectan.`)) return;
-        setTerminalList(prev => prev.filter(t => t.id !== tid));
+        // Protección: no eliminar terminal ocupada
+        if (terminalStatuses[tid]?.occupier_id) {
+            setDeniedModal({ title: '🔒 TERMINAL OCUPADA', message: `La terminal ${tid} está siendo usada por ${terminalStatuses[tid].occupier_name}.\n\nDebes esperar a que se desocupe antes de eliminarla.` });
+            return;
+        }
+        // Protección: no eliminar tu propia terminal asignada
+        if (assignedTerminal === tid) {
+            setDeniedModal({ title: '⚠️ TU TERMINAL', message: `No puedes eliminar ${tid} porque es la terminal asignada a esta máquina.` });
+            return;
+        }
+        setConfirmDelete(tid);
+    };
+
+    const executeDelete = () => {
+        setTerminalList(prev => prev.filter(t => t.id !== confirmDelete));
+        setConfirmDelete(null);
     };
 
     const handleSave = async () => {
@@ -103,7 +119,14 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                     <h2 className="text-5xl font-black uppercase tracking-tighter italic">Gestor de <span className="text-white/20">Terminales</span></h2>
                 </div>
 
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-8 max-w-7xl w-full">
+                <div className="flex gap-4 max-w-7xl w-full items-start">
+                    {/* Botón agregar izquierda */}
+                    <button onClick={() => addTerminal('start')} className="shrink-0 w-20 rounded-[40px] border-2 border-dashed border-white/10 flex flex-col items-center justify-center py-16 hover:border-orange-500/40 hover:bg-orange-600/5 transition-all group" title="Agregar al inicio">
+                        <span className="text-3xl group-hover:scale-125 transition-transform">+</span>
+                        <span className="text-[7px] font-black uppercase tracking-widest text-gray-600 group-hover:text-orange-400 mt-2">Izq</span>
+                    </button>
+
+                    <div className="grid grid-cols-3 md:grid-cols-6 gap-8 flex-1">
                     {terminalList.map(t => {
                         const isEditing = editingId === t.id;
                         const status = terminalStatuses[t.id];
@@ -176,10 +199,12 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                         );
                     })}
 
-                    {/* Botón agregar */}
-                    <button onClick={addTerminal} className="rounded-[40px] border-2 border-dashed border-white/10 flex flex-col items-center justify-center p-10 gap-4 hover:border-orange-500/40 hover:bg-orange-600/5 transition-all group">
-                        <span className="text-4xl group-hover:scale-125 transition-transform">+</span>
-                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-500 group-hover:text-orange-400">Agregar</span>
+                    </div>
+
+                    {/* Botón agregar derecha */}
+                    <button onClick={() => addTerminal('end')} className="shrink-0 w-20 rounded-[40px] border-2 border-dashed border-white/10 flex flex-col items-center justify-center py-16 hover:border-orange-500/40 hover:bg-orange-600/5 transition-all group" title="Agregar al final">
+                        <span className="text-3xl group-hover:scale-125 transition-transform">+</span>
+                        <span className="text-[7px] font-black uppercase tracking-widest text-gray-600 group-hover:text-orange-400 mt-2">Der</span>
                     </button>
                 </div>
 
@@ -202,13 +227,44 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                         </div>
                     </div>
                 )}
+
+                {confirmDelete && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
+                        <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,0,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
+                            <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
+                            <div className="text-6xl mb-4 relative z-10">⚠️</div>
+                            <h2 className="text-xl font-black uppercase text-red-500 mb-2 relative z-10">ELIMINAR TERMINAL</h2>
+                            <p className="text-sm font-bold text-gray-400 mb-2 relative z-10">
+                                ¿Estás seguro de eliminar la terminal <span className="text-orange-400 font-black">{confirmDelete}</span>?
+                            </p>
+                            <p className="text-[10px] text-gray-600 mb-6 relative z-10">
+                                Esta acción solo elimina la terminal del selector.<br/>
+                                Los tickets y cortes de caja existentes <span className="text-green-400">NO se afectan</span>.
+                            </p>
+                            <div className="flex gap-4 relative z-10">
+                                <button onClick={() => setConfirmDelete(null)} className="flex-1 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 font-bold uppercase text-[10px] tracking-widest transition-all">
+                                    Cancelar
+                                </button>
+                                <button onClick={executeDelete} className="flex-1 py-3 rounded-2xl bg-red-600/80 hover:bg-red-500 border border-red-500/50 font-black uppercase text-[10px] tracking-widest text-white shadow-lg transition-all">
+                                    SÍ, ELIMINAR
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
     // ==================== SELECTOR NORMAL ====================
     return (
-        <div className="flex-1 flex flex-col items-center justify-center p-20 animate-in fade-in zoom-in-95 duration-700">
+        <div className="flex-1 flex flex-col items-center justify-center p-20 animate-in fade-in zoom-in-95 duration-700 relative">
+            {canManage && (
+                <button onClick={() => setShowManager(true)}
+                    className="absolute top-6 right-6 px-6 py-3 rounded-2xl bg-orange-600 border border-orange-500 text-[11px] font-black uppercase tracking-widest text-white hover:scale-105 hover:shadow-xl hover:shadow-orange-600/30 transition-all shadow-lg">
+                    ⚙ GESTOR DE TERMINALES
+                </button>
+            )}
             <div className="text-center mb-16">
                 <h3 className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-4">Configuracion de Estacion</h3>
                 <h2 className="text-6xl font-black uppercase tracking-tighter italic">Selecciona tu <span className="text-white/20">Terminal</span></h2>
@@ -285,12 +341,6 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                 })}
             </div>
 
-            {canManage && (
-                <button onClick={() => setShowManager(true)}
-                    className="mt-12 px-8 py-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-orange-400 hover:border-orange-500/30 hover:bg-orange-600/5 transition-all">
-                    ⚙ Gestor de Terminales
-                </button>
-            )}
 
             {unlockingTerminal && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100]">

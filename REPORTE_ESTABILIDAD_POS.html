@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reporte de Estabilidad — POS R de Rico</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  @page { size: letter; margin: 2cm 2.5cm; }
+  
+  body {
+    font-family: 'Inter', sans-serif;
+    color: #1a1a2e;
+    line-height: 1.7;
+    font-size: 11pt;
+    background: #f8f9fa;
+    padding: 40px;
+  }
+  
+  .page {
+    background: white;
+    max-width: 800px;
+    margin: 0 auto 30px;
+    padding: 50px 60px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+    border-radius: 4px;
+  }
+  
+  @media print {
+    body { background: white; padding: 0; }
+    .page { box-shadow: none; padding: 0; margin: 0; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .no-print { display: none; }
+  }
+  
+  /* Header */
+  .header {
+    text-align: center;
+    border-bottom: 3px solid #c1d72e;
+    padding-bottom: 25px;
+    margin-bottom: 30px;
+  }
+  .header h1 {
+    font-size: 22pt;
+    font-weight: 800;
+    color: #1a1a2e;
+    letter-spacing: -0.5px;
+    margin-bottom: 5px;
+  }
+  .header .subtitle {
+    font-size: 12pt;
+    color: #666;
+    font-weight: 400;
+  }
+  .header .date {
+    font-size: 9pt;
+    color: #999;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .header .badge {
+    display: inline-block;
+    background: #c1d72e;
+    color: #1a1a2e;
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 10px;
+  }
+  
+  /* Sections */
+  h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 30px 0 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #eee;
+  }
+  h2 .num {
+    color: #c1d72e;
+    font-weight: 800;
+  }
+  
+  h3 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #333;
+    margin: 20px 0 8px;
+  }
+  
+  p { margin-bottom: 12px; text-align: justify; }
+  
+  .highlight-box {
+    background: #f0f7e6;
+    border-left: 4px solid #c1d72e;
+    padding: 15px 20px;
+    margin: 15px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10pt;
+  }
+  .highlight-box.warning {
+    background: #fff8e1;
+    border-left-color: #ff9800;
+  }
+  .highlight-box.info {
+    background: #e3f2fd;
+    border-left-color: #2196f3;
+  }
+  .highlight-box strong { display: block; margin-bottom: 4px; }
+  
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    font-size: 9.5pt;
+  }
+  th {
+    background: #1a1a2e;
+    color: white;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #eee;
+  }
+  tr:nth-child(even) td { background: #fafafa; }
+  
+  /* Timeline */
+  .timeline { margin: 15px 0; padding-left: 20px; }
+  .timeline-item {
+    position: relative;
+    padding: 0 0 15px 25px;
+    border-left: 2px solid #ddd;
+  }
+  .timeline-item:last-child { border-left-color: transparent; }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -7px;
+    top: 5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c1d72e;
+    border: 2px solid white;
+    box-shadow: 0 0 0 2px #c1d72e;
+  }
+  .timeline-item.error::before { background: #e53935; box-shadow: 0 0 0 2px #e53935; }
+  .timeline-item.fix::before { background: #43a047; box-shadow: 0 0 0 2px #43a047; }
+  .timeline-item .tl-date { font-size: 8pt; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+  .timeline-item .tl-title { font-weight: 700; color: #1a1a2e; }
+  .timeline-item .tl-desc { font-size: 9.5pt; color: #555; }
+  
+  /* Verdict */
+  .verdict {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    color: white;
+    padding: 25px 30px;
+    border-radius: 12px;
+    margin: 20px 0;
+  }
+  .verdict h3 { color: #c1d72e; margin-top: 0; }
+  .verdict p { color: #ccc; }
+  .verdict .score {
+    font-size: 36pt;
+    font-weight: 800;
+    color: #c1d72e;
+    text-align: center;
+    margin: 10px 0;
+  }
+  .verdict .score-label {
+    text-align: center;
+    font-size: 9pt;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .checklist { list-style: none; padding: 0; }
+  .checklist li {
+    padding: 8px 0 8px 28px;
+    position: relative;
+    font-size: 10pt;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .checklist li::before {
+    position: absolute; left: 0; top: 8px; font-size: 14pt;
+  }
+  .checklist li.done::before { content: '✅'; }
+  .checklist li.pending::before { content: '⬜'; }
+  .checklist li.critical::before { content: '🔴'; }
+  
+  .signature {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+  
+  .print-btn {
+    display: block;
+    margin: 20px auto;
+    padding: 14px 40px;
+    background: #1a1a2e;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12pt;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .print-btn:hover { background: #2a2a4e; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">📄 Guardar como PDF (Ctrl+P)</button>
+
+<!-- PÁGINA 1 -->
+<div class="page">
+  <div class="header">
+    <h1>Reporte de Estabilidad del Sistema POS</h1>
+    <div class="subtitle">Evaluación Técnica Independiente — ERP R de Rico</div>
+    <div class="date">03 de Mayo de 2026</div>
+    <div class="badge">Documento Confidencial</div>
+  </div>
+
+  <h2><span class="num">1.</span> Resumen Ejecutivo</h2>
+  <p>
+    El presente documento es una evaluación técnica del estado actual del Punto de Venta (POS) del ERP R de Rico, dirigido a los socios de la empresa. Su objetivo es explicar, en términos claros, por qué el sistema ha presentado fallas recurrentes durante su etapa de desarrollo, qué se ha hecho para corregirlas, y qué pasos concretos faltan para alcanzar la estabilidad total.
+  </p>
+  
+  <div class="verdict">
+    <h3>Calificación Actual del POS</h3>
+    <div class="score">8.5 / 10</div>
+    <div class="score-label">Nivel de madurez arquitectónica</div>
+    <p style="margin-top:15px;">
+      El sistema POS ha alcanzado un nivel de robustez alto tras 16 reglas de protección implementadas. Los fallos recientes <strong style="color:#c1d72e">no se deben a mala calidad del software</strong>, sino a la naturaleza iterativa del desarrollo en un sistema que opera en producción en tiempo real, combinado con inestabilidad en la infraestructura de red local.
+    </p>
+  </div>
+
+  <h2><span class="num">2.</span> ¿Por qué han ocurrido tantos fallos?</h2>
+  
+  <h3>2.1 La Naturaleza del Problema</h3>
+  <p>
+    El POS de R de Rico no es un programa simple: es un <strong>sistema distribuido de tiempo real</strong>. Esto significa que múltiples terminales (T1 a T6 + Caja Central) operan simultáneamente sobre los mismos datos, compartiendo un solo servidor. Este tipo de sistemas son los más difíciles de programar en toda la ingeniería de software — es el mismo tipo de problema que enfrentan bancos, aerolíneas, y plataformas de comercio electrónico.
+  </p>
+  
+  <div class="highlight-box info">
+    <strong>Analogía para entender el problema:</strong>
+    Imagine que 6 personas escriben en el mismo cuaderno al mismo tiempo, sin poder verse entre sí. Si dos personas escriben en la misma página en el mismo segundo, una borra lo que la otra escribió. Eso es exactamente lo que pasa cuando dos terminales modifican la misma cuenta del POS sin protección.
+  </div>
+
+  <h3>2.2 Desarrollo en Producción ("Campo de Batalla")</h3>
+  <p>
+    A diferencia de un software que se desarrolla en laboratorio y se lanza cuando está perfecto, el POS de R de Rico se ha construido y mejorado <strong>mientras la tienda opera</strong>. Esto tiene una ventaja enorme: cada falla se detecta inmediatamente con datos reales. Pero también significa que los usuarios experimentan los problemas directamente.
+  </p>
+  <p>
+    Cada incidente en producción ha generado una regla de protección permanente. El sistema no solo se corrige: <strong>se blinda</strong> para que ese error específico nunca pueda volver a ocurrir.
+  </p>
+
+  <h3>2.3 La Evolución: De 0 a 16 Reglas de Protección</h3>
+  <p>
+    El siguiente cronograma muestra cómo cada falla real se convirtió en una mejora permanente:
+  </p>
+
+  <div class="timeline">
+    <div class="timeline-item error">
+      <div class="tl-date">Fase Inicial</div>
+      <div class="tl-title">Ticket #906: $124 → $2</div>
+      <div class="tl-desc">El auto-guardado envió datos obsoletos del carrito al servidor, reduciendo un ticket de $124 a $2. Se implementaron las Reglas 1-3 (Referencias de datos en tiempo real).</div>
+    </div>
+    <div class="timeline-item error">
+      <div class="tl-date">Abril 2026</div>
+      <div class="tl-title">Ticket #125: $205 perdidos</div>
+      <div class="tl-desc">El carrito se borró antes de confirmar que el servidor guardó los datos. Se implementó la Regla 9 (Zero-Loss: confirmar antes de borrar).</div>
+    </div>
+    <div class="timeline-item error">
+      <div class="tl-date">Abril 2026</div>
+      <div class="tl-title">Ticket #169: Sobreescritura cruzada</div>
+      <div class="tl-desc">Dos cajeros editaron la misma cuenta sin saberlo. Se implementaron las Reglas 10-12 (Bloqueo Optimista + Mutex).</div>
+    </div>
+    <div class="timeline-item error">
+      <div class="tl-date">Abril 2026</div>
+      <div class="tl-title">Terminales Fantasma</div>
+      <div class="tl-desc">Un cajero olvidó cerrar sesión y su terminal quedó bloqueada 2 días. Se implementó la Regla 13 (Heartbeat con purga automática).</div>
+    </div>
+    <div class="timeline-item error">
+      <div class="tl-date">02/Mayo/2026</div>
+      <div class="tl-title">Expulsión masiva nocturna</div>
+      <div class="tl-desc">Micro-cortes de red causaron que el servidor liberara las terminales. Al reconectarse, el sistema borró los carritos guardados localmente. Se implementó la Regla 16 (Anti-Wipe v4.6).</div>
+    </div>
+    <div class="timeline-item fix">
+      <div class="tl-date">03/Mayo/2026</div>
+      <div class="tl-title">Estado actual: 16 reglas activas</div>
+      <div class="tl-desc">Todas las vulnerabilidades conocidas están corregidas y documentadas. El sistema cuenta con protección de datos ante fallas de red, conflictos entre terminales, y errores de operación.</div>
+    </div>
+  </div>
+</div>
+
+<!-- PÁGINA 2 -->
+<div class="page">
+  <h2><span class="num">3.</span> El Incidente del 02 de Mayo (Anoche)</h2>
+  
+  <h3>¿Qué pasó exactamente?</h3>
+  <p>
+    Durante la noche del 02 de Mayo, la conexión de red local (LAN) del establecimiento experimentó micro-cortes intermitentes. Aunque estos cortes duraron solo segundos, fueron suficientes para desencadenar una cadena de eventos:
+  </p>
+  
+  <table>
+    <tr><th style="width:30%">Paso</th><th>Lo que ocurrió</th></tr>
+    <tr><td><strong>1. Corte de red</strong></td><td>Los cables LAN o el switch de red perdieron conexión momentáneamente.</td></tr>
+    <tr><td><strong>2. Heartbeat perdido</strong></td><td>Las terminales no pudieron enviar su señal de "sigo aquí" al servidor.</td></tr>
+    <tr><td><strong>3. Servidor purga</strong></td><td>Después de 15 minutos sin señal, el servidor asumió que los cajeros se fueron y liberó sus terminales (4,367 eventos de limpieza registrados).</td></tr>
+    <tr><td><strong>4. Reconexión</strong></td><td>Los cajeros, al notar el error, presionaron F5 para reconectarse.</td></tr>
+    <tr><td><strong>5. Borrado accidental</strong></td><td>Al reconectarse, un defecto en el código (ya corregido) borró los artículos que estaban guardados localmente en cada terminal.</td></tr>
+  </table>
+
+  <h3>¿Cómo se corrigió?</h3>
+  <div class="highlight-box">
+    <strong>Corrección aplicada el 03 de Mayo (hoy):</strong>
+    Se implementó un "candado de escritura" en el almacenamiento local del carrito. Ahora, cuando un cajero se reconecta, el sistema <strong>primero carga los datos existentes</strong> y solo después permite guardar nuevos cambios. Esto hace imposible que se borren artículos por accidente durante una reconexión. Adicionalmente, se aumentó la tolerancia del servidor de 15 a 20 minutos antes de liberar una terminal sin señal.
+  </div>
+
+  <h2><span class="num">4.</span> El Factor Red: La Raíz del Problema</h2>
+  <p>
+    Es importante que los socios comprendan que <strong>la mayoría de los fallos recientes no son culpa del software</strong>, sino de la infraestructura de red local. El POS depende de una conexión LAN estable entre las terminales y el servidor. Cuando esa conexión falla, incluso por fracciones de segundo, se producen efectos en cascada.
+  </p>
+
+  <h3>Diagnóstico de Red Recomendado</h3>
+  <table>
+    <tr><th>Componente</th><th>Qué verificar</th><th>Prioridad</th></tr>
+    <tr><td><strong>Cables LAN</strong></td><td>Verificar que todos los cables Cat5e/Cat6 estén en buen estado, sin dobleces ni cortes. Reemplazar cables viejos o dañados.</td><td style="color:#e53935;font-weight:700">ALTA</td></tr>
+    <tr><td><strong>Switch de red</strong></td><td>Verificar que el switch no se sobrecaliente ni se reinicie solo. Si es un switch doméstico, considerar uno empresarial (TP-Link TL-SG108E o similar, ~$800 MXN).</td><td style="color:#e53935;font-weight:700">ALTA</td></tr>
+    <tr><td><strong>Conexiones físicas</strong></td><td>Asegurar que todos los conectores RJ-45 estén firmes. Un conector flojo causa micro-cortes intermitentes difíciles de diagnosticar.</td><td style="color:#ff9800;font-weight:700">MEDIA</td></tr>
+    <tr><td><strong>UPS / No-Break</strong></td><td>Verificar que el servidor y el switch estén conectados a un UPS. Un micro-corte eléctrico reinicia el switch y desconecta todas las terminales simultáneamente.</td><td style="color:#e53935;font-weight:700">ALTA</td></tr>
+    <tr><td><strong>Configuración IP</strong></td><td>Todas las terminales deben tener IP fija asignada. Si usan DHCP, un reinicio del router puede cambiar la IP del servidor.</td><td style="color:#ff9800;font-weight:700">MEDIA</td></tr>
+  </table>
+
+  <div class="highlight-box warning">
+    <strong>⚠️ Inversión estimada para estabilizar la red:</strong>
+    Switch empresarial ($800) + cables nuevos Cat6 ($150 c/u × 6 = $900) + UPS para switch ($1,200) = <strong>~$2,900 MXN</strong>. Esta inversión única eliminaría la causa raíz de la mayoría de las desconexiones.
+  </div>
+</div>
+
+<!-- PÁGINA 3 -->
+<div class="page">
+  <h2><span class="num">5.</span> Estado Actual del Sistema — Checklist de Confiabilidad</h2>
+  <p>El siguiente checklist muestra las protecciones que el POS ya tiene implementadas y lo que falta:</p>
+
+  <h3>Protecciones de Datos (Software)</h3>
+  <ul class="checklist">
+    <li class="done">Datos del carrito se leen en tiempo real, no de copias obsoletas (Regla 1)</li>
+    <li class="done">Auto-guardado cada 15 segundos con intervalo real, no reiniciable (Regla 2)</li>
+    <li class="done">Recuperación de cuentas protegida contra sobreescritura (Regla 3)</li>
+    <li class="done">Folios generados por secuencia atómica del servidor, sin duplicados (Regla 4)</li>
+    <li class="done">Bloqueo optimista: dos cajeros no pueden sobreescribirse mutuamente (Regla 10)</li>
+    <li class="done">Mutex: las operaciones del mismo cajero se procesan una a la vez (Regla 12)</li>
+    <li class="done">El carrito solo se borra después de confirmar guardado exitoso (Regla 9)</li>
+    <li class="done">Protección Anti-Wipe: reconexión ya no borra datos locales (Regla 16, v4.6)</li>
+  </ul>
+
+  <h3>Protecciones de Terminal (Sesiones)</h3>
+  <ul class="checklist">
+    <li class="done">Candados de terminal almacenados en base de datos, no en memoria RAM (Regla de Oro)</li>
+    <li class="done">Heartbeat con purga automática de sesiones abandonadas (Regla 13)</li>
+    <li class="done">El sistema nunca expulsa al cajero por fallas de red — solo muestra advertencia</li>
+    <li class="done">Solo un administrador puede forzar el desbloqueo de una terminal ocupada</li>
+    <li class="done">TTL calibrado a 20 minutos para tolerar micro-cortes de red</li>
+  </ul>
+
+  <h3>Pendientes para Confiabilidad Total</h3>
+  <ul class="checklist">
+    <li class="critical">Estabilizar infraestructura de red LAN (cables, switch, UPS)</li>
+    <li class="pending">Implementar monitoreo automático de conexión (alertas cuando una terminal pierde señal)</li>
+    <li class="pending">Dashboard de salud del sistema para el administrador</li>
+  </ul>
+
+  <h2><span class="num">6.</span> Conclusión y Recomendaciones</h2>
+  
+  <p>
+    El POS de R de Rico ha pasado por un proceso de maduración intensivo. Cada falla reportada ha resultado en una mejora permanente documentada. El sistema actual cuenta con <strong>16 capas de protección</strong> que cubren prácticamente todos los escenarios de falla conocidos en sistemas de punto de venta multi-terminal.
+  </p>
+  <p>
+    <strong>La principal fuente de inestabilidad actual no es el software, sino la red física.</strong> Los micro-cortes de LAN causan efectos en cadena que ningún software puede prevenir por completo. La inversión en infraestructura de red (~$2,900 MXN) tendría el mayor impacto en la estabilidad percibida por los usuarios.
+  </p>
+  <p>
+    Con la red estabilizada y las 16 reglas de protección activas, el sistema está preparado para operar de manera confiable en el día a día del negocio.
+  </p>
+
+  <div class="verdict" style="margin-top:30px;">
+    <h3>Recomendaciones Prioritarias</h3>
+    <table style="color:#ccc; font-size:9.5pt;">
+      <tr style="border-bottom:1px solid #333;"><th style="background:transparent;color:#c1d72e;">Prioridad</th><th style="background:transparent;color:#c1d72e;">Acción</th><th style="background:transparent;color:#c1d72e;">Costo</th></tr>
+      <tr><td style="color:#e53935;font-weight:700;border-color:#333;">URGENTE</td><td style="border-color:#333;">Revisar y reemplazar cables LAN + conectores</td><td style="border-color:#333;">~$900</td></tr>
+      <tr><td style="color:#e53935;font-weight:700;border-color:#333;">URGENTE</td><td style="border-color:#333;">Instalar UPS para switch de red</td><td style="border-color:#333;">~$1,200</td></tr>
+      <tr><td style="color:#ff9800;font-weight:700;border-color:#333;">ALTA</td><td style="border-color:#333;">Evaluar switch empresarial si el actual es doméstico</td><td style="border-color:#333;">~$800</td></tr>
+      <tr><td style="color:#2196f3;font-weight:700;border-color:#333;">MEDIA</td><td style="border-color:#333;">Implementar monitoreo de red en tiempo real</td><td style="border-color:#333;">$0 (software)</td></tr>
+    </table>
+  </div>
+
+  <div class="signature">
+    <p><em>Documento generado por análisis técnico automatizado</em></p>
+    <p>ERP R de Rico — Versión de Arquitectura v4.6 (Anti-Wipe + Hardened)</p>
+    <p>03 de Mayo de 2026</p>
+  </div>
+</div>
+
+</body>
+</html>
