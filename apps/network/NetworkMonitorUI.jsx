@@ -101,9 +101,11 @@ export const NetworkMonitorUI = () => {
                     if (prevStatus === 'online' && !isOccupied) {
                         const evt = {
                             time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                            date: now.toLocaleDateString('es-MX'),
+                            timestamp: now.getTime(),
                             terminal: tid,
                             type: 'disconnect',
+                            rawType: 'disconnect',
+                            severity: 'normal',
                             message: `${prevStatusRef.current[tid]?.occupier || 'Usuario'} se desconectó`,
                             user: prevStatusRef.current[tid]?.occupier || 'Desconocido',
                         };
@@ -122,9 +124,11 @@ export const NetworkMonitorUI = () => {
                     } else if (prevStatus !== 'online' && isOccupied) {
                         const evt = {
                             time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                            date: now.toLocaleDateString('es-MX'),
+                            timestamp: now.getTime(),
                             terminal: tid,
                             type: 'connect',
+                            rawType: 'reconnect',
+                            severity: 'normal',
                             message: `${info.occupier_name} se conectó`,
                             user: info.occupier_name,
                         };
