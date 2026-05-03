@@ -85,6 +85,13 @@ async def seed_settings(db: AsyncSession):
             "description": "Tiempo para re-preguntar cumplimiento en caso de pausa (minutos).",
             "category": "ai_agent",
             "input_type": "number"
+        },
+        {
+            "key": "pos_terminals_config",
+            "value": '[{"id":"T6","name":"Terminal 6","icon":"🖥️"},{"id":"T5","name":"Terminal 5","icon":"🖥️"},{"id":"T4","name":"Terminal 4","icon":"🖥️"},{"id":"T3","name":"Terminal 3","icon":"🖥️"},{"id":"T2","name":"Terminal 2","icon":"🖥️"},{"id":"CAJA","name":"CAJA","icon":"/assets/pos_register.png"}]',
+            "description": "Configuración de terminales POS (JSON array con id, name, icon).",
+            "category": "pos",
+            "input_type": "json"
         }
     ]
     

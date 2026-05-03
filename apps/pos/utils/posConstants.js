@@ -41,7 +41,8 @@ export const getProductEmoji = (p) => {
     return '📦';
 };
 
-export const terminals = [
+// Fallback hardcoded (se usa si no hay config en BD)
+export const DEFAULT_TERMINALS = [
     { id: 'T6', name: 'Terminal 6', icon: '🖥️' },
     { id: 'T5', name: 'Terminal 5', icon: '🖥️' },
     { id: 'T4', name: 'Terminal 4', icon: '🖥️' },
@@ -49,3 +50,42 @@ export const terminals = [
     { id: 'T2', name: 'Terminal 2', icon: '🖥️' },
     { id: 'CAJA', name: 'CAJA', icon: '/assets/pos_register.png' }
 ];
+
+// Referencia mutable — se actualiza dinámicamente al cargar config
+export let terminals = [...DEFAULT_TERMINALS];
+
+// Función para cargar configuración desde BD
+export async function loadTerminalsConfig() {
+    try {
+        const API = `http://${window.location.hostname}:5001/api/v1`;
+        const res = await fetch(`${API}/settings/pos_terminals_config`, { cache: 'no-store' });
+        if (res.ok) {
+            const data = await res.json();
+            const parsed = JSON.parse(data.value);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                terminals.length = 0;
+                parsed.forEach(t => terminals.push(t));
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.warn('Using default terminals config:', e);
+    }
+    return DEFAULT_TERMINALS;
+}
+
+// Función para guardar configuración en BD
+export async function saveTerminalsConfig(newTerminals) {
+    const API = `http://${window.location.hostname}:5001/api/v1`;
+    const res = await fetch(`${API}/settings/pos_terminals_config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: JSON.stringify(newTerminals) })
+    });
+    if (res.ok) {
+        terminals.length = 0;
+        newTerminals.forEach(t => terminals.push(t));
+        return true;
+    }
+    return false;
+}
