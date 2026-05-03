@@ -3,8 +3,8 @@
 > **¡ATENCIÓN A CUALQUIER IA O DESARROLLADOR!**
 > Lee este documento **COMPLETO** antes de proponer, modificar o analizar cualquier código relacionado con el Punto de Venta (POS), selección de terminales, candados (locks), cuentas, o sesiones de caja. Cualquier modificación que rompa las reglas descritas aquí es considerada una **falla crítica de arquitectura**.
 >
-> **Última actualización:** 2026-04-23
-> **Versión de arquitectura:** v4.4 (hardened)
+> **Última actualización:** 2026-05-03
+> **Versión de arquitectura:** v4.6 (anti-wipe + hardened)
 > **Archivos gobernados:** `apps/api/modules/pos/`, `apps/pos/hooks/`, `apps/pos/services/`, `apps/pos/RetailVisionPOS.jsx`, `apps/api/modules/cash/`
 
 ---
@@ -67,6 +67,11 @@ const fallbackNum = `V${num}`;
 temp_num = f"TEMP_{uuid.uuid4().hex[:4]}"
 ```
 
+### Anti-Patrón 6: Inicialización de estado vs Efectos (Sobreescritura de Datos)
+* **Historia del Error (resuelto 2026-05-03):** Cuando el cajero perdía la conexión de red (o había un "mal cable LAN"), el sistema guardaba el ticket offline en `localStorage`. Si el cajero presionaba `F5` y volvía a seleccionar su terminal, el sistema inicializaba el estado de React del carrito como vacío (`[]`), y *luego* ejecutaba el `useEffect` para guardar en `localStorage`. Esto sobrescribía silenciosamente los datos guardados, borrando el ticket por completo.
+* **Archivo corregido:** `apps/pos/hooks/useCart.js` — Se introdujo una máquina de estados `cartState` que guarda tanto el `storageKey` como los `items`.
+* **Regla Estricta:** El `useEffect` encargado de **GUARDAR** al disco local `localStorage` **SIEMPRE** debe estar protegido por un candado de sincronización de llave (`if (cartState.key === storageKey)`). NUNCA debes confiar en la inicialización estática de `useState` cuando la llave de almacenamiento (`storageKey`) dependa de una prop dinámica (`selectedTerminal`). Al cambiar la llave, primero debes cargar los datos antes de permitir cualquier operación de guardado.
+
 ---
 
 ## 3. LÓGICA Y ESTADOS DE TERMINAL (MATRIZ DE INTERACCIÓN)
@@ -90,14 +95,16 @@ La UI ("Selecciona Tu Terminal") debe comportarse estrictamente de acuerdo al es
 
 ### C) Heartbeat y TTL
 
-| Parámetro | Valor Default | Clave en `system_settings` |
-|-----------|---------------|---------------------------|
-| Status Polling | 5,000 ms | `pos_terminal_status_polling_ms` |
-| Check Lock Polling | 15,000 ms | `pos_terminal_check_lock_interval_ms` |
-| Heartbeat | 20,000 ms | `pos_heartbeat_interval_ms` |
-| TTL de Lock | 15 minutos | `pos_terminal_lock_ttl_m` |
+| Parámetro | Valor Default | Valor Producción (03/May/2026) | Clave en `system_settings` |
+|-----------|---------------|-------------------------------|---------------------------|
+| Status Polling | 5,000 ms | 3,000 ms | `pos_terminal_status_polling_ms` |
+| Check Lock Polling | 15,000 ms | 15,000 ms | `pos_terminal_check_lock_interval_ms` |
+| Heartbeat | 20,000 ms | 60,000 ms | `pos_heartbeat_interval_ms` |
+| TTL de Lock | 15 minutos | **20 minutos** | `pos_terminal_lock_ttl_m` |
 
 **Regla de seguridad:** `TTL` siempre debe ser al menos **10 veces mayor** que `heartbeat_interval`.
+
+> **NOTA DE OPERACIÓN (2026-05-03):** El TTL se incrementó de 15 a 20 minutos tras el incidente del 02/Mayo donde micro-cortes de red causaron expulsiones masivas de cajeros. Con heartbeat=60s y TTL=20min, el ratio es 20x (cumple la regla de 10x). Si la red se estabiliza, se puede reducir a 15 min. **No subir más de 30 min** para evitar que terminales fantasma bloqueen cajeros por demasiado tiempo.
 
 ---
 
@@ -161,6 +168,7 @@ Cada ejecución de `force_unlock` genera un log en el servidor con el formato:
 | `apps/api/modules/pos/models.py` | Modelo `TerminalLock` + `Ticket` (version, UNIQUE constraints) | ⚠️ No modificar constraints |
 | `apps/api/modules/pos/service.py` | `_generate_consecutive_ticket` + secuencia atómica | ⚠️ Sin TEMP, sin race conditions |
 | `apps/pos/hooks/useTerminalLocking.js` | Polling + heartbeat del frontend | ⚠️ NUNCA re-adquirir lock automáticamente |
+| `apps/pos/hooks/useCart.js` | Estado + localStorage del carrito (v4.6: Anti-Wipe) | ⚠️ NUNCA guardar a localStorage sin validar `cartState.key === storageKey` |
 | `apps/pos/RetailVisionPOS.jsx` | `generateNewAccountNum` + mutex | ⚠️ Sin fallback aleatorio |
 | `apps/api/modules/cash/models.py` | Modelo `CashSession` | ⚠️ La traspuesta modifica employee_id |
 | `apps/api/modules/cash/router.py` | Cierre de caja (corte) | ⚠️ No confundir con force_unlock |
@@ -183,6 +191,8 @@ Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, veri
 - [ ] ¿El heartbeat renueva el lock en la base de datos?
 - [ ] ¿El TTL es al menos 10x mayor que el intervalo de heartbeat?
 - [ ] ¿Las cuentas del pizarrón solo desaparecen por cobro o cancelación explícita?
+- [ ] ¿El `useEffect` que guarda el `localStorage` del carrito está protegido contra inicializaciones estáticas usando un candado de `cartState.key`? (v4.6 Anti-Wipe)
+- [ ] ¿El TTL de producción está calibrado según la estabilidad de la red local? (Recomendado: 20 min con heartbeat de 60s)
 
 ---
 

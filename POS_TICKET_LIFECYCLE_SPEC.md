@@ -785,6 +785,7 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 - [ ] ¿El `heartbeat()` purga locks expirados y limpia locks del mismo usuario en otras terminales? (REGLA 13)
 - [ ] ¿El endpoint `/terminals/status` deduplica usuarios entre `terminal_locks` y `cash_sessions`? (REGLA 13)
 - [ ] ¿Las CashSessions >24h se marcan como expiradas? (REGLA 13)
+- [ ] ¿El `useEffect` que guarda el `localStorage` del carrito está protegido contra inicializaciones estáticas usando un candado de `cartState.key`? (v4.6 Anti-Wipe)
 
 ---
 
@@ -810,6 +811,7 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `handleRecoverAccount` no sincronizaba `cartRef` | **Ticket V13000: artículos faltantes** — ARELY capturó items, VICTOR recuperó desde Pizarrón, auto-save envió carrito viejo de VICTOR sobreescribiendo items de ARELY | REGLA 14 v4.5: `cartRef.current = recovered` ANTES de `setCart()` |
 | `getTicketByAccountNum` usaba búsqueda fuzzy `ilike` | **Recuperación de ticket equivocado** — `ilike('%V1300%')` podía devolver V13000 o V13001 en vez de V1300 | REGLA 15 v4.5: Endpoint exacto `/tickets/by-account/{account_num}` |
 | `isActionRunningRef` nunca declarada | **Mutex bloqueado permanentemente** — ReferenceError silencioso en auto-heal del 409 dejaba `isRecoveringRef = true`, deshabilitando auto-save | v4.5: Referencia eliminada. El mutex se libera en `finally` con `releaseMutex()` |
+| `useCart.js` sin protección de llave de almacenamiento | **Borrado masivo de capturas (02/Mayo/2026)** — Micro-cortes de red causaron que cajeros presionaran F5. Al re-seleccionar terminal, `useEffect` escribía carrito vacío al localStorage antes de cargar los datos guardados, borrando las capturas de todos los cajeros afectados | REGLA 16 v4.6: Máquina de estados `cartState` con candado `if (cartState.key === storageKey)`. TTL de locks ajustado de 15 a 20 min |
 
 ---
 
@@ -900,13 +902,66 @@ async getTicketByAccountNum(accountNum) {
 }
 ```
 
+### ⚡ REGLA 16 — PROTECCIÓN ANTI-WIPE DE localStorage (v4.6)
+
+```
+⛔ PROHIBIDO: useState([]) + useEffect([cart, storageKey]) sin validar que la llave está sincronizada.
+⛔ PROHIBIDO: Confiar en la inicialización estática de useState cuando storageKey depende de una prop dinámica.
+✅ OBLIGATORIO: Máquina de estados cartState = { key, items } con candado lógico de escritura.
+✅ OBLIGATORIO: Cargar datos de la nueva llave ANTES de permitir escrituras al disco.
+```
+
+**¿Por qué?** Cuando `terminalId` cambia (usuario presiona F5 y re-selecciona terminal),
+`useState` no re-ejecuta su inicializador. El `useEffect` de guardado se dispara con la
+nueva `storageKey` pero el `cart` sigue vacío del estado anterior. Resultado: `[]` se
+escribe al localStorage de la terminal, **borrando la captura guardada**.
+
+**Código obligatorio en `useCart.js`:**
+```javascript
+// Máquina de estados: vincula la llave con los items
+const [cartState, setCartState] = useState(() => ({
+    key: storageKey,
+    items: JSON.parse(localStorage.getItem(storageKey) || '[]')
+}));
+
+// Cuando cambia la terminal, CARGAR datos antes de escribir
+useEffect(() => {
+    if (cartState.key === storageKey) return; // Ya sincronizado
+    const saved = localStorage.getItem(storageKey);
+    setCartState({ key: storageKey, items: saved ? JSON.parse(saved) : [] });
+}, [storageKey, cartState.key]);
+
+// CANDADO: Solo escribir si la llave está sincronizada
+useEffect(() => {
+    if (cartState.key !== storageKey) return; // 🛡️ BLOQUEADO
+    localStorage.setItem(storageKey, JSON.stringify(cartState.items));
+}, [cartState, storageKey]);
+```
+
+**Diagrama del problema vs la solución:**
+```
+❌ SIN ANTI-WIPE (v4.5 y anteriores):
+  F5 → selectedTerminal=null → storageKey="pos_cart_DEFAULT" → cart=[]
+  Click T1 → storageKey="pos_cart_T1"
+  useEffect dispara: localStorage.setItem("pos_cart_T1", "[]") 💀
+  → DATOS BORRADOS
+
+✅ CON ANTI-WIPE (v4.6):
+  F5 → selectedTerminal=null → storageKey="pos_cart_DEFAULT" → cartState.key="pos_cart_DEFAULT"
+  Click T1 → storageKey="pos_cart_T1"
+  useEffect de guardado: cartState.key("DEFAULT") ≠ storageKey("T1") → 🛡️ BLOQUEADO
+  useEffect de carga: lee localStorage("pos_cart_T1") → items=[...8 productos...]
+  cartState.key = "pos_cart_T1" → ahora coincide → escrituras permitidas ✅
+```
+
 ---
 
 > **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
 >
 > Cualquier IA o desarrollador que modifique el sistema DEBE leerlo primero
-> y verificar que sus cambios no violan NINGUNA de las 15 reglas.
+> y verificar que sus cambios no violan NINGUNA de las 16 reglas.
 >
-> **Las reglas 1, 2, 3, 9, 10, 12, 13, 14 y 15 son las más críticas.** Violarlas causa pérdida
-> silenciosa de datos en producción, modales falsos que interrumpen la operación,
+> **Las reglas 1, 2, 3, 9, 10, 12, 13, 14, 15 y 16 son las más críticas.** Violarlas causa pérdida
+> silenciosa de datos en producción, borrado de capturas tras reconexiones,
+> modales falsos que interrumpen la operación,
 > sesiones fantasma que bloquean terminales indefinidamente, o recuperación del ticket equivocado.
