@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
     ArrowLeft, Save, ChevronDown, ChevronRight, Plus, 
-    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered, Info, X, Download, Upload, Table, AlertTriangle, Loader2, Wand2
+    Trash2, Copy, GripVertical, Settings, Mic, ListOrdered, Info, X, Download, Upload, Table, AlertTriangle, Loader2
 } from 'lucide-react';
 
 const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
@@ -1488,7 +1488,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                             </div>
                                             
                                             {/* Actions Side */}
-                                            <div className="flex flex-col gap-2 justify-center">
+                                            <div className="flex flex-col gap-2 pt-1">
                                                 <button onClick={async () => { 
                                                     setSaveStatus('saving');
                                                     try {
@@ -1507,9 +1507,6 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                 </button>
                                                 <button onClick={() => setSubpasoToDelete({ pasoId: paso.id, subpasoId: sp.id, nombre: sp.nombre })} style={{ color: '#ef4444', borderColor: '#fca5a5' }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-red-50 transition-all shadow-sm" title="Eliminar">
                                                     <X size={18} />
-                                                </button>
-                                                <button onClick={onClose} style={{ color: activeTheme.text, borderColor: activeTheme.border }} className="p-2 border rounded-xl hover:scale-110 bg-white/50 hover:bg-white transition-all shadow-sm" title="Volver / Salir">
-                                                    <ArrowLeft size={16} />
                                                 </button>
                                             </div>
                                         </div>

@@ -4,18 +4,31 @@
 > CUALQUIER lógica relacionada con tickets, folios, carrito, cobros, auto-save,
 > pizarrón, auditoría, o impresión.
 >
-> **Este documento reemplaza las versiones 3.0 y 4.0.** La versión 4.0 introdujo
-> Zero-Loss pero causaba falsos positivos de "Conflicto de Versión" por auto-colisiones
-> del propio sistema (misma terminal disparando auto-save con versión stale).
-> La versión 4.3.1 cerró las últimas vulnerabilidades de race condition en la
-> sincronización de refs y habilitó bloqueo optimista total (incluido auto-save).
+> **Este documento reemplaza las versiones 3.0, 4.0 y 4.3.1.** La versión 4.5
+> cierra la última vulnerabilidad de pérdida de datos: `cartRef` no se sincronizaba
+> sincrónicamente en `handleRecoverAccount`, permitiendo que el auto-save sobreescribiera
+> el ticket recuperado con el carrito viejo. También reemplaza la búsqueda fuzzy
+> (`ilike`) de `getTicketByAccountNum` con un endpoint de búsqueda exacta.
 >
-> Última actualización: 2026-04-23
-> Versión: 4.3.1 — ANTI-RACE-CONDITION HARDENING
+> Última actualización: 2026-05-02
+> Versión: 4.6 — ANTI-WIPE (STORAGE KEY SYNC)
 
 ---
 
-## ⛔ INCIDENTE QUE ORIGINÓ ESTA VERSIÓN
+---
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.6 (OFFLINE DATA WIPE)
+
+**Fecha:** 02/Mayo/2026
+**Síntoma:** El sistema "expulsaba" a los usuarios de sus terminales y borraba la información de los tickets que habían capturado (fenómeno reportado en Terminal 2 por sospecha de un "mal cable LAN").
+
+**Causa raíz:** Un defecto de sincronización de estado en React (`useCart.js`). Cuando la red fallaba y el sistema se congelaba, el usuario presionaba `F5`. Al regresar y hacer clic en su terminal, el componente `useCart` se inicializaba con un carrito vacío `[]` y *antes* de cargar los datos de `localStorage`, disparaba el `useEffect` de guardado. El carrito vacío sobrescribía el ticket original en el disco local instantáneamente, y el mecanismo "anti-zombie" de la UI borraba también el folio.
+
+**Solución Implementada (Regla 16):**
+1. Implementación de una máquina de estado interna (`cartState`) que almacena explícitamente el `storageKey` junto con los artículos.
+2. Un candado lógico (`if (cartState.key === storageKey)`) en el `useEffect` de guardado prohíbe las operaciones de escritura en disco a menos que el estado ya haya sido sincronizado con la llave activa del terminal.
+
+## ⛔ INCIDENTE QUE ORIGINÓ ESTA VERSIÓN (v4.5)
 
 **Fecha:** 21/Abril/2026 ~7:19 PM
 **Ticket:** V11906 (#906)
@@ -68,6 +81,26 @@ Además, el auto-save enviaba `version` en TODAS las peticiones, activando la va
 
 ---
 
+## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.5 (CART-REF DESYNC)
+
+**Fecha:** 25/Abril/2026
+**Ticket:** V13000 (#000)
+**Síntoma:** ARELY capturó N productos en una terminal. Cuando VICTOR lo recuperó desde el Pizarrón en CAJA, el ticket impreso solo contenía 4 artículos por $31.00 (Bolsa Biodegradable, 2x Bolillo, 3x Telera, 1x Multi Coco Moka). Artículos faltantes.
+
+**Causa raíz (4 bugs interconectados):**
+1. **`cartRef` no sincronizada en `handleRecoverAccount`:** La función sincronizaba `accountNumRef`, `originalCapturerRef` y `ticketVersionRef` directamente (SYNC), pero `cartRef` solo se actualizaba vía `setCart()` → `useEffect` (ASYNC). Si el auto-save disparaba antes del useEffect, leía `cartRef.current` con el carrito **viejo** del cajero y sobreescribía los items del ticket.
+2. **`isActionRunningRef` no existía:** El bloque de auto-heal del 409 referenciaba `isActionRunningRef.current = false` pero esta variable nunca fue declarada. El `ReferenceError` silencioso dentro del `requestAnimationFrame` dejaba `isRecoveringRef = true` permanentemente, deshabilitando el auto-save.
+3. **`getTicketByAccountNum` usaba búsqueda fuzzy:** `ilike('%V1300%')` coincidía con V1300, V13000, V13001. El frontend tomaba `tickets[0]` que podía ser el ticket equivocado.
+4. **Auto-heal del 409 no limpiaba UI:** `setIsSendingToPizarron(false)` se saltaba porque el `return` prematuro evitaba el `finally` interno.
+
+**Solución Implementada (Reglas 14 y 15):**
+1. `cartRef.current = recovered` se sincroniza ANTES de `setCart()` en `handleRecoverAccount` y en el bloque de auto-heal.
+2. Referencia huérfana `isActionRunningRef` eliminada.
+3. Nuevo endpoint `/tickets/by-account/{account_num}` con búsqueda exacta (`==`, no `ilike`).
+4. `setIsSendingToPizarron(false)` agregado al bloque de auto-heal.
+
+---
+
 ## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.3 (TERMINAL OCCUPANCY HARDENING)
 
 **Fecha:** 23/Abril/2026
@@ -108,11 +141,12 @@ Además, el auto-save enviaba `version` en TODAS las peticiones, activando la va
 |-----------|---------|-----------------|
 | Terminal POS | `apps/pos/RetailVisionPOS.jsx` | Captura, carrito, cobro, auto-save, impresión |
 | Hook de Carrito | `apps/pos/hooks/useCart.js` | Estado + localStorage del carrito |
-| Servicio Frontend | `apps/pos/services/POSService.js` | HTTP client para API |
+| Servicio Frontend | `apps/pos/services/POSService.js` | HTTP client para API (v4.5: búsqueda exacta) |
 | Pizarrón | `apps/pos/OpenAccountsCorkboard.jsx` | Visualización de cuentas abiertas |
 | Checkout | `apps/pos/components/CheckoutScreen.jsx` | Pagos mixtos |
 | Auditoría | `apps/AuditoriaControlUI.jsx` | Consulta histórica |
-| Servicio Backend | `apps/api/modules/pos/service.py` | Lógica de negocio |
+| Servicio Backend | `apps/api/modules/pos/service.py` | Lógica de negocio (v4.5: get_ticket_by_account_num) |
+| Router Backend | `apps/api/modules/pos/router.py` | Endpoints FastAPI (v4.5: /tickets/by-account/) |
 | Modelos | `apps/api/modules/pos/models.py` | SQLAlchemy ORM |
 | Schemas | `apps/api/modules/pos/schemas.py` | Validación Pydantic |
 | Occupancy | `apps/api/modules/pos/occupancy.py` | Candados de terminal (v4.3: heartbeat con purga) |
@@ -169,38 +203,43 @@ items: cart.map(i => ({ product_id: i.id, quantity: i.quantity || 1 })),
 captured_by_id: originalCapturer?.id || currentUser?.id || null,
 ```
 
-### ⚡ REGLA 2 — AUTO-SAVE: DEPENDENCIAS COMPLETAS
+### ⚡ REGLA 2 — AUTO-SAVE: INTERVALO REAL, NO DEBOUNCE (v4.5)
 
 ```
 ⛔ PROHIBIDO: useEffect deps = [currentAccountNum, cart.length, showCheckout]
-✅ OBLIGATORIO: useEffect deps = [currentAccountNum, cart, showCheckout]
+⛔ PROHIBIDO: useEffect deps = [currentAccountNum, cart, showCheckout] ← CAUSA DEBOUNCE
+✅ OBLIGATORIO: useEffect deps = [currentAccountNum, showCheckout, showCollisionModal, refs]
+✅ OBLIGATORIO: Leer el callback de guardado desde un useRef (onSaveRef)
 ```
 
-**¿Por qué?** Si la dependencia es `cart.length` (un número), y el carrito viejo
-tiene 5 items y el carrito nuevo también tiene 5 items (pero DIFERENTES), React
-NO reinicia el useEffect. El timer viejo sigue corriendo con la versión vieja
-de `handleTicketAction` que tiene el carrito viejo en su closure.
+**¿Por qué se eliminó `cart` de las dependencias?** Incluir `cart` (el array completo)
+en las dependencias del useEffect REINICIA el temporizador de 15 segundos cada vez que
+se agrega un producto. Si un capturista escanea productos cada 10 segundos, el auto-save
+**NUNCA se ejecuta** porque el timer se destruye y se recrea antes de completar los 15s.
 
-Al usar `cart` (el array completo), React compara por referencia. Cada `setCart()`
-crea un nuevo array, por lo que el timer SIEMPRE se reinicia.
+**Incidente real:** ARELY capturó N artículos rápidamente. El auto-save nunca disparó.
+Al cambiar de cuenta, los artículos posteriores al guardado inicial se perdieron (V13000).
 
-**Además**, el auto-save DEBE respetar el flag `isRecoveringRef`:
+**¿Cómo se mantienen los datos frescos sin `cart` en las deps?** Mediante `useRef`:
 ```javascript
+const onSaveRef = useRef(onSave);
+useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+
 useEffect(() => {
-    if (!currentAccountNum || cart.length === 0 || showCheckout) return;
+    if (!currentAccountNum || showCheckout || showCollisionModal) return;
 
-    const autoSaveTimer = setInterval(() => {
-        if (isGeneratingFolioRef.current) return;
-        if (isRecoveringRef.current) return;  // ← OBLIGATORIO
-        if (!accountNumRef.current || cartRef.current.length === 0) return;
-        handleTicketAction('OPEN', null, false).catch(e => {
-            console.warn("Auto-save failed:", e);
-            setLastSaveStatus('failed');  // ← v4.0: feedback visual obligatorio
-        });
-    }, 15000);  // ← v4.0: reducido de 30s a 15s
+    const autoSaveTimer = setInterval(async () => {
+        if (refs.isGeneratingFolioRef.current) return;
+        if (refs.isRecoveringRef.current) return;
+        if (!refs.accountNumRef.current || refs.cartRef.current.length === 0) return;
+        
+        await onSaveRef.current();  // ⚡ Lee la versión más fresca del callback
+    }, 15000);
 
+    // ⛔ PROHIBIDO incluir 'cart' aquí
     return () => clearInterval(autoSaveTimer);
-}, [currentAccountNum, cart, showCheckout]);  // ← cart, NO cart.length
+}, [currentAccountNum, showCheckout, showCollisionModal, refs]);
+// ⚡ v4.5: `cart` y `onSave` ELIMINADOS — el timer es un INTERVALO REAL
 ```
 
 ### ⚡ REGLA 3 — RECUPERACIÓN DEL PIZARRÓN: PROTOCOLO ANTI-OVERWRITE
@@ -233,8 +272,9 @@ const handleRecoverAccount = (account) => {
     }));
 
     // 3. Mutar estado — SYNC REFS INMEDIATO antes de setState
-    //    ⚡ v4.3.1: requestAnimationFrame puede dispararse ANTES de los
-    //    useEffect que sincronizan refs → el auto-save leería refs stale.
+    //    ⚡ v4.5: TODAS las refs se sincronizan antes de los setState.
+    //    Incluye cartRef que antes se omitía, causando pérdida de datos (V13000).
+    cartRef.current = recovered;                                // ⚡ v4.5 SYNC inmediato
     setCart(recovered);
     accountNumRef.current = account.accountNum;              // SYNC inmediato
     setCurrentAccountNum(account.accountNum);
@@ -759,6 +799,7 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 - [ ] ¿El `heartbeat()` purga locks expirados y limpia locks del mismo usuario en otras terminales? (REGLA 13)
 - [ ] ¿El endpoint `/terminals/status` deduplica usuarios entre `terminal_locks` y `cash_sessions`? (REGLA 13)
 - [ ] ¿Las CashSessions >24h se marcan como expiradas? (REGLA 13)
+- [ ] ¿El `useEffect` que guarda el `localStorage` del carrito está protegido contra inicializaciones estáticas usando un candado de `cartState.key`? (v4.6 Anti-Wipe)
 
 ---
 
@@ -781,6 +822,9 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `generateNewAccountNum` no sincronizaba refs | **Folios huérfanos** — `handleTicketAction` leía `accountNumRef` vacío y generaba un segundo folio duplicado | v4.3.1: Sync inmediato de `accountNumRef` y `originalCapturerRef` antes de setState |
 | `handleRecoverAccount` no sincronizaba todas las refs | **409 falsos post-recuperación** — `requestAnimationFrame` se disparaba antes del `useEffect` sync, auto-save leía refs stale | v4.3.1: Sync inmediato de `accountNumRef`, `originalCapturerRef`, `ticketVersionRef` |
 | CashSession sin cerrar bloqueaba terminal permanentemente | **OMEGA aparecía en CAJA + T4/T6 simultáneamente** durante 2+ días. La sesión de caja #110 nunca se cerró y no tenía TTL, causando un candado fantasma permanente en la pantalla de selección | REGLA 13: TTL de 24h para CashSessions + deduplicación de usuarios + heartbeat con purga |
+| `handleRecoverAccount` no sincronizaba `cartRef` | **Ticket V13000: artículos faltantes** — ARELY capturó items, VICTOR recuperó desde Pizarrón, auto-save envió carrito viejo de VICTOR sobreescribiendo items de ARELY | REGLA 14 v4.5: `cartRef.current = recovered` ANTES de `setCart()` |
+| `getTicketByAccountNum` usaba búsqueda fuzzy `ilike` | **Recuperación de ticket equivocado** — `ilike('%V1300%')` podía devolver V13000 o V13001 en vez de V1300 | REGLA 15 v4.5: Endpoint exacto `/tickets/by-account/{account_num}` |
+| `isActionRunningRef` nunca declarada | **Mutex bloqueado permanentemente** — ReferenceError silencioso en auto-heal del 409 dejaba `isRecoveringRef = true`, deshabilitando auto-save | v4.5: Referencia eliminada. El mutex se libera en `finally` con `releaseMutex()` |
 
 ---
 
@@ -821,11 +865,63 @@ T=30s   ✅ Auto-save lee cartRef.current (que es [BOLSA para V11907])
 
 ---
 
+## REGLAS NUEVAS v4.5
+
+### ⚡ REGLA 14 — SYNC OBLIGATORIO DE `cartRef` EN TODA RECUPERACIÓN (v4.5)
+
+```
+⛔ PROHIBIDO: setCart(recovered) sin sincronizar cartRef primero.
+⛔ PROHIBIDO: Asumir que useEffect sincroniza cartRef antes del próximo auto-save.
+✅ OBLIGATORIO: cartRef.current = recovered ANTES de setCart(recovered).
+```
+
+**¿Por qué?** `setCart()` es asíncrono. El `useEffect(() => { cartRef.current = cart; }, [cart])` se ejecuta DESPUÉS del siguiente render. Si el auto-save dispara antes (cosa que pasa en <16ms en modo concurrente de React), lee `cartRef.current` con el carrito **viejo** del cajero y lo envía al servidor, que ejecuta `_sync_ticket_items()` eliminando los items que no están en el payload.
+
+**Código obligatorio en `handleRecoverAccount`:**
+```javascript
+cartRef.current = recovered;  // ⚡ v4.5 SYNC inmediato
+setCart(recovered);           // ASYNC para UI de React
+```
+
+**Código obligatorio en el bloque auto-heal del 409:**
+```javascript
+cartRef.current = recovered;  // ⚡ v4.5 SYNC inmediato
+setCart(recovered);
+setIsSendingToPizarron(false);  // Limpiar UI (el return salta el finally interno)
+```
+
+### ⚡ REGLA 15 — BÚSQUEDA EXACTA POR ACCOUNT_NUM (v4.5)
+
+```
+⛔ PROHIBIDO: Buscar tickets por account_num usando ilike('%search%') para recovery/auto-heal.
+✅ OBLIGATORIO: Usar endpoint /tickets/by-account/{account_num} con match exacto (==).
+```
+
+**¿Por qué?** `ilike('%V1300%')` coincide con V1300, V13000, V13001, V13002. El frontend tomaba `tickets[0]` (el más reciente), que podía ser un ticket **diferente** al buscado. La búsqueda exacta usa `WHERE account_num = 'V13000'` y solo devuelve el ticket correcto o 404.
+
+**Endpoint nuevo:**
+```
+GET /api/v1/pos/tickets/by-account/{account_num}
+→ Búsqueda exacta. Retorna ticket o HTTP 404.
+→ Usa selectinload() + _populate_flat_fields() (misma serialización).
+```
+
+**Frontend (POSService.js):**
+```javascript
+async getTicketByAccountNum(accountNum) {
+    const res = await fetch(`${API}/pos/tickets/by-account/${encodeURIComponent(accountNum)}`);
+    if (res.status === 404) return null;
+    return res.json();
+}
+```
+
+---
+
 > **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
 >
 > Cualquier IA o desarrollador que modifique el sistema DEBE leerlo primero
-> y verificar que sus cambios no violan NINGUNA de las 13 reglas.
+> y verificar que sus cambios no violan NINGUNA de las 15 reglas.
 >
-> **Las reglas 1, 2, 3, 9, 10, 12 y 13 son las más críticas.** Violarlas causa pérdida
+> **Las reglas 1, 2, 3, 9, 10, 12, 13, 14 y 15 son las más críticas.** Violarlas causa pérdida
 > silenciosa de datos en producción, modales falsos que interrumpen la operación,
-> o sesiones fantasma que bloquean terminales indefinidamente.
+> sesiones fantasma que bloquean terminales indefinidamente, o recuperación del ticket equivocado.
