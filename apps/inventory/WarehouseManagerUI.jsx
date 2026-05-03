@@ -41,7 +41,7 @@ const INITIAL_SUPPLIES = [
 ];
 
 const UNIT_OPTIONS = {
-    "Conteo": ["PZA", "DOCENA", "CAJA", "PAQUETE", "BOLSA", "BARRA", "PAR"],
+    "Conteo": ["PZA", "DOCENA", "CAJA", "PAQUETE", "BOLSA", "SUBBOLSA RECICLABLE", "SUBBOLSA DESECHABLE", "BARRA", "PAR"],
     "Masa": ["KG", "G", "MG", "LB", "OZ"],
     "Volumen": ["LT", "ML", "GAL", "OZ FL", "COPA"]
 };

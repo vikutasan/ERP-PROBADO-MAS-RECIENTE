@@ -1433,7 +1433,9 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                                                     <option style={{ color: '#000' }} value="L">L</option>
                                                                                                     <option style={{ color: '#000' }} value="PZA">PZA</option>
                                                                                                     <option style={{ color: '#000' }} value="BOLSA">BOLSA</option>
-                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA">SUBB</option>
+                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA">SUBBOLSA</option>
+                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA RECICLABLE">SUBBOLSA RECICLABLE</option>
+                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA DESECHABLE">SUBBOLSA DESECHABLE</option>
                                                                                                     <option style={{ color: '#000' }} value="BOTE">BOTE</option>
                                                                                                 </select>
                                                                                             </div>

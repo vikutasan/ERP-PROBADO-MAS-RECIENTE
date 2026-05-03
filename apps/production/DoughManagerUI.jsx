@@ -1408,6 +1408,8 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="CUBETA">CUBETA</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOLSA RECICLABLE">BOLSA RECICLABLE</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOLSA DESECHABLE">BOLSA DESECHABLE</option>
+                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="SUBBOLSA RECICLABLE">SUBBOLSA RECICLABLE</option>
+                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="SUBBOLSA DESECHABLE">SUBBOLSA DESECHABLE</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="COSTAL">COSTAL</option>
                                                                     </select>
                                                                 </div>
