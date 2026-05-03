@@ -27,7 +27,7 @@ import { cashService } from './services/cashService';
 import { INITIAL_CATEGORIES, getProductEmoji, terminals } from './utils/posConstants';
 import { generateTicketHTML } from './utils/ticketGenerator';
 
-export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
+export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }) => {
     // --- Estado ---
     const [selectedTerminal, setSelectedTerminal] = useState(null);
     const [showCorkboard, setShowCorkboard] = useState(false);
@@ -664,6 +664,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                 terminalStatuses={terminalStatuses}
                 setTerminalStatuses={setTerminalStatuses}
                 onTerminalSelected={setSelectedTerminal}
+                assignedTerminal={assignedTerminal}
             />
         );
     }
@@ -679,18 +680,22 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                     {/* IZQUIERDA: Terminal */}
                     <div className="flex-shrink-0">
                         <button onClick={async () => {
+                            const canSwitch = !assignedTerminal || currentUser?.role === 'ADMIN' || currentUser?.permissions?.access_any_terminal === 'full';
+                            if (!canSwitch) return;
                             try {
                                 await posService.unlockTerminal(selectedTerminal, currentUser?.id);
                             } catch(e) { console.error("Could not unlock terminal", e); }
                             setSelectedTerminal(null);
-                        }} className="bg-zinc-900/90 border border-white/5 px-6 py-2 rounded-xl flex items-center hover:bg-zinc-800 transition-all group shadow-2xl">
+                        }} className={`bg-zinc-900/90 border border-white/5 px-6 py-2 rounded-xl flex items-center transition-all group shadow-2xl ${assignedTerminal && currentUser?.role !== 'ADMIN' && currentUser?.permissions?.access_any_terminal !== 'full' ? 'cursor-default' : 'hover:bg-zinc-800'}`}>
                             <div className="text-left">
                                 <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">
                                     {selectedTerminal === 'CAJA' ? 'Caja Central' : `Terminal ${selectedTerminal}`}
                                 </p>
+                                {(!assignedTerminal || currentUser?.role === 'ADMIN' || currentUser?.permissions?.access_any_terminal === 'full') && (
                                 <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
                                     Cambiar Estación
                                 </p>
+                                )}
                                 <p className={`text-[9px] font-black uppercase tracking-widest leading-none mt-1 flex items-center gap-1 ${netStatus === 'good' ? 'text-green-400' : netStatus === 'slow' ? 'text-yellow-400 animate-pulse' : 'text-red-500 animate-pulse'}`}>
                                     <span className={`inline-block w-1.5 h-1.5 rounded-full ${netStatus === 'good' ? 'bg-green-400' : netStatus === 'slow' ? 'bg-yellow-400' : 'bg-red-500'}`}></span>
                                     {netStatus === 'good' ? `RED OK` : netStatus === 'slow' ? 'RED LENTA' : 'SIN RED'}

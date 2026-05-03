@@ -16,10 +16,12 @@ const API_BASE = (() => {
 const TERMINALS = ['T6', 'T5', 'T4', 'T3', 'T2', 'CAJA'];
 
 const STATUS_CONFIG = {
-    online:  { color: '#4ade80', bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.25)', label: 'EN LÍNEA',    icon: '●' },
-    slow:    { color: '#facc15', bg: 'rgba(250,204,21,0.08)',  border: 'rgba(250,204,21,0.25)',  label: 'RED LENTA',   icon: '◐' },
-    offline: { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.25)',   label: 'SIN CONEXIÓN',icon: '○' },
-    idle:    { color: '#555',    bg: 'rgba(85,85,85,0.08)',     border: 'rgba(85,85,85,0.25)',    label: 'INACTIVA',    icon: '○' },
+    online:    { color: '#4ade80', bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.25)', label: 'EN LÍNEA',         icon: '●' },
+    cash_open: { color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)', label: 'CAJA ABIERTA',     icon: '◐' },
+    stale:     { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.25)',   label: 'SESIÓN EXPIRADA', icon: '○' },
+    slow:      { color: '#facc15', bg: 'rgba(250,204,21,0.08)',  border: 'rgba(250,204,21,0.25)',  label: 'RED LENTA',       icon: '◐' },
+    offline:   { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.25)',   label: 'SIN CONEXIÓN',   icon: '○' },
+    idle:      { color: '#555',    bg: 'rgba(85,85,85,0.08)',     border: 'rgba(85,85,85,0.25)',    label: 'DISPONIBLE',     icon: '○' },
 };
 
 export const NetworkMonitorUI = () => {
@@ -66,11 +68,29 @@ export const NetworkMonitorUI = () => {
                 TERMINALS.forEach(tid => {
                     const info = data[tid];
                     const isOccupied = info && info.occupier_id;
+                    
+                    let termStatus = 'idle';
+                    if (isOccupied) {
+                        if (info.stale_session) {
+                            termStatus = 'stale';
+                        } else if (info.is_cash_register && info.operator_absent) {
+                            termStatus = 'cash_open';
+                        } else if (info.is_cash_register && !info.locked_at) {
+                            termStatus = 'cash_open';
+                        } else {
+                            // Verificar si el lock es reciente (últimos 25 min = TTL + margen)
+                            const lockAge = info.locked_at 
+                                ? (Date.now() - new Date(info.locked_at).getTime()) / 60000 
+                                : 999;
+                            termStatus = lockAge < 25 ? 'online' : 'cash_open';
+                        }
+                    }
+                    
                     newData[tid] = {
-                        status: isOccupied ? 'online' : 'idle',
+                        status: termStatus,
                         occupier: isOccupied ? info.occupier_name : null,
                         lockedAt: info?.locked_at || null,
-                        hasCash: info?.has_cash_session || false,
+                        hasCash: info?.is_cash_register || false,
                     };
 
                     // Detectar cambios de estado para el log

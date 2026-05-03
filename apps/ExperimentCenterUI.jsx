@@ -274,6 +274,7 @@ export const ExperimentCenterUI = () => {
                                     initialProducts={REAL_PRODUCTS}
                                     currentUser={{ id: userId, name: userName, role: userRole, permissions: userPermissions }}
                                     onForceLogout={() => setIsAuthenticated(false)}
+                                    assignedTerminal={new URLSearchParams(window.location.search).get('terminal')}
                                 />
                             </div>
                         )}

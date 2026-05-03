@@ -1,10 +1,139 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { terminals } from '../utils/posConstants';
 import { posService } from '../services/POSService';
 
-export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalStatuses, onTerminalSelected }) => {
+export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalStatuses, onTerminalSelected, assignedTerminal }) => {
     const [unlockingTerminal, setUnlockingTerminal] = useState(null);
     const [deniedModal, setDeniedModal] = useState(null);
+    const [showManager, setShowManager] = useState(false);
+
+    const userRole = (currentUser?.role || '').toUpperCase();
+    const isAdmin = userRole === 'ADMIN';
+    const isManager = userRole === 'MANAGER';
+    const canAccessAny = isAdmin || currentUser?.permissions?.access_any_terminal === 'full';
+    const canManage = isAdmin || isManager;
+
+    // Determinar si una terminal está habilitada para este usuario
+    const isTerminalEnabled = useCallback((terminalId) => {
+        if (!assignedTerminal) return true; // Sin asignación → todas disponibles
+        if (canAccessAny) return true;      // Con permiso → todas disponibles
+        return terminalId === assignedTerminal; // Solo la asignada
+    }, [assignedTerminal, canAccessAny]);
+
+    // Copiar URL al clipboard (compatible con HTTP)
+    const copyTerminalUrl = useCallback((terminalId) => {
+        const url = `http://${window.location.hostname}:${window.location.port}/?terminal=${terminalId}`;
+        const textarea = document.createElement('textarea');
+        textarea.value = url;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        setDeniedModal({ title: '✅ URL COPIADA', message: `URL de ${terminalId} copiada al portapapeles:\n\n${url}\n\nPega esta URL en el acceso directo de la máquina correspondiente.` });
+    }, []);
+
+    if (showManager) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center p-10 animate-in fade-in zoom-in-95 duration-700">
+                <div className="w-full max-w-4xl">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-10">
+                        <div>
+                            <h3 className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-2">Administración</h3>
+                            <h2 className="text-4xl font-black uppercase tracking-tighter italic">Gestor de <span className="text-white/20">Terminales</span></h2>
+                        </div>
+                        <button
+                            onClick={() => setShowManager(false)}
+                            className="px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 hover:border-orange-500 transition-all"
+                        >
+                            ← Volver
+                        </button>
+                    </div>
+
+                    {/* Tabla de terminales */}
+                    <div className="space-y-3">
+                        {terminals.map(t => {
+                            const url = `http://${window.location.hostname}:${window.location.port}/?terminal=${t.id}`;
+                            const status = terminalStatuses[t.id];
+                            const isOccupied = !!status?.occupier_id;
+                            
+                            return (
+                                <div key={t.id} className="flex items-center gap-4 p-5 rounded-[30px] bg-black/30 border border-white/5 hover:border-white/10 transition-all group">
+                                    {/* Icono */}
+                                    <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center shrink-0">
+                                        {t.icon.endsWith('.png') 
+                                            ? <img src={t.icon} alt={t.name} className="w-10 h-10 object-contain" /> 
+                                            : <span className="text-2xl">{t.icon}</span>
+                                        }
+                                    </div>
+
+                                    {/* Info */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-3">
+                                            <p className="text-lg font-black uppercase tracking-widest text-white">
+                                                {t.name === 'CAJA' ? 'CAJA' : t.name.split(' ')[1]}
+                                            </p>
+                                            <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">
+                                                {t.name === 'CAJA' ? 'Cajero Central' : 'Punto de Venta'}
+                                            </span>
+                                            {isOccupied && (
+                                                <span className="text-[8px] font-black uppercase tracking-wider bg-red-600/20 text-red-400 px-2 py-0.5 rounded-full border border-red-500/20">
+                                                    {status.occupier_name}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[10px] text-gray-600 font-mono mt-1 truncate">{url}</p>
+                                    </div>
+
+                                    {/* Copiar URL */}
+                                    <button
+                                        onClick={() => copyTerminalUrl(t.id)}
+                                        className="px-5 py-2.5 rounded-xl bg-orange-600/10 border border-orange-500/20 text-orange-400 text-[9px] font-black uppercase tracking-widest hover:bg-orange-600 hover:text-white transition-all shrink-0"
+                                    >
+                                        📋 Copiar URL
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Instrucciones */}
+                    <div className="mt-8 p-6 rounded-[30px] bg-orange-600/5 border border-orange-500/10">
+                        <h3 className="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-3">💡 Instrucciones</h3>
+                        <div className="grid grid-cols-3 gap-6 text-[10px] text-gray-400">
+                            <div>
+                                <p className="font-bold text-gray-300 mb-1">1. Copiar URL</p>
+                                <p>Oprime "Copiar URL" de la terminal deseada.</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-300 mb-1">2. Pegar en acceso directo</p>
+                                <p>En la máquina física, clic derecho al acceso directo → Propiedades → pega la URL.</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-300 mb-1">3. Listo</p>
+                                <p>El cajero solo verá su terminal disponible al abrir el sistema.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Modal reutilizado */}
+                {deniedModal && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
+                        <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,100,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
+                            <h2 className="text-xl font-black uppercase text-white mb-3 relative z-10">{deniedModal.title}</h2>
+                            <p className="text-xs font-bold text-gray-400 mb-6 relative z-10 whitespace-pre-wrap leading-relaxed">{deniedModal.message}</p>
+                            <button onClick={() => setDeniedModal(null)} className="w-full py-4 rounded-2xl bg-orange-600/20 hover:bg-orange-600 border border-orange-500/30 font-black uppercase text-[10px] tracking-widest text-white transition-all">
+                                ENTENDIDO
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="flex-1 flex flex-col items-center justify-center p-20 animate-in fade-in zoom-in-95 duration-700">
@@ -17,11 +146,14 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                     const isOccupied = terminalStatuses[t.id];
                     const isMine = isOccupied && isOccupied.occupier_id === currentUser?.id;
                     const lockedByOther = isOccupied && !isMine;
+                    const enabled = isTerminalEnabled(t.id);
 
                     return (
                         <button 
                             key={t.id} 
+                            disabled={!enabled && !lockedByOther}
                             onClick={async () => {
+                                if (!enabled) return;
                                 if (lockedByOther) {
                                     const userRole = (currentUser?.role || '').toString().trim().toUpperCase();
                                     const isAdmin = userRole === 'ADMIN';
@@ -82,9 +214,12 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                                 }
                             }} 
                             className={`group relative transition-all duration-500 rounded-[40px] border flex flex-col items-center shadow-2xl overflow-hidden
-                            ${lockedByOther 
-                                ? 'cursor-not-allowed border-red-500/60 bg-[#1a0808]' 
-                                : 'p-10 gap-6 bg-black/20 hover:bg-orange-600 border-white/5 hover:border-orange-400 hover:scale-110'}`}>
+                            ${!enabled && !lockedByOther
+                                ? 'opacity-25 cursor-not-allowed p-10 gap-6 bg-black/20 border-white/5 grayscale'
+                                : lockedByOther 
+                                    ? 'cursor-not-allowed border-red-500/60 bg-[#1a0808]' 
+                                    : `p-10 gap-6 bg-black/20 hover:bg-orange-600 border-white/5 hover:border-orange-400 hover:scale-110 ${enabled && assignedTerminal === t.id ? 'ring-2 ring-orange-500/50' : ''}`
+                            }`}>
                             
                             {lockedByOther ? (
                                 <div className="w-full flex flex-col relative">
@@ -126,6 +261,16 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                 })}
             </div>
             
+            {/* Botón Gestor de Terminales - Solo visible para Admin/Manager */}
+            {canManage && (
+                <button
+                    onClick={() => setShowManager(true)}
+                    className="mt-12 px-8 py-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-orange-400 hover:border-orange-500/30 hover:bg-orange-600/5 transition-all"
+                >
+                    ⚙ Gestor de Terminales
+                </button>
+            )}
+
             {unlockingTerminal && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
                     <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,100,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
