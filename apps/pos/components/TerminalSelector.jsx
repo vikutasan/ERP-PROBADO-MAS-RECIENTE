@@ -35,6 +35,16 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
     const canAccessAny = isAdmin || currentUser?.permissions?.access_any_terminal === 'full';
     const canManage = isAdmin || currentUser?.permissions?.access_terminal_manager === 'full';
 
+    // Estado de red por terminal (misma lógica que el Monitor de Red)
+    const getNetStatus = useCallback((tid) => {
+        const info = terminalStatuses[tid];
+        if (!info || !info.occupier_id) return { color: '#555', label: 'SIN CONEXIÓN' }; // gris
+        if (info.stale_session) return { color: '#ef4444', label: 'SESIÓN EXPIRADA' }; // rojo
+        const lockAge = info.locked_at ? (Date.now() - new Date(info.locked_at).getTime()) / 60000 : 999;
+        if (lockAge < 25) return { color: '#4ade80', label: 'EN LÍNEA' }; // verde
+        return { color: '#f59e0b', label: 'INACTIVA' }; // amarillo
+    }, [terminalStatuses]);
+
     useEffect(() => {
         loadTerminalsConfig().then(c => setTerminalList([...c]));
     }, []);
@@ -320,6 +330,13 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                                             <p className="text-white font-black text-base uppercase leading-tight">{isOccupied.occupier_name}</p>
                                         </div>
                                     </div>
+                                    {/* Circulito estado LAN — inferior derecha */}
+                                    {(() => { const ns = getNetStatus(t.id); return (
+                                        <div className="absolute bottom-2 right-3 flex items-center gap-1.5" title={ns.label}>
+                                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ns.color, boxShadow: `0 0 6px ${ns.color}` }}></span>
+                                            <span className="text-[7px] font-black uppercase tracking-wider" style={{ color: ns.color }}>{ns.label}</span>
+                                        </div>
+                                    ); })()}
                                 </div>
                             ) : (
                                 <>

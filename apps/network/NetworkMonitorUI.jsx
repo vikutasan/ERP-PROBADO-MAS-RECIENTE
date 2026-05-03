@@ -96,29 +96,78 @@ export const NetworkMonitorUI = () => {
                     // Detectar cambios de estado para el log
                     const prevStatus = prevStatusRef.current[tid]?.status;
                     if (prevStatus === 'online' && !isOccupied) {
-                        setEventLog(prev => [{
+                        const evt = {
                             time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                            date: now.toLocaleDateString('es-MX'),
                             terminal: tid,
                             type: 'disconnect',
                             message: `${prevStatusRef.current[tid]?.occupier || 'Usuario'} se desconectó`,
-                        }, ...prev].slice(0, 50));
+                            user: prevStatusRef.current[tid]?.occupier || 'Desconocido',
+                        };
+                        setEventLog(prev => [evt, ...prev].slice(0, 100));
+                        // Guardar en BD
+                        fetch(`${API_BASE}/network/incidents`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                terminal_id: tid,
+                                incident_type: 'disconnect',
+                                user_logged: prevStatusRef.current[tid]?.occupier || null,
+                                details: 'Terminal desconectada — sesión perdida'
+                            })
+                        }).catch(() => {});
                     } else if (prevStatus !== 'online' && isOccupied) {
-                        setEventLog(prev => [{
+                        const evt = {
                             time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                            date: now.toLocaleDateString('es-MX'),
                             terminal: tid,
                             type: 'connect',
                             message: `${info.occupier_name} se conectó`,
-                        }, ...prev].slice(0, 50));
+                            user: info.occupier_name,
+                        };
+                        setEventLog(prev => [evt, ...prev].slice(0, 100));
+                        fetch(`${API_BASE}/network/incidents`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                terminal_id: tid,
+                                incident_type: 'reconnect',
+                                user_logged: info.occupier_name,
+                                details: 'Terminal reconectada'
+                            })
+                        }).catch(() => {});
                     }
                 });
 
                 prevStatusRef.current = newData;
                 setTerminalData(newData);
-            } catch (e) { /* Network error — ignorar silenciosamente */ }
+            } catch (e) { /* Network error */ }
         };
         fetchTerminals();
         const id = setInterval(fetchTerminals, 5000);
         return () => clearInterval(id);
+    }, []);
+
+    // Cargar incidentes del día desde BD al montar
+    useEffect(() => {
+        const loadTodayIncidents = async () => {
+            try {
+                const today = new Date().toISOString().slice(0, 10);
+                const res = await fetch(`${API_BASE}/network/incidents?date=${today}&limit=100`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const mapped = data.map(inc => ({
+                    time: new Date(inc.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    date: new Date(inc.created_at).toLocaleDateString('es-MX'),
+                    terminal: inc.terminal_id,
+                    type: inc.incident_type === 'disconnect' ? 'disconnect' : 'connect',
+                    message: `${inc.user_logged || 'Sistema'} — ${inc.details || inc.incident_type}`,
+                    user: inc.user_logged || 'Sistema',
+                }));
+                setEventLog(mapped);
+            } catch (e) { console.warn('Could not load incidents:', e); }
+        };
+        loadTodayIncidents();
     }, []);
 
     const activeCount = Object.values(terminalData).filter(t => t.status === 'online').length;
@@ -154,8 +203,8 @@ export const NetworkMonitorUI = () => {
                         </p>
                     </div>
                     <div className="text-right">
-                        <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">Última actualización</p>
-                        <p className="text-lg font-black text-white tabular-nums">
+                        <p className="text-xs text-gray-600 font-bold uppercase tracking-widest">Última actualización</p>
+                        <p className="text-xl font-black text-white tabular-nums">
                             {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </p>
                     </div>
@@ -165,12 +214,12 @@ export const NetworkMonitorUI = () => {
                 <div className="grid grid-cols-4 gap-4">
                     {/* Server Status */}
                     <div className="rounded-2xl p-6 border" style={{ background: srvCfg.bg, borderColor: srvCfg.border }}>
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 mb-2">Servidor API</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Servidor API</p>
                         <div className="flex items-center gap-3">
                             <span className="text-3xl" style={{ color: srvCfg.color }}>{srvCfg.icon}</span>
                             <div>
-                                <p className="text-lg font-black uppercase" style={{ color: srvCfg.color }}>{srvCfg.label}</p>
-                                <p className="text-[10px] text-gray-500 font-bold tabular-nums">
+                                <p className="text-xl font-black uppercase" style={{ color: srvCfg.color }}>{srvCfg.label}</p>
+                                <p className="text-sm text-gray-500 font-bold tabular-nums">
                                     {serverLatency > 0 ? `${serverLatency}ms` : 'Sin respuesta'}
                                 </p>
                             </div>
@@ -179,13 +228,13 @@ export const NetworkMonitorUI = () => {
 
                     {/* Active Terminals */}
                     <div className="rounded-2xl p-6 border" style={{ background: 'rgba(74,222,128,0.05)', borderColor: 'rgba(74,222,128,0.15)' }}>
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 mb-2">Terminales Activas</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Terminales Activas</p>
                         <p className="text-4xl font-black text-green-400 tabular-nums">{activeCount}<span className="text-lg text-gray-600">/6</span></p>
                     </div>
 
                     {/* Latency */}
                     <div className="rounded-2xl p-6 border" style={{ background: 'rgba(99,102,241,0.05)', borderColor: 'rgba(99,102,241,0.15)' }}>
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 mb-2">Latencia Servidor</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Latencia Servidor</p>
                         <p className={`text-4xl font-black tabular-nums ${serverLatency > 500 ? 'text-yellow-400' : serverLatency > 0 ? 'text-indigo-400' : 'text-red-400'}`}>
                             {serverLatency > 0 ? `${serverLatency}` : '--'}<span className="text-lg text-gray-600">ms</span>
                         </p>
@@ -193,14 +242,14 @@ export const NetworkMonitorUI = () => {
 
                     {/* Uptime */}
                     <div className="rounded-2xl p-6 border" style={{ background: 'rgba(249,115,22,0.05)', borderColor: 'rgba(249,115,22,0.15)' }}>
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 mb-2">Sesión de Monitoreo</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Sesión de Monitoreo</p>
                         <p className="text-4xl font-black text-orange-400 tabular-nums">{formatUptime()}</p>
                     </div>
                 </div>
 
                 {/* Terminals Grid */}
                 <div>
-                    <h2 className="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Estado por Terminal</h2>
+                    <h2 className="text-base font-black uppercase tracking-widest text-gray-500 mb-4">Estado por Terminal</h2>
                     <div className="grid grid-cols-6 gap-3">
                         {TERMINALS.map(tid => {
                             const t = terminalData[tid] || { status: 'idle' };
@@ -212,7 +261,7 @@ export const NetworkMonitorUI = () => {
                                     style={{ background: cfg.bg, borderColor: cfg.border }}
                                 >
                                     <div className="flex items-center justify-between mb-3">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                        <span className="text-sm font-black uppercase tracking-widest text-gray-400">
                                             {tid === 'CAJA' ? 'Caja' : tid}
                                         </span>
                                         <span
@@ -220,16 +269,16 @@ export const NetworkMonitorUI = () => {
                                             style={{ backgroundColor: cfg.color }}
                                         />
                                     </div>
-                                    <p className="text-[10px] font-bold uppercase truncate" style={{ color: cfg.color }}>
+                                    <p className="text-sm font-bold uppercase truncate" style={{ color: cfg.color }}>
                                         {cfg.label}
                                     </p>
                                     {t.occupier && (
-                                        <p className="text-[9px] text-gray-400 font-bold mt-1 truncate" title={t.occupier}>
+                                        <p className="text-xs text-gray-400 font-bold mt-1 truncate" title={t.occupier}>
                                             👤 {t.occupier}
                                         </p>
                                     )}
                                     {t.hasCash && (
-                                        <p className="text-[9px] text-green-400 font-bold mt-0.5">💰 Caja Activa</p>
+                                        <p className="text-xs text-green-400 font-bold mt-0.5">💰 Caja Activa</p>
                                     )}
                                 </div>
                             );
@@ -240,13 +289,13 @@ export const NetworkMonitorUI = () => {
                 {/* Event Log */}
                 <div>
                     <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-sm font-black uppercase tracking-widest text-gray-500">
+                        <h2 className="text-base font-black uppercase tracking-widest text-gray-500">
                             Eventos de Sesión
                         </h2>
                         {eventLog.length > 0 && (
                             <button
                                 onClick={() => setEventLog([])}
-                                className="text-[9px] font-bold uppercase tracking-widest text-gray-600 hover:text-red-400 transition-colors"
+                                className="text-xs font-bold uppercase tracking-widest text-gray-600 hover:text-red-400 transition-colors"
                             >
                                 Limpiar
                             </button>
@@ -266,10 +315,10 @@ export const NetworkMonitorUI = () => {
                                         key={i}
                                         className="flex items-center gap-4 px-5 py-3 border-b border-gray-800/40 hover:bg-white/[0.02] transition-colors"
                                     >
-                                        <span className="text-[10px] font-bold text-gray-600 tabular-nums w-20 shrink-0">
+                                        <span className="text-sm font-bold text-gray-600 tabular-nums w-24 shrink-0">
                                             {evt.time}
                                         </span>
-                                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md w-10 text-center shrink-0 ${
+                                        <span className={`text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-md w-14 text-center shrink-0 ${
                                             evt.type === 'disconnect'
                                                 ? 'bg-red-500/10 text-red-400'
                                                 : 'bg-green-500/10 text-green-400'
@@ -281,7 +330,7 @@ export const NetworkMonitorUI = () => {
                                         }`}>
                                             {evt.type === 'disconnect' ? '⬇' : '⬆'}
                                         </span>
-                                        <span className="text-xs text-gray-400">
+                                        <span className="text-sm text-gray-400">
                                             {evt.message}
                                         </span>
                                     </div>
@@ -293,19 +342,19 @@ export const NetworkMonitorUI = () => {
 
                 {/* Network Tips */}
                 <div className="rounded-2xl p-6 border border-orange-500/10" style={{ background: 'rgba(249,115,22,0.03)' }}>
-                    <h3 className="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-3">💡 Diagnóstico Rápido</h3>
-                    <div className="grid grid-cols-3 gap-4 text-[10px] text-gray-400">
+                    <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 mb-3">💡 Diagnóstico Rápido</h3>
+                    <div className="grid grid-cols-3 gap-6 text-sm text-gray-400">
                         <div>
                             <p className="font-bold text-gray-300 mb-1">Latencia Normal (LAN)</p>
-                            <p>&lt; 10ms — Si es mayor, revisa cables y switch.</p>
+                            <p>Menor a 50ms es normal. Mayor a 100ms indica problema de red o cables.</p>
                         </div>
                         <div>
                             <p className="font-bold text-gray-300 mb-1">Desconexiones Frecuentes</p>
-                            <p>Revisa conectores RJ-45 y UPS del switch.</p>
+                            <p>Revisa conectores RJ-45, cables de red y que el switch tenga energía.</p>
                         </div>
                         <div>
                             <p className="font-bold text-gray-300 mb-1">Servidor Sin Respuesta</p>
-                            <p>Verificar que Docker Desktop esté corriendo.</p>
+                            <p>Verificar que Docker Desktop esté corriendo en el servidor.</p>
                         </div>
                     </div>
                 </div>
