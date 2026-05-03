@@ -25,6 +25,7 @@ import { WarehouseManagerUI } from './inventory/WarehouseManagerUI';
 import { PurchaseManagerUI } from './inventory/PurchaseManagerUI';
 import { AuditoriaUI as AuditoriaControlUI } from './AuditoriaControlUI';
 import { SystemSettingsUI } from './settings/SystemSettingsUI';
+import { NetworkMonitorUI } from './network/NetworkMonitorUI';
 import REAL_PRODUCTS from '../importar_productos_AQUI.json';
 
 /**
@@ -104,6 +105,7 @@ export const ExperimentCenterUI = () => {
         { id: 'seguridad_acceso', name: 'Seguridad y Acceso', color: 'bg-indigo-900', icon: '🔑', access: ['ADMIN', 'MANAGER'] },
         { id: 'auditoria', name: 'Auditoría y Control', color: 'bg-slate-900', icon: '📋', access: ['ADMIN', 'MANAGER'] },
         { id: 'settings', name: 'Ajustes del Sistema', color: 'bg-red-900', icon: '⚙️', access: ['ADMIN'] },
+        { id: 'network_monitor', name: 'Monitoreo de Red', color: 'bg-cyan-900', icon: '📡', access: ['ADMIN', 'MANAGER'] },
     ];
 
 
@@ -300,6 +302,7 @@ export const ExperimentCenterUI = () => {
                         )}
                         {activeModule === 'auditoria' && <AuditoriaControlUI />}
                         {activeModule === 'settings' && <SystemSettingsUI />}
+                        {activeModule === 'network_monitor' && <NetworkMonitorUI />}
                     </div>
 
                 </div>

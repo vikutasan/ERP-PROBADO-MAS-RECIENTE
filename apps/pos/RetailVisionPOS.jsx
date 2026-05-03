@@ -7,6 +7,7 @@ import { useTerminalLocking } from './hooks/useTerminalLocking';
 import { useBeforeUnload } from './hooks/useBeforeUnload';
 import { useBarcodeScanner } from './hooks/useBarcodeScanner';
 import { useAutoSave } from './hooks/useAutoSave';
+import { useNetworkHealth } from './hooks/useNetworkHealth';
 import { CONFIG } from './config';
 
 // Sub-componentes
@@ -60,6 +61,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
 
     // --- Estado de Ocupación de Terminales (Custom Hook) ---
     const { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal } = useTerminalLocking(selectedTerminal, currentUser);
+    const { status: netStatus, latency: netLatency } = useNetworkHealth(15000);
 
     // --- Estado del Gestor de Caja ---
     const [isCashEnabled, setIsCashEnabled] = useState(false);
@@ -688,6 +690,11 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout }) => {
                                 </p>
                                 <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
                                     Cambiar Estación
+                                </p>
+                                <p className={`text-[9px] font-black uppercase tracking-widest leading-none mt-1 flex items-center gap-1 ${netStatus === 'good' ? 'text-green-400' : netStatus === 'slow' ? 'text-yellow-400 animate-pulse' : 'text-red-500 animate-pulse'}`}>
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${netStatus === 'good' ? 'bg-green-400' : netStatus === 'slow' ? 'bg-yellow-400' : 'bg-red-500'}`}></span>
+                                    {netStatus === 'good' ? `RED OK` : netStatus === 'slow' ? 'RED LENTA' : 'SIN RED'}
+                                    {netStatus === 'good' && netLatency > 0 ? ` ${netLatency}ms` : ''}
                                 </p>
                             </div>
                         </button>
