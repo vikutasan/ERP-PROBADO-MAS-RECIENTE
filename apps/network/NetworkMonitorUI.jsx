@@ -29,6 +29,9 @@ export const NetworkMonitorUI = () => {
     const [serverStatus, setServerStatus] = useState('offline');
     const [terminalData, setTerminalData] = useState({});
     const [eventLog, setEventLog] = useState([]);
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+    const [incidentSummary, setIncidentSummary] = useState({});
+    const [showInfoModal, setShowInfoModal] = useState(false);
     const [uptimeStart, setUptimeStart] = useState(null);
     const prevStatusRef = useRef({});
 
@@ -148,27 +151,52 @@ export const NetworkMonitorUI = () => {
         return () => clearInterval(id);
     }, []);
 
-    // Cargar incidentes del día desde BD al montar
+    // Cargar incidentes por fecha desde BD
+    const loadIncidents = async (date) => {
+        try {
+            const res = await fetch(`${API_BASE}/network/incidents?date=${date}&limit=200`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Mapear eventos base
+            const mapped = data.map(inc => ({
+                time: new Date(inc.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                timestamp: new Date(inc.created_at).getTime(),
+                terminal: inc.terminal_id,
+                rawType: inc.incident_type,
+                type: inc.incident_type === 'disconnect' ? 'disconnect' : 'connect',
+                message: inc.details || inc.incident_type,
+                user: inc.user_logged || 'Sistema',
+            }));
+
+            // Clasificar desconexiones: normal (reconexión rápida <2min) vs sospechosa
+            const classified = mapped.map((evt, idx) => {
+                if (evt.rawType !== 'disconnect') return { ...evt, severity: 'normal' };
+                // Buscar si hubo reconexión en la misma terminal dentro de 2 min
+                // Los eventos vienen DESC, así que la reconexión más reciente está ANTES (índice menor)
+                const reconnect = mapped.find((e, j) => 
+                    j < idx && e.terminal === evt.terminal && e.rawType === 'reconnect' &&
+                    Math.abs(e.timestamp - evt.timestamp) < 120000
+                );
+                return { ...evt, severity: reconnect ? 'normal' : 'suspicious' };
+            });
+
+            setEventLog(classified);
+
+            // Calcular resumen solo con desconexiones sospechosas
+            const summary = {};
+            classified.forEach(evt => {
+                if (evt.rawType === 'disconnect' && evt.severity === 'suspicious') {
+                    summary[evt.terminal] = (summary[evt.terminal] || 0) + 1;
+                }
+            });
+            setIncidentSummary(summary);
+        } catch (e) { console.warn('Could not load incidents:', e); }
+    };
+
     useEffect(() => {
-        const loadTodayIncidents = async () => {
-            try {
-                const today = new Date().toISOString().slice(0, 10);
-                const res = await fetch(`${API_BASE}/network/incidents?date=${today}&limit=100`);
-                if (!res.ok) return;
-                const data = await res.json();
-                const mapped = data.map(inc => ({
-                    time: new Date(inc.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                    date: new Date(inc.created_at).toLocaleDateString('es-MX'),
-                    terminal: inc.terminal_id,
-                    type: inc.incident_type === 'disconnect' ? 'disconnect' : 'connect',
-                    message: `${inc.user_logged || 'Sistema'} — ${inc.details || inc.incident_type}`,
-                    user: inc.user_logged || 'Sistema',
-                }));
-                setEventLog(mapped);
-            } catch (e) { console.warn('Could not load incidents:', e); }
-        };
-        loadTodayIncidents();
-    }, []);
+        loadIncidents(selectedDate);
+    }, [selectedDate]);
 
     const activeCount = Object.values(terminalData).filter(t => t.status === 'online').length;
     const srvCfg = STATUS_CONFIG[serverStatus];
@@ -193,25 +221,17 @@ export const NetworkMonitorUI = () => {
             <div className="max-w-7xl mx-auto p-10 space-y-8">
 
                 {/* Header */}
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-4xl font-black uppercase tracking-tight text-white">
-                            Monitoreo de Red
-                        </h1>
-                        <p className="text-sm text-gray-500 font-medium mt-1">
-                            Estado en tiempo real de la infraestructura LAN
-                        </p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-xs text-gray-600 font-bold uppercase tracking-widest">Última actualización</p>
-                        <p className="text-xl font-black text-white tabular-nums">
-                            {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </p>
-                    </div>
+                <div>
+                    <h1 className="text-4xl font-black uppercase tracking-tight text-white">
+                        Monitoreo de Red
+                    </h1>
+                    <p className="text-sm text-gray-500 font-medium mt-1">
+                        Estado en tiempo real de la infraestructura LAN
+                    </p>
                 </div>
 
                 {/* KPIs Row */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                     {/* Server Status */}
                     <div className="rounded-2xl p-6 border" style={{ background: srvCfg.bg, borderColor: srvCfg.border }}>
                         <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Servidor API</p>
@@ -234,48 +254,56 @@ export const NetworkMonitorUI = () => {
 
                     {/* Latency */}
                     <div className="rounded-2xl p-6 border" style={{ background: 'rgba(99,102,241,0.05)', borderColor: 'rgba(99,102,241,0.15)' }}>
-                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Latencia Servidor</p>
+                        <div className="flex items-center gap-2 mb-2">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Latencia Servidor</p>
+                            <button onClick={() => setShowInfoModal(true)} className="w-5 h-5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-[10px] font-black hover:bg-indigo-500 hover:text-white transition-all" title="¿Qué significa?">i</button>
+                        </div>
                         <p className={`text-4xl font-black tabular-nums ${serverLatency > 500 ? 'text-yellow-400' : serverLatency > 0 ? 'text-indigo-400' : 'text-red-400'}`}>
                             {serverLatency > 0 ? `${serverLatency}` : '--'}<span className="text-lg text-gray-600">ms</span>
                         </p>
                     </div>
-
-                    {/* Uptime */}
-                    <div className="rounded-2xl p-6 border" style={{ background: 'rgba(249,115,22,0.05)', borderColor: 'rgba(249,115,22,0.15)' }}>
-                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Sesión de Monitoreo</p>
-                        <p className="text-4xl font-black text-orange-400 tabular-nums">{formatUptime()}</p>
-                    </div>
                 </div>
 
-                {/* Terminals Grid */}
+                {/* Terminals Grid + Per-terminal incident log */}
                 <div>
-                    <h2 className="text-base font-black uppercase tracking-widest text-gray-500 mb-4">Estado por Terminal</h2>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-base font-black uppercase tracking-widest text-gray-500">Estado por Terminal</h2>
+                        <div className="flex items-center gap-4">
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="bg-black/40 border border-gray-700 rounded-xl px-3 py-1.5 text-sm text-white font-bold focus:border-orange-500 outline-none"
+                            />
+                            {selectedDate !== new Date().toISOString().slice(0, 10) && (
+                                <button onClick={() => setSelectedDate(new Date().toISOString().slice(0, 10))}
+                                    className="text-xs font-bold text-orange-400 hover:text-orange-300 uppercase tracking-widest">
+                                    Hoy
+                                </button>
+                            )}
+                            <span className="text-sm font-bold text-gray-600">
+                                {eventLog.length} eventos
+                            </span>
+                        </div>
+                    </div>
+                    {/* Row 1: Status cards */}
                     <div className="grid grid-cols-6 gap-3">
                         {TERMINALS.map(tid => {
                             const t = terminalData[tid] || { status: 'idle' };
                             const cfg = STATUS_CONFIG[t.status];
                             return (
-                                <div
-                                    key={tid}
-                                    className="rounded-2xl p-5 border transition-all duration-500"
-                                    style={{ background: cfg.bg, borderColor: cfg.border }}
-                                >
+                                <div key={tid} className="rounded-2xl p-5 border transition-all duration-500 h-[130px]"
+                                    style={{ background: cfg.bg, borderColor: cfg.border }}>
                                     <div className="flex items-center justify-between mb-3">
                                         <span className="text-sm font-black uppercase tracking-widest text-gray-400">
                                             {tid === 'CAJA' ? 'Caja' : tid}
                                         </span>
-                                        <span
-                                            className={`w-3 h-3 rounded-full ${t.status === 'online' ? 'animate-pulse' : ''}`}
-                                            style={{ backgroundColor: cfg.color }}
-                                        />
+                                        <span className={`w-3 h-3 rounded-full ${t.status === 'online' ? 'animate-pulse' : ''}`}
+                                            style={{ backgroundColor: cfg.color }} />
                                     </div>
-                                    <p className="text-sm font-bold uppercase truncate" style={{ color: cfg.color }}>
-                                        {cfg.label}
-                                    </p>
+                                    <p className="text-sm font-bold uppercase truncate" style={{ color: cfg.color }}>{cfg.label}</p>
                                     {t.occupier && (
-                                        <p className="text-xs text-gray-400 font-bold mt-1 truncate" title={t.occupier}>
-                                            👤 {t.occupier}
-                                        </p>
+                                        <p className="text-xs text-gray-400 font-bold mt-1 truncate" title={t.occupier}>👤 {t.occupier}</p>
                                     )}
                                     {t.hasCash && (
                                         <p className="text-xs text-green-400 font-bold mt-0.5">💰 Caja Activa</p>
@@ -284,80 +312,97 @@ export const NetworkMonitorUI = () => {
                             );
                         })}
                     </div>
-                </div>
 
-                {/* Event Log */}
-                <div>
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-base font-black uppercase tracking-widest text-gray-500">
-                            Eventos de Sesión
-                        </h2>
-                        {eventLog.length > 0 && (
-                            <button
-                                onClick={() => setEventLog([])}
-                                className="text-xs font-bold uppercase tracking-widest text-gray-600 hover:text-red-400 transition-colors"
-                            >
-                                Limpiar
-                            </button>
-                        )}
+                    {/* Row 2: Incident counters */}
+                    <div className="grid grid-cols-6 gap-3 mt-2">
+                        {TERMINALS.map(tid => {
+                            const totalDisc = incidentSummary[tid] || 0;
+                            return (
+                                <div key={tid} className={`rounded-xl px-3 py-2 border text-center ${
+                                    totalDisc > 5 ? 'border-red-500/30 bg-red-500/5' : totalDisc > 0 ? 'border-red-500/20 bg-red-500/5' : 'border-gray-800/30 bg-black/20'
+                                }`}>
+                                    <span className={`text-lg font-black ${totalDisc > 5 ? 'text-red-400' : totalDisc > 0 ? 'text-red-400' : 'text-gray-700'}`}>
+                                        {totalDisc}
+                                    </span>
+                                    <span className="text-[9px] text-gray-600 font-bold ml-1">fallas</span>
+                                </div>
+                            );
+                        })}
                     </div>
 
-                    <div className="rounded-2xl border border-gray-800/60 overflow-hidden" style={{ background: 'rgba(0,0,0,0.3)' }}>
-                        {eventLog.length === 0 ? (
-                            <div className="p-10 text-center">
-                                <p className="text-gray-600 text-sm font-bold">Sin eventos registrados</p>
-                                <p className="text-gray-700 text-xs mt-1">Las conexiones y desconexiones aparecerán aquí</p>
+                    {/* Row 3: Per-terminal event lists */}
+                    <div className="grid grid-cols-6 gap-3 mt-2">
+                        {TERMINALS.map(tid => {
+                            const termEvents = eventLog.filter(e => e.terminal === tid);
+                            return (
+                                <div key={tid} className="rounded-xl border border-gray-800/40 overflow-hidden h-[200px]" style={{ background: 'rgba(0,0,0,0.25)' }}>
+                                    {termEvents.length === 0 ? (
+                                        <div className="h-full flex items-center justify-center">
+                                            <p className="text-[10px] text-gray-700 font-bold">Sin incidentes</p>
+                                        </div>
+                                    ) : (
+                                        <div className="h-full overflow-y-auto custom-scrollbar">
+                                            {termEvents.map((evt, i) => (
+                                                <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-gray-800/30 hover:bg-white/[0.02]">
+                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                                        evt.type === 'connect' ? 'bg-green-400' 
+                                                        : evt.severity === 'suspicious' ? 'bg-red-400' 
+                                                        : 'bg-blue-400'
+                                                    }`}></span>
+                                                    <span className="text-[11px] font-bold text-gray-500 tabular-nums shrink-0">{evt.time}</span>
+                                                    <span className="text-[11px] font-bold text-orange-400 truncate">{evt.user}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Modal de información */}
+                {showInfoModal && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100]">
+                        <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] max-w-lg w-full relative">
+                            <h2 className="text-xl font-black uppercase text-indigo-400 mb-6">💡 Guía de Diagnóstico de Red</h2>
+                            <div className="space-y-5">
+                                <div className="border-l-4 border-green-500 pl-4">
+                                    <p className="text-sm font-black text-green-400 mb-1">Latencia menor a 50ms</p>
+                                    <p className="text-sm text-gray-400">Conexión normal. Todo funciona correctamente.</p>
+                                </div>
+                                <div className="border-l-4 border-yellow-500 pl-4">
+                                    <p className="text-sm font-black text-yellow-400 mb-1">Latencia entre 50ms y 100ms</p>
+                                    <p className="text-sm text-gray-400">Red lenta. Puede haber mucho tráfico o cables en mal estado.</p>
+                                </div>
+                                <div className="border-l-4 border-red-500 pl-4">
+                                    <p className="text-sm font-black text-red-400 mb-1">Latencia mayor a 100ms o sin respuesta</p>
+                                    <p className="text-sm text-gray-400">Problema serio. Revisa cables RJ-45, switch, y que Docker Desktop esté corriendo.</p>
+                                </div>
+                                <div className="border-l-4 border-orange-500 pl-4">
+                                    <p className="text-sm font-black text-orange-400 mb-1">Desconexiones frecuentes</p>
+                                    <p className="text-sm text-gray-400">Revisa conectores RJ-45, cables de red, y que el switch tenga energía y UPS.</p>
+                                </div>
                             </div>
-                        ) : (
-                            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-                                {eventLog.map((evt, i) => (
-                                    <div
-                                        key={i}
-                                        className="flex items-center gap-4 px-5 py-3 border-b border-gray-800/40 hover:bg-white/[0.02] transition-colors"
-                                    >
-                                        <span className="text-sm font-bold text-gray-600 tabular-nums w-24 shrink-0">
-                                            {evt.time}
-                                        </span>
-                                        <span className={`text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-md w-14 text-center shrink-0 ${
-                                            evt.type === 'disconnect'
-                                                ? 'bg-red-500/10 text-red-400'
-                                                : 'bg-green-500/10 text-green-400'
-                                        }`}>
-                                            {evt.terminal}
-                                        </span>
-                                        <span className={`text-xs font-bold ${
-                                            evt.type === 'disconnect' ? 'text-red-400' : 'text-green-400'
-                                        }`}>
-                                            {evt.type === 'disconnect' ? '⬇' : '⬆'}
-                                        </span>
-                                        <span className="text-sm text-gray-400">
-                                            {evt.message}
-                                        </span>
-                                    </div>
-                                ))}
+                            <h3 className="text-base font-black uppercase text-gray-400 mt-6 mb-4">Colores del Historial</h3>
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-green-400 shrink-0"></span>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-green-400">Verde</span> — Conexión. El usuario entró a la terminal.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-blue-400 shrink-0"></span>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-blue-400">Azul</span> — Desconexión normal. El usuario salió y volvió a entrar rápido (cambio de terminal, recarga de página). No es falla.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-red-400 shrink-0"></span>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-red-400">Rojo</span> — Desconexión sospechosa. No hubo reconexión en 2 minutos. Posible falla de cable LAN o red. Estas SÍ cuentan como fallas.</p>
+                                </div>
                             </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Network Tips */}
-                <div className="rounded-2xl p-6 border border-orange-500/10" style={{ background: 'rgba(249,115,22,0.03)' }}>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 mb-3">💡 Diagnóstico Rápido</h3>
-                    <div className="grid grid-cols-3 gap-6 text-sm text-gray-400">
-                        <div>
-                            <p className="font-bold text-gray-300 mb-1">Latencia Normal (LAN)</p>
-                            <p>Menor a 50ms es normal. Mayor a 100ms indica problema de red o cables.</p>
-                        </div>
-                        <div>
-                            <p className="font-bold text-gray-300 mb-1">Desconexiones Frecuentes</p>
-                            <p>Revisa conectores RJ-45, cables de red y que el switch tenga energía.</p>
-                        </div>
-                        <div>
-                            <p className="font-bold text-gray-300 mb-1">Servidor Sin Respuesta</p>
-                            <p>Verificar que Docker Desktop esté corriendo en el servidor.</p>
+                            <button onClick={() => setShowInfoModal(false)} className="mt-6 w-full py-3 rounded-2xl bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/30 font-black uppercase text-[10px] tracking-widest text-white transition-all">ENTENDIDO</button>
                         </div>
                     </div>
-                </div>
+                )}
 
             </div>
         </div>
