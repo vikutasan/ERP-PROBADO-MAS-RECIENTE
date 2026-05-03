@@ -207,12 +207,19 @@ export const ExperimentCenterUI = () => {
                     </div>
                 </div>
 
-                <button
-                    onClick={() => setIsAuthenticated(false)}
-                    className="w-full p-4 mt-4 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:text-red-500 transition-colors flex items-center justify-center gap-2"
-                >
-                    {isSidebarCollapsed ? '✖' : '✖ Cerrar Sesión'}
-                </button>
+                <div className="mt-4 px-4 pb-4">
+                    <button
+                        onClick={() => setIsAuthenticated(false)}
+                        className={`w-full p-4 font-black uppercase tracking-widest transition-all rounded-2xl flex items-center justify-center gap-2 border 
+                            ${isSidebarCollapsed 
+                                ? 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white text-lg' 
+                                : 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500 hover:text-white hover:border-red-500 text-[11px] shadow-[0_0_15px_rgba(239,68,68,0.15)] hover:shadow-[0_0_25px_rgba(239,68,68,0.4)]'
+                            }`}
+                        title="Cerrar sesión correctamente"
+                    >
+                        {isSidebarCollapsed ? '🚪' : '🚪 SALIR DEL SISTEMA'}
+                    </button>
+                </div>
             </aside>
 
             {/* Area de Experiencia */}

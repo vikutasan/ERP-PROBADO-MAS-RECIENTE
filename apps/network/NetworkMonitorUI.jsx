@@ -256,16 +256,25 @@ export const NetworkMonitorUI = () => {
                         <p className="text-4xl font-black text-green-400 tabular-nums">{activeCount}<span className="text-lg text-gray-600">/6</span></p>
                     </div>
 
-                    {/* Latency */}
-                    <div className="rounded-2xl p-6 border" style={{ background: 'rgba(99,102,241,0.05)', borderColor: 'rgba(99,102,241,0.15)' }}>
-                        <div className="flex items-center gap-2 mb-2">
-                            <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Latencia Servidor</p>
-                            <button onClick={() => setShowInfoModal(true)} className="w-5 h-5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-[10px] font-black hover:bg-indigo-500 hover:text-white transition-all" title="¿Qué significa?">i</button>
-                        </div>
-                        <p className={`text-4xl font-black tabular-nums ${serverLatency > 500 ? 'text-yellow-400' : serverLatency > 0 ? 'text-indigo-400' : 'text-red-400'}`}>
-                            {serverLatency > 0 ? `${serverLatency}` : '--'}<span className="text-lg text-gray-600">ms</span>
-                        </p>
-                    </div>
+                    {/* Latency — color matches diagnostic guide */}
+                    {(() => {
+                        const lc = serverLatency > 100 || serverLatency <= 0 
+                            ? { color: '#f87171', bg: 'rgba(248,113,113,0.05)', border: 'rgba(248,113,113,0.2)' }
+                            : serverLatency > 50 
+                            ? { color: '#facc15', bg: 'rgba(250,204,21,0.05)', border: 'rgba(250,204,21,0.2)' }
+                            : { color: '#4ade80', bg: 'rgba(74,222,128,0.05)', border: 'rgba(74,222,128,0.2)' };
+                        return (
+                            <div className="rounded-2xl p-6 border transition-all duration-500" style={{ background: lc.bg, borderColor: lc.border }}>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Latencia Servidor</p>
+                                    <button onClick={() => setShowInfoModal(true)} className="w-5 h-5 rounded-full border text-[10px] font-black hover:text-white transition-all" style={{ background: `${lc.color}20`, borderColor: `${lc.color}50`, color: lc.color }}>i</button>
+                                </div>
+                                <p className="text-4xl font-black tabular-nums" style={{ color: lc.color }}>
+                                    {serverLatency > 0 ? `${serverLatency}` : '--'}<span className="text-lg text-gray-600">ms</span>
+                                </p>
+                            </div>
+                        );
+                    })()}
                 </div>
 
                 {/* Terminals Grid + Per-terminal incident log */}
@@ -370,22 +379,19 @@ export const NetworkMonitorUI = () => {
                     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100]">
                         <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] max-w-lg w-full relative">
                             <h2 className="text-xl font-black uppercase text-indigo-400 mb-6">💡 Guía de Diagnóstico de Red</h2>
-                            <div className="space-y-5">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Color del KPI "Latencia Servidor"</h3>
+                            <div className="space-y-4 mb-6">
                                 <div className="border-l-4 border-green-500 pl-4">
-                                    <p className="text-sm font-black text-green-400 mb-1">Latencia menor a 50ms</p>
+                                    <p className="text-sm font-black text-green-400 mb-1">Verde — Menor a 50ms</p>
                                     <p className="text-sm text-gray-400">Conexión normal. Todo funciona correctamente.</p>
                                 </div>
                                 <div className="border-l-4 border-yellow-500 pl-4">
-                                    <p className="text-sm font-black text-yellow-400 mb-1">Latencia entre 50ms y 100ms</p>
+                                    <p className="text-sm font-black text-yellow-400 mb-1">Amarillo — Entre 50ms y 100ms</p>
                                     <p className="text-sm text-gray-400">Red lenta. Puede haber mucho tráfico o cables en mal estado.</p>
                                 </div>
                                 <div className="border-l-4 border-red-500 pl-4">
-                                    <p className="text-sm font-black text-red-400 mb-1">Latencia mayor a 100ms o sin respuesta</p>
+                                    <p className="text-sm font-black text-red-400 mb-1">Rojo — Mayor a 100ms o sin respuesta</p>
                                     <p className="text-sm text-gray-400">Problema serio. Revisa cables RJ-45, switch, y que Docker Desktop esté corriendo.</p>
-                                </div>
-                                <div className="border-l-4 border-orange-500 pl-4">
-                                    <p className="text-sm font-black text-orange-400 mb-1">Desconexiones frecuentes</p>
-                                    <p className="text-sm text-gray-400">Revisa conectores RJ-45, cables de red, y que el switch tenga energía y UPS.</p>
                                 </div>
                             </div>
                             <h3 className="text-base font-black uppercase text-gray-400 mt-6 mb-4">Colores del Historial</h3>
