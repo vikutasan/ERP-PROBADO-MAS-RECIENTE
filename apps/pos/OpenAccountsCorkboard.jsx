@@ -7,12 +7,11 @@ import React from 'react';
  */
 
 export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose }) => {
-    // Ordenar por terminal y luego por hora
+    // Ordenar por número de cuenta (de mayor a menor)
     const sortedAccounts = [...openAccounts].sort((a, b) => {
-        if (a.terminal !== b.terminal) {
-            return a.terminal.localeCompare(b.terminal);
-        }
-        return new Date(a.timestamp) - new Date(b.timestamp);
+        const numA = parseInt(a.id.replace(/[^0-9]/g, '')) || 0;
+        const numB = parseInt(b.id.replace(/[^0-9]/g, '')) || 0;
+        return numB - numA;
     });
 
     const getRandomRotation = (index) => {

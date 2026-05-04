@@ -1391,7 +1391,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                                             newIngs[idx] = { ...newIngs[idx], ingrediente: e.target.value };
                                                                                             handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', newIngs);
                                                                                         }}
-                                                                                        className="flex-1 p-3 border rounded-xl bg-white outline-none font-bold text-sm"
+                                                                                        className="flex-1 py-1 px-2 border rounded-xl bg-white outline-none font-bold text-base"
                                                                                         style={{ color: activeTheme.text, borderColor: activeTheme.border }}
                                                                                     >
                                                                                         <option value="">Seleccionar ingrediente...</option>
@@ -1400,7 +1400,7 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                                         ))}
                                                                                     </select>
                                                                                     <div className="flex flex-col gap-1">
-                                                                                        <div style={{ borderColor: activeTheme.border }} className={`flex w-44 border-2 rounded-xl overflow-hidden h-11 bg-white shadow-sm transition-all focus-within:ring-2 ${parseFloat(usageMap[item.ingrediente]) > 100 ? 'ring-red-500/20 border-red-500' : 'focus-within:ring-orange-500/20'}`}>
+                                                                                        <div style={{ borderColor: activeTheme.border }} className={`flex w-44 border-2 rounded-xl overflow-hidden h-14 bg-white shadow-sm transition-all focus-within:ring-2 ${parseFloat(usageMap[item.ingrediente]) > 100 ? 'ring-red-500/20 border-red-500' : 'focus-within:ring-orange-500/20'}`}>
                                                                                             <input 
                                                                                                 type="number" 
                                                                                                 placeholder="0" 
@@ -1410,11 +1410,11 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                                                     newIngs[idx] = { ...newIngs[idx], porcentaje: e.target.value };
                                                                                                     handleSubpasoChange(paso.id, sp.id, 'ingredientesRequeridos', newIngs);
                                                                                                 }}
-                                                                                                className="w-full min-w-0 bg-transparent px-3 py-1 font-mono font-black text-sm outline-none text-right"
+                                                                                                className="w-16 shrink-0 bg-transparent px-1 py-1 font-mono font-black text-sm outline-none text-right"
                                                                                                 style={{ color: activeTheme.text }}
                                                                                             />
-                                                                                            <div className="relative w-20 h-full flex items-center justify-center border-l border-black/10 bg-black/5 shrink-0 group">
-                                                                                                <div style={{ color: activeTheme.text }} className="text-[10px] font-black uppercase text-center px-1 pointer-events-none break-words w-full leading-[0.8] tracking-tighter opacity-80">
+                                                                                            <div className="relative flex-1 h-full flex items-center justify-center border-l border-black/10 bg-black/5 group overflow-hidden">
+                                                                                                <div style={{ color: activeTheme.text }} className="font-black uppercase text-center px-1 pointer-events-none break-words w-full leading-[1.1] tracking-tighter opacity-80 text-[11px]">
                                                                                                     {item?.unidad || '%'}
                                                                                                 </div>
                                                                                                 <select 
@@ -1427,16 +1427,17 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
                                                                                                     className="absolute inset-0 opacity-0 cursor-pointer w-full"
                                                                                                 >
                                                                                                     <option style={{ color: '#000' }} value="%">%</option>
-                                                                                                    <option style={{ color: '#000' }} value="g">g</option>
-                                                                                                    <option style={{ color: '#000' }} value="kg">kg</option>
-                                                                                                    <option style={{ color: '#000' }} value="ml">ml</option>
+                                                                                                    <option style={{ color: '#000' }} value="G">G</option>
+                                                                                                    <option style={{ color: '#000' }} value="KG">KG</option>
+                                                                                                    <option style={{ color: '#000' }} value="ML">ML</option>
                                                                                                     <option style={{ color: '#000' }} value="L">L</option>
-                                                                                                    <option style={{ color: '#000' }} value="PZA">PZA</option>
-                                                                                                    <option style={{ color: '#000' }} value="BOLSA">BOLSA</option>
-                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA">SUBBOLSA</option>
-                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA RECICLABLE">SUBBOLSA RECICLABLE</option>
-                                                                                                    <option style={{ color: '#000' }} value="SUBBOLSA DESECHABLE">SUBBOLSA DESECHABLE</option>
+                                                                                                    <option style={{ color: '#000' }} value="PIEZA">PIEZA</option>
                                                                                                     <option style={{ color: '#000' }} value="BOTE">BOTE</option>
+                                                                                                    <option style={{ color: '#000' }} value="CUBETA">CUBETA</option>
+                                                                                                    <option style={{ color: '#000' }} value="COSTAL">COSTAL</option>
+                                                                                                    <option style={{ color: '#000' }} value="BOLSA DESECHABLE">BOLSA DESECHABLE</option>
+                                                                                                    <option style={{ color: '#000' }} value="BOLSA RECICLABLE LIMPIA">BOLSA RECICLABLE LIMPIA</option>
+                                                                                                    <option style={{ color: '#000' }} value="BOLSA RECICLABLE SEMISUCIA">BOLSA RECICLABLE SEMISUCIA</option>
                                                                                                 </select>
                                                                                             </div>
                                                                                         </div>

@@ -481,10 +481,19 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
     const _baseMatrix = {
         columns: [
             { id: 'mep_polvos', name: 'MEP POLVOS', type: 'POLVOS' },
-            { id: 'mep_granulados', name: 'MEP GRANULADOS', type: 'GRANULADOS' },
+            { id: 'sub_mep_polvos', name: 'SUB-MEP POLVOS', type: 'SUB-MEP POLVOS' },
+            { id: 'mep_polvos_solidos', name: 'MEP POLVOS/SOLIDOS', type: 'MEP POLVOS/SOLIDOS' },
             { id: 'mep_solidos', name: 'MEP SOLIDOS', type: 'SOLIDOS' },
-            { id: 'mep_liquidos', name: 'MEP LÍQUIDOS', type: 'LIQUIDOS' },
-            { id: 'mep_levadura', name: 'MEP LEVADURA', type: 'LEVADURA' }
+            { id: 'sub_mep_solidos', name: 'SUB-MEP SOLIDOS', type: 'SUB-MEP SOLIDOS' },
+            { id: 'mep_granulados', name: 'MEP GRANULADOS', type: 'GRANULADOS' },
+            { id: 'sub_mep_granulados', name: 'SUB-MEP GRANULADOS', type: 'SUB-MEP GRANULADOS' },
+            { id: 'mep_liquidos', name: 'MEP-LIQUIDOS', type: 'LIQUIDOS' },
+            { id: 'mep_liquidos_amarillos', name: 'MEP LIQUIDOS AMARILLOS', type: 'MEP LIQUIDOS AMARILLOS' },
+            { id: 'mep_liquidos_cafes', name: 'MEP LIQUIDOS CAFES', type: 'MEP LIQUIDOS CAFES' },
+            { id: 'mep_liquidos_claros', name: 'MEP LIQUIDOS CLAROS', type: 'MEP LIQUIDOS CLAROS' },
+            { id: 'sub_mep_levadura', name: 'SUB-MEP LEVADURA', type: 'SUB-MEP LEVADURA' },
+            { id: 'mep_pan_duro', name: 'MEP PAN DURO', type: 'MEP PAN DURO' },
+            { id: 'mep_grasa', name: 'MEP GRASA', type: 'MEP GRASA' }
         ],
         rows: [
             { id: 'row_base_reference', name: 'RECETA BASE', baston_qty: 1, unit: 'BST', values: {} }
@@ -496,7 +505,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         // 1. Identify unique ingredients to create columns
         const legacyIngs = initialData.ingredients || [];
         legacyIngs.forEach(ing => {
-            const isStandardMEP = ['POLVOS', 'GRANULADOS', 'SOLIDOS', 'LIQUIDOS', 'LEVADURA'].includes(ing.mep_type);
+            const isStandardMEP = ['POLVOS', 'SUB-MEP POLVOS', 'MEP POLVOS/SOLIDOS', 'SOLIDOS', 'SUB-MEP SOLIDOS', 'GRANULADOS', 'SUB-MEP GRANULADOS', 'LIQUIDOS', 'MEP LIQUIDOS AMARILLOS', 'MEP LIQUIDOS CAFES', 'MEP LIQUIDOS CLAROS', 'SUB-MEP LEVADURA', 'MEP PAN DURO', 'MEP GRASA'].includes(ing.mep_type);
             if (!isStandardMEP) {
                 const colId = `c_${ing.name.replace(/\s+/g, '_').toLowerCase()}`;
                 if (!_baseMatrix.columns.some(c => c.name === ing.name.toUpperCase())) {
@@ -544,27 +553,66 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
     // Standard columns for upgrade/sync
     const standardCols = [
         { id: 'mep_polvos', name: 'MEP POLVOS', type: 'POLVOS' },
-        { id: 'mep_granulados', name: 'MEP GRANULADOS', type: 'GRANULADOS' },
+        { id: 'sub_mep_polvos', name: 'SUB-MEP POLVOS', type: 'SUB-MEP POLVOS' },
+        { id: 'mep_polvos_solidos', name: 'MEP POLVOS/SOLIDOS', type: 'MEP POLVOS/SOLIDOS' },
         { id: 'mep_solidos', name: 'MEP SOLIDOS', type: 'SOLIDOS' },
-        { id: 'mep_liquidos', name: 'MEP LÍQUIDOS', type: 'LIQUIDOS' },
-        { id: 'mep_levadura', name: 'MEP LEVADURA', type: 'LEVADURA' }
+        { id: 'sub_mep_solidos', name: 'SUB-MEP SOLIDOS', type: 'SUB-MEP SOLIDOS' },
+        { id: 'mep_granulados', name: 'MEP GRANULADOS', type: 'GRANULADOS' },
+        { id: 'sub_mep_granulados', name: 'SUB-MEP GRANULADOS', type: 'SUB-MEP GRANULADOS' },
+        { id: 'mep_liquidos', name: 'MEP-LIQUIDOS', type: 'LIQUIDOS' },
+        { id: 'mep_liquidos_amarillos', name: 'MEP LIQUIDOS AMARILLOS', type: 'MEP LIQUIDOS AMARILLOS' },
+        { id: 'mep_liquidos_cafes', name: 'MEP LIQUIDOS CAFES', type: 'MEP LIQUIDOS CAFES' },
+        { id: 'mep_liquidos_claros', name: 'MEP LIQUIDOS CLAROS', type: 'MEP LIQUIDOS CLAROS' },
+        { id: 'sub_mep_levadura', name: 'SUB-MEP LEVADURA', type: 'SUB-MEP LEVADURA' },
+        { id: 'mep_pan_duro', name: 'MEP PAN DURO', type: 'MEP PAN DURO' },
+        { id: 'mep_grasa', name: 'MEP GRASA', type: 'MEP GRASA' }
     ];
 
     let initialMatrix = (initialData && initialData.recipe_matrix) ? JSON.parse(JSON.stringify(initialData.recipe_matrix)) : JSON.parse(JSON.stringify(_baseMatrix));
 
-    // Ensure all standard columns exist (Upgrade Path)
-    standardCols.forEach((sCol, sIdx) => {
-        const existingIdx = initialMatrix.columns.findIndex(c => c.id === sCol.id);
-        if (existingIdx === -1) {
-            // Insert at the intended position
-            initialMatrix.columns.splice(sIdx, 0, sCol);
-            // Init values in all rows
-            initialMatrix.rows.forEach(r => {
-                if (!r.values) r.values = {};
-                if (!r.values[sCol.id]) r.values[sCol.id] = { qty: 0, unit: 'g' };
-            });
+    // Migration map: old MEP IDs -> new MEP IDs (for data saved with the previous 5-column schema)
+    const legacyIdMap = {
+        'mep_levadura': 'sub_mep_levadura',
+    };
+    // All IDs that are part of the standard system (old and new) to prevent them from appearing as custom columns
+    const allKnownSystemIds = new Set([
+        ...standardCols.map(sc => sc.id),
+        ...Object.keys(legacyIdMap),
+        ...Object.values(legacyIdMap),
+    ]);
+
+    // Migrate old column IDs in row values
+    initialMatrix.rows.forEach(r => {
+        if (!r.values) r.values = {};
+        Object.keys(legacyIdMap).forEach(oldId => {
+            if (r.values[oldId] && !r.values[legacyIdMap[oldId]]) {
+                r.values[legacyIdMap[oldId]] = r.values[oldId];
+            }
+            delete r.values[oldId];
+        });
+    });
+
+    // Also migrate hidden_system_cols references
+    if (initialMatrix.hidden_system_cols) {
+        initialMatrix.hidden_system_cols = initialMatrix.hidden_system_cols.map(id => legacyIdMap[id] || id);
+    }
+
+    // Ensure all standard columns exist and are in the correct order (Upgrade Path)
+    const currentCols = initialMatrix.columns || [];
+    const finalCols = [];
+    standardCols.forEach(sCol => {
+        finalCols.push(sCol);
+        initialMatrix.rows.forEach(r => {
+            if (!r.values) r.values = {};
+            if (!r.values[sCol.id]) r.values[sCol.id] = { qty: 0, unit: 'g' };
+        });
+    });
+    currentCols.forEach(cCol => {
+        if (!allKnownSystemIds.has(cCol.id) && cCol.id !== 'row_base_reference') {
+            finalCols.push(cCol);
         }
     });
+    initialMatrix.columns = finalCols;
 
     // Sanitize units (Remove BST/TND from ingredients only if they are incorrect)
     initialMatrix.rows.forEach(r => {
@@ -599,7 +647,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
         pasosProduccion: initialData?.production_process || [],
         recipe_matrix: {
             ...initialMatrix,
-            hidden_system_cols: initialMatrix.hidden_system_cols || []
+            hidden_system_cols: initialMatrix.hidden_system_cols || standardCols.map(sc => sc.id)
         },
         product_relations: initialData?.product_relations || [],
         dough_relations: initialData?.dough_relations || [],
@@ -698,7 +746,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
             values: { ...r.values, [newColId]: { qty: 0, unit: 'g' } }
         }));
         
-        setFormData({...formData, recipe_matrix: { columns: [...(formData.recipe_matrix.columns || []), newCol], rows: newRows } });
+        setFormData({...formData, recipe_matrix: { ...formData.recipe_matrix, columns: [...(formData.recipe_matrix.columns || []), newCol], rows: newRows } });
         setEditingColumnId(newColId);
     };
 
@@ -964,12 +1012,12 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                 color: step === s.id ? theme.bg : theme.text,
                                 borderColor: 'rgba(0,0,0,0.1)'
                             }}
-                            className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border transition-all`}
+                            className={`flex-1 flex items-center justify-center gap-2 px-2 py-1.5 rounded-xl border transition-all`}
                         >
-                            <div className={`p-1.5 rounded-lg ${step === s.id ? 'bg-white/20' : 'bg-black/5'}`}>
-                                <s.icon size={16} />
+                            <div className={`p-1 rounded-lg ${step === s.id ? 'bg-white/20' : 'bg-black/5'}`}>
+                                <s.icon size={18} />
                             </div>
-                            <span className="text-[13px] font-black uppercase tracking-wider">{s.label}</span>
+                            <span className="text-[15px] font-black uppercase tracking-tight">{s.label}</span>
                         </button>
                     ))}
                 </div>
@@ -1135,18 +1183,20 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                         <button 
                                             onClick={() => setShowMepSelector(!showMepSelector)} 
                                             style={{ backgroundColor: theme.input, color: theme.text }} 
-                                            className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 border border-black/10"
+                                            className="px-4 py-2 rounded-2xl text-[13px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 border border-black/10"
                                         >
-                                            <Eye size={14}/> MEPS DEL SISTEMA
+                                            <Eye size={16}/> MEPS DEL SISTEMA
                                         </button>
                                         
                                         {showMepSelector && (
+                                            <>
+                                            <div className="fixed inset-0 z-[109]" onClick={() => setShowMepSelector(false)} />
                                             <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-3xl shadow-2xl border border-black/5 p-4 z-[110] animate-in fade-in slide-in-from-top-2 duration-200">
                                                 <div className="flex items-center justify-between mb-4 border-b border-black/5 pb-2">
                                                     <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Visibilidad MEPs</span>
                                                     <button onClick={() => setShowMepSelector(false)} className="opacity-40 hover:opacity-100"><X size={14}/></button>
                                                 </div>
-                                                <div className="space-y-2">
+                                                <div className="space-y-2 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
                                                     {standardCols.map(sc => {
                                                         const isHidden = formData.recipe_matrix.hidden_system_cols?.includes(sc.id);
                                                         return (
@@ -1160,36 +1210,37 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                         recipe_matrix: { ...formData.recipe_matrix, hidden_system_cols: next }
                                                                     });
                                                                 }}
-                                                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${isHidden ? 'bg-black/5 opacity-40' : 'bg-green-500/10 text-green-700'}`}
+                                                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${isHidden ? 'bg-gray-100 text-gray-500' : 'bg-green-500/10 text-green-700'}`}
                                                             >
-                                                                <span className="text-[10px] font-black uppercase">{sc.name}</span>
+                                                                <span className="text-[12px] font-black uppercase text-current">{sc.name}</span>
                                                                 {isHidden ? <EyeOff size={14}/> : <Eye size={14}/>}
                                                             </button>
                                                         );
                                                     })}
                                                 </div>
                                             </div>
+                                            </>
                                         )}
                                     </div>
 
-                                    <button onClick={addMatrixColumn} style={{ backgroundColor: theme.text, color: theme.bg }} className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2">
-                                        <Plus size={14}/> Agregar Insumo (Columna)
+                                    <button onClick={addMatrixColumn} style={{ backgroundColor: theme.text, color: theme.bg }} className="px-4 py-2 rounded-2xl text-[13px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2">
+                                        <Plus size={16}/> AGREGAR INSUMO (COLUMNA)
                                     </button>
                                 </div>
                                 <div className="flex-1 overflow-auto custom-scrollbar bg-black/5 rounded-[40px] border border-black/5 p-2 relative w-full">
                                     <div className="min-w-max">
                                         {/* Table Header */}
                                         <div className="flex gap-1 mb-1">
-                                            <div className="w-40 shrink-0 flex items-end pb-1">
+                                            <div className="w-56 shrink-0 flex items-end pb-1">
                                                 <span style={{ color: theme.text }} className="text-[11px] font-black uppercase tracking-tighter opacity-60 leading-none">Matriz de Producción</span>
                                             </div>
-                                            {formData.recipe_matrix.columns.filter(col => !col.id.startsWith('mep_') || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map((col, cIdx) => (
-                                                <div key={col.id} className="w-40 shrink-0 relative group flex items-center gap-1">
-                                                    <div style={{ backgroundColor: theme.input }} className="flex-1 p-1 text-center rounded-xl border-2 border-black/20 flex flex-col h-12 justify-center shadow-sm relative overflow-visible">
+                                            {formData.recipe_matrix.columns.filter(col => !standardCols.some(sc => sc.id === col.id) || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map((col, cIdx) => (
+                                                <div key={col.id} className="w-56 shrink-0 relative group flex items-stretch gap-1">
+                                                    <div style={{ backgroundColor: theme.input }} className="flex-1 px-0.5 py-0.5 text-center rounded-xl border-2 border-black/20 flex flex-col justify-center min-h-[3rem] shadow-sm relative overflow-hidden">
                                                         {editingColumnId === col.id ? (
                                                             <input 
                                                                 autoFocus
-                                                                className="bg-transparent text-[11px] font-black uppercase text-center outline-none w-full border-b-2 border-orange-500"
+                                                                className="bg-transparent text-[18px] font-black uppercase text-center outline-none w-full border-b-2 border-orange-500"
                                                                 style={{ color: theme.text }}
                                                                 value={col.name}
                                                                 onBlur={() => setEditingColumnId(null)}
@@ -1205,8 +1256,8 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                             />
                                                         ) : (
                                                             <>
-                                                                <span style={{ color: theme.text }} className="text-[11px] leading-[0.85] font-black uppercase tracking-tighter break-words">{col.name}</span>
-                                                                {!col.id.startsWith('mep_') && (
+                                                                <span style={{ color: theme.text }} className="text-[18px] leading-[1] font-black uppercase tracking-tighter break-words w-full">{col.name}</span>
+                                                                {!standardCols.some(sc => sc.id === col.id) && (
                                                                     <div className="absolute inset-0 bg-white/95 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-all">
                                                                         <button 
                                                                             onClick={() => setEditingColumnId(col.id)}
@@ -1247,13 +1298,10 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                             backgroundColor: row.id === 'row_base_reference' ? theme.text : theme.input,
                                                             borderColor: row.id === 'row_base_reference' ? theme.text : 'rgba(0,0,0,0.2)'
                                                         }} 
-                                                        className={`w-40 shrink-0 flex items-center gap-1 p-1.5 rounded-xl border-2 shadow-sm relative transition-all h-10`}
+                                                        className={`w-56 shrink-0 flex items-center gap-1 p-1.5 rounded-xl border-2 shadow-sm relative transition-all h-14`}
                                                     >
                                                         {row.id === 'row_base_reference' ? (
-                                                            <div className="flex-1 flex items-center justify-center gap-2">
-                                                                <span className="text-[14px] font-black uppercase tracking-tighter text-white">BASE</span>
-                                                                <span style={{ color: theme.bg }} className="text-2xl font-black leading-none">1</span>
-                                                            </div>
+                                                            <div className="bg-transparent font-black text-[18px] w-20 shrink-0 text-center text-white flex items-center justify-center">BASE</div>
                                                         ) : (
                                                             <input 
                                                                 type="text"
@@ -1265,13 +1313,15 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                 }}
                                                                 style={{ color: '#000' }}
                                                                 placeholder="Ej: 4B"
-                                                                className="bg-transparent font-black text-sm w-16 outline-none text-center"
+                                                                className="bg-transparent font-black text-[18px] w-20 shrink-0 outline-none text-center"
                                                             />
                                                         )}
                                                         
-                                                        {row.id !== 'row_base_reference' && <span className="opacity-20 text-xs">/</span>}
+
                                                         
-                                                        {row.id !== 'row_base_reference' && (
+                                                        {row.id === 'row_base_reference' ? (
+                                                            <div style={{ color: theme.bg }} className="bg-transparent font-black text-2xl w-8 shrink-0 text-center leading-none flex items-center justify-center">1</div>
+                                                        ) : (
                                                             <input 
                                                                 type="number"
                                                                 value={row.baston_qty || ''}
@@ -1297,7 +1347,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                     setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
                                                                 }}
                                                                 style={{ color: '#000' }}
-                                                                className="bg-transparent font-black text-sm w-12 outline-none text-right"
+                                                                className="bg-transparent font-black text-2xl w-8 shrink-0 outline-none text-center leading-none"
                                                             />
                                                         )}
 
@@ -1309,7 +1359,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                 setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
                                                             }}
                                                             style={{ color: row.id === 'row_base_reference' ? '#fff' : '#000', backgroundColor: 'transparent' }}
-                                                            className="bg-transparent text-[10px] font-black uppercase mt-1 tracking-widest opacity-60 outline-none appearance-none cursor-pointer"
+                                                            className="bg-transparent text-[16px] font-black uppercase tracking-tight outline-none appearance-none cursor-pointer text-left pl-1 flex-1"
                                                         >
                                                             <option style={{ color: '#000' }} value="BST">BST</option>
                                                             <option style={{ color: '#000' }} value="TND">TND</option>
@@ -1330,7 +1380,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                     </div>
 
                                                     {/* Ingredient Cells */}
-                                                    {formData.recipe_matrix.columns.filter(col => !col.id.startsWith('mep_') || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map(col => {
+                                                    {formData.recipe_matrix.columns.filter(col => !standardCols.some(sc => sc.id === col.id) || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map(col => {
                                                         const cell = row.values[col.id] || { qty: 0, unit: 'g' };
                                                         const isBase = row.id === 'row_base_reference';
                                                         return (
@@ -1340,7 +1390,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                     backgroundColor: isBase ? theme.text : 'white',
                                                                     borderColor: isBase ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
                                                                 }}
-                                                                className={`w-40 shrink-0 flex items-center border-2 rounded-xl overflow-hidden h-10 ${isBase ? '' : 'focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-black'} transition-all shadow-sm`}
+                                                                className={`w-56 shrink-0 flex items-center border-2 rounded-xl overflow-hidden h-14 ${isBase ? '' : 'focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-black'} transition-all shadow-sm`}
                                                             >
                                                                 <input 
                                                                     type="number"
@@ -1383,10 +1433,10 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                         setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
                                                                     }}
                                                                     style={{ color: isBase ? theme.bg : '#000' }}
-                                                                    className="w-full min-w-0 bg-transparent px-2 py-1 font-mono font-black text-base outline-none text-right"
+                                                                    className="w-24 shrink-0 bg-transparent px-1 py-1 font-mono font-black text-2xl outline-none text-right leading-none"
                                                                 />
-                                                                <div className="relative w-16 h-full flex items-center justify-center border-l border-black/10 bg-black/5 shrink-0 overflow-hidden">
-                                                                    <div style={{ color: isBase ? '#fff' : '#000' }} className={`font-black uppercase text-center px-0.5 pointer-events-none break-words w-full leading-[0.8] tracking-tighter ${cell.unit?.length > 4 ? 'text-[7px]' : 'text-[10px]'}`}>
+                                                                <div className="relative flex-1 h-full flex items-center justify-center border-l border-black/10 bg-black/5 overflow-hidden">
+                                                                    <div style={{ color: isBase ? '#fff' : '#000' }} className="font-black uppercase text-center px-1 pointer-events-none break-words w-full leading-[1] tracking-tighter text-[15px]">
                                                                         {cell.unit}
                                                                     </div>
                                                                     <select 
@@ -1399,18 +1449,17 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                         style={{ color: '#000', backgroundColor: '#fff' }}
                                                                         className="absolute inset-0 opacity-0 cursor-pointer w-full h-full appearance-none"
                                                                     >
-                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="g">g</option>
+                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="G">G</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="KG">KG</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="ML">ML</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="L">L</option>
-                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="PZA">PZA</option>
+                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="PIEZA">PIEZA</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOTE">BOTE</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="CUBETA">CUBETA</option>
-                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOLSA RECICLABLE">BOLSA RECICLABLE</option>
-                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOLSA DESECHABLE">BOLSA DESECHABLE</option>
-                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="SUBBOLSA RECICLABLE">SUBBOLSA RECICLABLE</option>
-                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="SUBBOLSA DESECHABLE">SUBBOLSA DESECHABLE</option>
                                                                         <option style={{ color: '#000', backgroundColor: '#fff' }} value="COSTAL">COSTAL</option>
+                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOLSA DESECHABLE">BOLSA DESECHABLE</option>
+                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOLSA RECICLABLE LIMPIA">BOLSA RECICLABLE LIMPIA</option>
+                                                                        <option style={{ color: '#000', backgroundColor: '#fff' }} value="BOLSA RECICLABLE SEMISUCIA">BOLSA RECICLABLE SEMISUCIA</option>
                                                                     </select>
                                                                 </div>
                                                             </div>
@@ -1421,7 +1470,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
 
                                             <button 
                                                 onClick={addMatrixRow}
-                                                className="w-48 p-3 rounded-2xl border-2 border-dashed border-black/20 text-black/40 hover:border-black/50 hover:text-black hover:bg-black/5 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 mt-2"
+                                                className="w-56 p-3 rounded-2xl border-2 border-dashed border-black/20 text-black/40 hover:border-black/50 hover:text-black hover:bg-black/5 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 mt-2"
                                             >
                                                 <Plus size={14}/> Fila (Tanda)
                                             </button>
