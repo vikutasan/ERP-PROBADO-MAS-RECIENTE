@@ -403,13 +403,17 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                 } catch (err) {
                     const errorMessage = err.message || "";
                     if (errorMessage.includes("ya ha sido pagado")) {
-                        console.warn("⚠️ Colisión de folio detectada en servidor. Autogenerando nuevo folio y reintentando...");
+                        const oldFolio = targetAccountNum;
+                        console.warn(`⚠️ Colisión de folio detectada: ${oldFolio} ya pagado. Autogenerando nuevo...`);
                         const newAccountNum = await generateNewAccountNum();
                         targetAccountNum = newAccountNum;
                         // generateNewAccountNum ya sincroniza accountNumRef (v4.3)
                         payload.account_num = newAccountNum;
                         payload.version = null; // Ticket nuevo, sin versión
                         savedTicket = await posService.createTicket(payload);
+                        // v4.8: ALERTA PROMINENTE al cajero para evitar confusión de folios
+                        setToastMessage(`⚠️ ATENCIÓN: El folio ${oldFolio} ya no estaba disponible. Se reasignó a ${newAccountNum}. Verifique antes de cobrar.`);
+                        setTimeout(() => setToastMessage(null), 12000); // 12 segundos — muy visible
                     } else if (errorMessage.includes("Conflicto de versión")) {
                         // v4.7: AUTO-HEALING UI
                         // Si la terminal detecta conflicto (ej. cajero carga ticket incompleto y vendedor lo termina),
@@ -716,7 +720,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                                     : 'text-orange-500 animate-pulse'
                             }`}>
                                 {currentAccountNum
-                                    ? `CUENTA #${currentAccountNum.slice(-3)}`
+                                    ? `CTA ${currentAccountNum}`
                                     : 'NUEVA VENTA'}
                             </span>
                             {orderData && (

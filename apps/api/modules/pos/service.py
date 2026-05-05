@@ -357,7 +357,11 @@ class POSService:
 
     async def reserve_ticket(self, db: AsyncSession, terminal_id: str, captured_by_id: int = None):
         """Reserva un ticket vacío o genera uno nuevo con ID correlativo.
+        v4.8: Reciclaje restringido a tickets <5min para evitar colisiones de folio.
         Ahora acepta captured_by_id para trazabilidad desde el primer instante."""
+        import logging
+        logger = logging.getLogger("pos.reserve")
+
         session = await self.get_active_session(db, terminal_id)
         if not session:
             raise HTTPException(status_code=400, detail="No active session for terminal")
@@ -365,9 +369,10 @@ class POSService:
         # 0. Garbage Collection de tickets huérfanos (throttled a 1x por minuto)
         await self._cleanup_stale_empty_tickets(db, terminal_id)
 
-        # 1. Intentar reciclar un ticket vacío (cross-session para el mismo terminal)
+        # 1. Intentar reciclar un ticket vacío RECIENTE (max 5 min) del mismo terminal
         recycled = await self._find_empty_ticket(db, terminal_id)
         if recycled:
+            logger.info(f"♻️ RECICLAJE: {terminal_id} reutiliza folio {recycled.account_num} (creado {recycled.created_at})")
             # Asignar capturista desde el momento de la reserva
             if captured_by_id and not recycled.captured_by_id:
                 recycled.captured_by_id = captured_by_id
@@ -376,19 +381,24 @@ class POSService:
 
         # 2. Generar ticket nuevo con folio automático
         new_ticket = await self._generate_consecutive_ticket(db, session.id, terminal_id, captured_by_id)
+        logger.info(f"🆕 FOLIO NUEVO: {terminal_id} → {new_ticket.account_num}")
         return await self._get_full_ticket(db, new_ticket.id)
 
     async def _find_empty_ticket(self, db: AsyncSession, terminal_id: str):
         """
-        Busca un ticket abierto sin items ni monto para el MISMO TERMINAL (cross-session).
+        Busca un ticket abierto sin items ni monto para el MISMO TERMINAL.
+        v4.8: SOLO recicla tickets creados hace menos de 5 MINUTOS.
+        Tickets viejos son ignorados para evitar colisiones con folios ya pagados.
         Usa FOR UPDATE SKIP LOCKED para evitar que dos terminales reciclen el mismo ticket.
         """
+        cutoff = datetime.utcnow() - timedelta(minutes=5)
         result = await db.execute(
             select(models.Ticket)
             .options(selectinload(models.Ticket.items))
             .where(models.Ticket.terminal_id == terminal_id)
             .where(models.Ticket.status == "OPEN")
             .where(models.Ticket.total == 0.0)
+            .where(models.Ticket.created_at >= cutoff)
             .with_for_update(skip_locked=True)
             .limit(5)
         )

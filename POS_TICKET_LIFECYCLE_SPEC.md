@@ -4,14 +4,13 @@
 > CUALQUIER lógica relacionada con tickets, folios, carrito, cobros, auto-save,
 > pizarrón, auditoría, o impresión.
 >
-> **Este documento reemplaza las versiones 3.0, 4.0 y 4.3.1.** La versión 4.5
-> cierra la última vulnerabilidad de pérdida de datos: `cartRef` no se sincronizaba
-> sincrónicamente en `handleRecoverAccount`, permitiendo que el auto-save sobreescribiera
-> el ticket recuperado con el carrito viejo. También reemplaza la búsqueda fuzzy
-> (`ilike`) de `getTicketByAccountNum` con un endpoint de búsqueda exacta.
+> **Este documento reemplaza las versiones 3.0, 4.0, 4.3.1 y 4.5.** La versión 4.8
+> corrige una race condition en la generación de folios donde el auto-heal silencioso
+> reasignaba el número de cuenta sin notificar al cajero, y el reciclaje de tickets
+> vacíos antiguos causaba colisiones con folios ya pagados.
 >
-> Última actualización: 2026-04-25
-> Versión: 4.5 — CART-REF SYNC + EXACT SEARCH
+> Última actualización: 2026-05-04
+> Versión: 4.8 — FOLIO VISIBILITY + RECYCLING GUARD
 
 ---
 
@@ -737,6 +736,7 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
 
 ### `_find_empty_ticket()` — service.py
 - Busca tickets con `status=OPEN`, `total=0`, `terminal_id=X`
+- ⚡ v4.8: SOLO recicla tickets creados en los últimos **5 MINUTOS** (`created_at >= cutoff`)
 - Usa `FOR UPDATE SKIP LOCKED` → si otra terminal ya bloqueó uno, salta al siguiente
 - SOLO recicla tickets del MISMO terminal
 
@@ -812,6 +812,7 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `getTicketByAccountNum` usaba búsqueda fuzzy `ilike` | **Recuperación de ticket equivocado** — `ilike('%V1300%')` podía devolver V13000 o V13001 en vez de V1300 | REGLA 15 v4.5: Endpoint exacto `/tickets/by-account/{account_num}` |
 | `isActionRunningRef` nunca declarada | **Mutex bloqueado permanentemente** — ReferenceError silencioso en auto-heal del 409 dejaba `isRecoveringRef = true`, deshabilitando auto-save | v4.5: Referencia eliminada. El mutex se libera en `finally` con `releaseMutex()` |
 | `useCart.js` sin protección de llave de almacenamiento | **Borrado masivo de capturas (02/Mayo/2026)** — Micro-cortes de red causaron que cajeros presionaran F5. Al re-seleccionar terminal, `useEffect` escribía carrito vacío al localStorage antes de cargar los datos guardados, borrando las capturas de todos los cajeros afectados | REGLA 16 v4.6: Máquina de estados `cartState` con candado `if (cartState.key === storageKey)`. TTL de locks ajustado de 15 a 20 min |
+| Reciclaje de tickets vacíos sin límite de antigüedad | **Ticket V17163 vs #158 (04/Mayo/2026)** — T2 recibió un ticket reciclado de horas atrás cuyo folio ya había sido pagado. El auto-heal reasignó silenciosamente el folio, el cajero no se enteró | REGLA 17 v4.8: Reciclaje restringido a <5 min. REGLA 18 v4.8: Folio completo visible + alerta prominente |
 
 ---
 
@@ -954,14 +955,66 @@ useEffect(() => {
   cartState.key = "pos_cart_T1" → ahora coincide → escrituras permitidas ✅
 ```
 
+### ⚡ REGLA 17 — RECICLAJE DE TICKETS: MÁXIMO 5 MINUTOS (v4.8)
+
+```
+⛔ PROHIBIDO: Reciclar tickets vacíos sin límite de antigüedad.
+⛔ PROHIBIDO: _find_empty_ticket() sin filtro de created_at.
+✅ OBLIGATORIO: Solo reciclar tickets creados hace menos de 5 minutos.
+✅ OBLIGATORIO: Registrar en log cada reciclaje y cada folio nuevo generado.
+```
+
+**¿Por qué?** Un ticket vacío creado hace horas pudo haber sido pagado y liberado en otro ciclo de operación. Al reciclarlo, el sistema asigna un folio que el servidor ya marcó como `PAID`, causando el error "ya ha sido pagado" y forzando una reasignación silenciosa.
+
+**Código obligatorio en `_find_empty_ticket` (service.py):**
+```python
+cutoff = datetime.utcnow() - timedelta(minutes=5)
+result = await db.execute(
+    select(models.Ticket)
+    .where(models.Ticket.terminal_id == terminal_id)
+    .where(models.Ticket.status == "OPEN")
+    .where(models.Ticket.total == 0.0)
+    .where(models.Ticket.created_at >= cutoff)  # ← v4.8: SOLO recientes
+    .with_for_update(skip_locked=True)
+    .limit(5)
+)
+```
+
+### ⚡ REGLA 18 — FOLIO COMPLETO VISIBLE + ALERTA DE REASIGNACIÓN (v4.8)
+
+```
+⛔ PROHIBIDO: Mostrar solo los últimos 3 dígitos del folio (ej. "CUENTA #158").
+⛔ PROHIBIDO: Reasignar un folio por auto-heal sin notificación prominente al cajero.
+✅ OBLIGATORIO: Mostrar el folio COMPLETO en el header (ej. "CTA V17163").
+✅ OBLIGATORIO: Toast de 12 segundos cuando un folio es reasignado por colisión.
+```
+
+**¿Por qué?** Si el UI solo muestra `#158` (últimos 3 dígitos), el cajero no nota que el sistema cambió el folio a `V17163` silenciosamente. Al imprimir el ticket con el folio real, hay discrepancia con la nota manuscrita.
+
+**Código obligatorio en `RetailVisionPOS.jsx`:**
+```javascript
+// Header: folio COMPLETO
+{currentAccountNum ? `CTA ${currentAccountNum}` : 'NUEVA VENTA'}
+
+// Auto-heal: notificación prominente
+if (errorMessage.includes("ya ha sido pagado")) {
+    const oldFolio = targetAccountNum;
+    const newAccountNum = await generateNewAccountNum();
+    // ... reasignar ...
+    setToastMessage(`⚠️ ATENCIÓN: El folio ${oldFolio} ya no estaba disponible. Se reasignó a ${newAccountNum}. Verifique antes de cobrar.`);
+    setTimeout(() => setToastMessage(null), 12000); // 12 segundos
+}
+```
+
 ---
 
 > **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
 >
 > Cualquier IA o desarrollador que modifique el sistema DEBE leerlo primero
-> y verificar que sus cambios no violan NINGUNA de las 16 reglas.
+> y verificar que sus cambios no violan NINGUNA de las 18 reglas.
 >
-> **Las reglas 1, 2, 3, 9, 10, 12, 13, 14, 15 y 16 son las más críticas.** Violarlas causa pérdida
+> **Las reglas 1, 2, 3, 9, 10, 12, 13, 14, 15, 16, 17 y 18 son las más críticas.** Violarlas causa pérdida
 > silenciosa de datos en producción, borrado de capturas tras reconexiones,
 > modales falsos que interrumpen la operación,
-> sesiones fantasma que bloquean terminales indefinidamente, o recuperación del ticket equivocado.
+> sesiones fantasma que bloquean terminales indefinidamente, recuperación del ticket equivocado,
+> o discrepancias de folio que confunden a los cajeros.
