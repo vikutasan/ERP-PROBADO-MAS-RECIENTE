@@ -24,12 +24,21 @@ const STATUS_CONFIG = {
     idle:      { color: '#555',    bg: 'rgba(85,85,85,0.08)',     border: 'rgba(85,85,85,0.25)',    label: 'DISPONIBLE',     icon: '○' },
 };
 
+
+// Helper: fecha local en formato YYYY-MM-DD (evita desfase UTC)
+const getLocalDateString = (d = new Date()) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
 export const NetworkMonitorUI = () => {
     const [serverLatency, setServerLatency] = useState(null);
     const [serverStatus, setServerStatus] = useState('offline');
     const [terminalData, setTerminalData] = useState({});
     const [eventLog, setEventLog] = useState([]);
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+    const [selectedDate, setSelectedDate] = useState(getLocalDateString());
     const [incidentSummary, setIncidentSummary] = useState({});
     const [showInfoModal, setShowInfoModal] = useState(false);
     const [uptimeStart, setUptimeStart] = useState(null);
@@ -162,16 +171,20 @@ export const NetworkMonitorUI = () => {
             if (!res.ok) return;
             const data = await res.json();
 
-            // Mapear eventos base
-            const mapped = data.map(inc => ({
-                time: new Date(inc.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                timestamp: new Date(inc.created_at).getTime(),
-                terminal: inc.terminal_id,
-                rawType: inc.incident_type,
-                type: inc.incident_type === 'disconnect' ? 'disconnect' : 'connect',
-                message: inc.details || inc.incident_type,
-                user: inc.user_logged || 'Sistema',
-            }));
+            // Mapear eventos base — agregar 'Z' para que JS interprete como UTC y convierta a hora local
+            const mapped = data.map(inc => {
+                const utcStr = String(inc.created_at).endsWith('Z') ? inc.created_at : inc.created_at + 'Z';
+                const localDate = new Date(utcStr);
+                return {
+                    time: localDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    timestamp: localDate.getTime(),
+                    terminal: inc.terminal_id,
+                    rawType: inc.incident_type,
+                    type: inc.incident_type === 'disconnect' ? 'disconnect' : 'connect',
+                    message: inc.details || inc.incident_type,
+                    user: inc.user_logged || 'Sistema',
+                };
+            });
 
             // Clasificar desconexiones: normal (reconexión rápida <2min) vs sospechosa
             const classified = mapped.map((evt, idx) => {
@@ -288,8 +301,8 @@ export const NetworkMonitorUI = () => {
                                 onChange={(e) => setSelectedDate(e.target.value)}
                                 className="bg-black/40 border border-gray-700 rounded-xl px-3 py-1.5 text-sm text-white font-bold focus:border-orange-500 outline-none"
                             />
-                            {selectedDate !== new Date().toISOString().slice(0, 10) && (
-                                <button onClick={() => setSelectedDate(new Date().toISOString().slice(0, 10))}
+                            {selectedDate !== getLocalDateString() && (
+                                <button onClick={() => setSelectedDate(getLocalDateString())}
                                     className="text-xs font-bold text-orange-400 hover:text-orange-300 uppercase tracking-widest">
                                     Hoy
                                 </button>

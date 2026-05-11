@@ -971,6 +971,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                     await handleSave(newData, true);
                 }}
                 onClose={() => setIsConfiguringProduction(false)} 
+                onOpenGlobalAgent={() => setIsConfiguringGlobalAgent(true)}
             />
         )}
         
@@ -980,15 +981,15 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 onClose={() => setIsConfiguringGlobalAgent(false)} 
             />
         )}
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8" style={{ display: isConfiguringProduction ? 'none' : 'flex' }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ display: isConfiguringProduction ? 'none' : 'flex' }}>
             <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={onClose} />
 
             <div
                 style={{ backgroundColor: theme.bg }}
-                className="relative w-full max-w-6xl h-[90vh] border border-black/10 rounded-[60px] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300"
+                className="relative w-full max-w-6xl h-[95vh] border border-black/10 rounded-[40px] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300"
             >
                 {/* Modal Header - Theme aware */}
-                <div className="p-8 pb-4 flex items-center justify-between">
+                <div className="px-6 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <div>
                             <h2 style={{ color: theme.text }} className="text-5xl font-black italic uppercase tracking-tighter">
@@ -996,13 +997,13 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                             </h2>
                         </div>
                     </div>
-                    <button onClick={onClose} style={{ backgroundColor: theme.input, color: theme.text }} className="p-4 rounded-full hover:scale-110 transition-all">
+                    <button onClick={onClose} style={{ backgroundColor: theme.input, color: theme.text }} className="p-3 rounded-full hover:scale-110 transition-all">
                         <X size={24} />
                     </button>
                 </div>
 
                 {/* Stepper Progress - Theme aware */}
-                <div className="px-10 py-2 flex gap-3">
+                <div className="px-5 py-1 flex gap-2">
                     {steps.map(s => (
                         <button
                             key={s.id}
@@ -1023,52 +1024,52 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                 </div>
 
                 {/* Form Content - Truly Centered Distribution */}
-                <div className="flex-1 overflow-auto px-10 relative flex flex-col justify-start min-h-0 custom-scrollbar py-6">
+                <div className="flex-1 overflow-auto px-5 relative flex flex-col justify-start min-h-0 custom-scrollbar py-3">
                     <div className="max-w-5xl mx-auto w-full">
                         {step === 1 && (
                             <div className="grid grid-cols-2 gap-8 animate-in slide-in-from-bottom-4 duration-500">
                                 <div className="space-y-6">
                                     <label className="block">
-                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Nombre de la Masa</span>
+                                        <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Nombre de la Masa</span>
                                         <input
                                             type="text"
                                             value={formData.name}
                                             onChange={e => setFormData({...formData, name: e.target.value})}
                                             placeholder="Ej: MASA DE FUERZA REFINADA"
                                             style={{ backgroundColor: theme.input, color: theme.text }}
-                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30"
+                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-black text-[20px] placeholder-black/30"
                                         />
                                     </label>
                                     <label className="block">
-                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Clave Maestra</span>
+                                        <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Clave Maestra</span>
                                         <input
                                             type="text"
                                             value={formData.code}
                                             onChange={e => setFormData({...formData, code: e.target.value})}
                                             placeholder="Ej: MF-01"
                                             style={{ backgroundColor: theme.input, color: theme.text }}
-                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-mono font-bold placeholder-black/30"
+                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-mono font-black text-[20px] placeholder-black/30"
                                         />
                                     </label>
                                     <label className="block">
-                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Descripción</span>
+                                        <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Descripción</span>
                                         <textarea
                                             value={formData.description || ''}
                                             onChange={e => setFormData({...formData, description: e.target.value})}
                                             placeholder="Descripción o notas de la masa..."
                                             style={{ backgroundColor: theme.input, color: theme.text }}
-                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30 resize-none h-24"
+                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold text-[18px] placeholder-black/30 resize-none h-24"
                                         />
                                     </label>
                                 </div>
                                 <div className="space-y-6">
                                     <label className="block">
-                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Tipo de Masa</span>
+                                        <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Tipo de Masa</span>
                                         <select
                                             value={formData.dough_type}
                                             onChange={e => setFormData({...formData, dough_type: e.target.value})}
                                             style={{ backgroundColor: theme.input, color: theme.text }}
-                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 focus:ring-1 focus:ring-orange-500/50 outline-none font-bold appearance-none uppercase"
+                                            className="w-full border border-black/5 rounded-3xl p-5 mt-2 focus:ring-1 focus:ring-orange-500/50 outline-none font-black text-[20px] appearance-none uppercase"
                                         >
                                             <option value="PREFERMENTO">PREFERMENTO</option>
                                             <option value="MASA SALADA">MASA SALADA</option>
@@ -1077,30 +1078,30 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                     </label>
                                     <div className="grid grid-cols-2 gap-4">
                                         <label className="block">
-                                            <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Rend. Teórico (g)</span>
+                                            <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Rend. Teórico (g)</span>
                                             <input
                                                 type="number"
                                                 value={formData.theoretical_yield}
                                                 onChange={e => setFormData({...formData, theoretical_yield: Number(e.target.value)})}
                                                 style={{ backgroundColor: theme.input, color: theme.text }}
-                                                className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-mono font-bold"
+                                                className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-mono font-black text-[20px]"
                                             />
                                         </label>
                                         <label className="block">
-                                            <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">% Merma Esperada</span>
+                                            <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">% Merma Esperada</span>
                                             <input
                                                 type="number"
                                                 value={formData.expected_waste}
                                                 onChange={e => setFormData({...formData, expected_waste: Number(e.target.value)})}
                                                 style={{ backgroundColor: theme.input, color: theme.text }}
-                                                className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-mono font-bold"
+                                                className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-mono font-black text-[20px]"
                                             />
                                         </label>
                                     </div>
 
                                     {/* Color Picker Popover */}
                                     <div className="mt-6 relative">
-                                        <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2 mb-2 block">Identidad Visual (Color)</span>
+                                        <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2 mb-2 block">Identidad Visual (Color)</span>
                                         
                                         {!showColorPicker ? (
                                             <button
@@ -1119,7 +1120,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                         >
                                                             <div className="w-4 h-4 rounded-full" style={{ backgroundColor: MASTER_PALETTE[formData.theme_id].text }}></div>
                                                         </div>
-                                                        <span style={{ color: theme.text }} className="font-bold text-lg">
+                                                        <span style={{ color: theme.text }} className="font-black text-[20px]">
                                                             {MASTER_PALETTE[formData.theme_id].name}
                                                         </span>
                                                         <span className="ml-auto opacity-50" style={{ color: theme.text }}>Cambiar</span>
@@ -1227,11 +1228,11 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                         <Plus size={16}/> AGREGAR INSUMO (COLUMNA)
                                     </button>
                                 </div>
-                                <div className="flex-1 overflow-auto custom-scrollbar bg-black/5 rounded-[40px] border border-black/5 p-2 relative w-full">
+                                <div className="flex-1 overflow-auto custom-scrollbar bg-black/5 rounded-[20px] border border-black/5 p-2 relative w-full">
                                     <div className="min-w-max">
                                         {/* Table Header */}
                                         <div className="flex gap-1 mb-1">
-                                            <div className="w-56 shrink-0 flex items-end pb-1">
+                                            <div className="w-72 shrink-0 flex items-end pb-1">
                                                 <span style={{ color: theme.text }} className="text-[11px] font-black uppercase tracking-tighter opacity-60 leading-none">Matriz de Producción</span>
                                             </div>
                                             {formData.recipe_matrix.columns.filter(col => !standardCols.some(sc => sc.id === col.id) || !formData.recipe_matrix.hidden_system_cols?.includes(col.id)).map((col, cIdx) => (
@@ -1298,23 +1299,24 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                             backgroundColor: row.id === 'row_base_reference' ? theme.text : theme.input,
                                                             borderColor: row.id === 'row_base_reference' ? theme.text : 'rgba(0,0,0,0.2)'
                                                         }} 
-                                                        className={`w-56 shrink-0 flex items-center gap-1 p-1.5 rounded-xl border-2 shadow-sm relative transition-all h-14`}
+                                                        className={`w-72 shrink-0 flex items-center gap-1 p-1 rounded-xl border-2 shadow-sm relative transition-all h-24`}
                                                     >
                                                         {row.id === 'row_base_reference' ? (
-                                                            <div className="bg-transparent font-black text-[18px] w-20 shrink-0 text-center text-white flex items-center justify-center">BASE</div>
+                                                            <div className="bg-transparent font-black text-[22px] w-36 shrink-0 text-center text-white flex items-center justify-center">BASE</div>
                                                         ) : (
-                                                            <input 
-                                                                type="text"
-                                                                value={row.name}
-                                                                onChange={e => {
+                                                            <div
+                                                                contentEditable
+                                                                suppressContentEditableWarning
+                                                                onBlur={e => {
                                                                     const newRows = [...formData.recipe_matrix.rows];
-                                                                    newRows[rIdx].name = e.target.value.toUpperCase();
+                                                                    newRows[rIdx].name = e.target.innerText.toUpperCase();
                                                                     setFormData({...formData, recipe_matrix: {...formData.recipe_matrix, rows: newRows}});
                                                                 }}
                                                                 style={{ color: '#000' }}
-                                                                placeholder="Ej: 4B"
-                                                                className="bg-transparent font-black text-[18px] w-20 shrink-0 outline-none text-center"
-                                                            />
+                                                                className="bg-transparent font-black text-[22px] w-36 shrink-0 outline-none text-center leading-tight break-words cursor-text empty:before:content-['Tanda'] empty:before:text-black/30"
+                                                            >
+                                                                {row.name}
+                                                            </div>
                                                         )}
                                                         
 
@@ -1390,7 +1392,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                     backgroundColor: isBase ? theme.text : 'white',
                                                                     borderColor: isBase ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
                                                                 }}
-                                                                className={`w-56 shrink-0 flex items-center border-2 rounded-xl overflow-hidden h-14 ${isBase ? '' : 'focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-black'} transition-all shadow-sm`}
+                                                                className={`w-56 shrink-0 flex items-center border-2 rounded-xl overflow-hidden h-24 ${isBase ? '' : 'focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-black'} transition-all shadow-sm`}
                                                             >
                                                                 <input 
                                                                     type="number"
@@ -1436,7 +1438,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                     className="w-24 shrink-0 bg-transparent px-1 py-1 font-mono font-black text-2xl outline-none text-right leading-none"
                                                                 />
                                                                 <div className="relative flex-1 h-full flex items-center justify-center border-l border-black/10 bg-black/5 overflow-hidden">
-                                                                    <div style={{ color: isBase ? '#fff' : '#000' }} className="font-black uppercase text-center px-1 pointer-events-none break-words w-full leading-[1] tracking-tighter text-[15px]">
+                                                                    <div style={{ color: isBase ? '#fff' : '#000' }} className="font-black uppercase text-center px-1 pointer-events-none break-words w-full leading-[1.1] tracking-tighter text-[15px]">
                                                                         {cell.unit}
                                                                     </div>
                                                                     <select 
@@ -1483,24 +1485,16 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
 
                         {step === 3 && (
                             <div className="space-y-4 animate-in fade-in duration-500 flex flex-col h-full">
-                                <div className="flex justify-between items-center mb-2 shrink-0 gap-4">
-                                    <h3 style={{ color: theme.text }} className="text-2xl font-black italic uppercase border-b border-black/10 pb-2 flex-1">Proceso de <span className="opacity-40 ml-2">Revoltura</span></h3>
-                                    <div className="flex items-center gap-2">
-                                        <button 
-                                            onClick={() => setIsConfiguringGlobalAgent(true)} 
-                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
-                                            className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
-                                        >
-                                            <Mic size={14}/> Parámetros Generales
-                                        </button>
-                                        <button 
-                                            onClick={() => setIsConfiguringProduction(true)} 
-                                            style={{ backgroundColor: theme.text, color: theme.bg }} 
-                                            className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
-                                        >
-                                            <Settings2 size={14}/> Establecer Proceso
-                                        </button>
-                                    </div>
+                                <div className="flex flex-col items-center justify-center mb-2 shrink-0">
+                                    <h3 style={{ color: theme.text }} className="text-5xl font-black italic uppercase text-center mb-1">PROCESO DE REVOLTURA</h3>
+                                    
+                                    <button 
+                                        onClick={() => setIsConfiguringProduction(true)} 
+                                        style={{ color: theme.text }} 
+                                        className="px-3 py-1.5 rounded-lg border border-current opacity-40 hover:opacity-100 hover:bg-black/5 text-[10px] font-bold uppercase tracking-widest transition-all flex items-center gap-2"
+                                    >
+                                        <Settings2 size={12}/> Establecer Proceso
+                                    </button>
                                 </div>
                                 
                                 <div className="space-y-6 max-w-4xl mx-auto pb-10">
@@ -1560,45 +1554,45 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                             <div className="animate-in fade-in duration-500 max-w-2xl mx-auto w-full">
                                 <div className="space-y-8">
                                     <div style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} className="p-8 border border-black/5 rounded-[40px] space-y-8">
-                                        <div className="flex items-center justify-between px-2">
-                                            <h3 style={{ color: theme.text }} className="text-sm font-black italic uppercase tracking-widest">Requiere <span className="opacity-40">Reposo Maestro</span></h3>
+                                        <div className="flex items-center gap-4 px-2">
+                                            <h3 style={{ color: theme.text }} className="text-[20px] font-black uppercase tracking-widest">REQUIERE REPOSO</h3>
                                             <button 
                                                 onClick={() => setFormData({...formData, requires_rest: !formData.requires_rest})}
-                                                className={`w-12 h-6 rounded-full transition-all relative ${formData.requires_rest ? 'bg-black/80' : 'bg-black/10'}`}
+                                                className={`w-16 h-8 rounded-full transition-all relative ${formData.requires_rest ? 'bg-black/80' : 'bg-black/10'}`}
                                             >
-                                                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${formData.requires_rest ? 'left-7' : 'left-1'}`} />
+                                                <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${formData.requires_rest ? 'left-9' : 'left-1'}`} />
                                             </button>
                                         </div>
                                         <hr className="border-black/5" />
                                         <div className="space-y-4">
                                             <label className="block">
-                                                <span style={{ color: theme.text }} className="font-black uppercase tracking-widest text-[11px] opacity-60">Contenedor de Reposo</span>
+                                                <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Contenedor de Reposo</span>
                                                 <input 
                                                     type="text" 
                                                     value={formData.rest_container}
                                                     onChange={e => setFormData({...formData, rest_container: e.target.value})}
                                                     placeholder="Ej: CUBETA AMARILLA 20L / CHAROLA"
                                                     style={{ backgroundColor: theme.input, color: theme.text }}
-                                                    className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30"
+                                                    className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-black text-[20px] placeholder-black/30"
                                                 />
                                             </label>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <label className="block">
-                                                    <span style={{ color: theme.text }} className="text-[13px] font-black uppercase opacity-60 tracking-widest pl-2">Almacén de Destino</span>
+                                                    <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Almacén de Destino</span>
                                                     <input 
                                                         type="text" 
                                                         value={formData.rest_warehouse}
                                                         onChange={e => setFormData({...formData, rest_warehouse: e.target.value})}
                                                         placeholder="Ej: CÁMARA 1"
                                                         style={{ backgroundColor: theme.input, color: theme.text }}
-                                                        className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-bold placeholder-black/30"
+                                                        className="w-full border border-black/5 rounded-3xl p-5 mt-2 outline-none font-black text-[20px] placeholder-black/30"
                                                     />
                                                 </label>
                                                 <label className="block">
-                                                    <span style={{ color: theme.text }} className="text-[14px] font-black uppercase tracking-widest opacity-60 pl-2">Tiempo de Reposo</span>
+                                                    <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Tiempo de Reposo</span>
                                                     <div className="grid grid-cols-2 gap-4 mt-2">
                                                         <div className="space-y-1">
-                                                            <span style={{ color: theme.text }} className="text-[12px] font-black uppercase opacity-40 tracking-widest pl-2">Horas</span>
+                                                            <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Horas</span>
                                                             <div style={{ backgroundColor: theme.input }} className="flex items-center gap-2 border border-black/5 rounded-[20px] px-4 py-3">
                                                                 <input 
                                                                     type="number" 
@@ -1610,13 +1604,13 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                         setFormData({...formData, rest_time_min: (hours * 60) + mins});
                                                                     }}
                                                                     style={{ color: theme.text }}
-                                                                    className="bg-transparent font-mono font-black text-lg w-full outline-none text-center"
+                                                                    className="bg-transparent font-mono font-black text-[20px] w-full outline-none text-center"
                                                                 />
                                                                 <span style={{ color: theme.text }} className="text-[9px] font-black opacity-40 uppercase tracking-widest">HRS</span>
                                                             </div>
                                                         </div>
                                                         <div className="space-y-1">
-                                                            <span style={{ color: theme.text }} className="text-[12px] font-black uppercase opacity-40 tracking-widest pl-2">Minutos</span>
+                                                            <span style={{ color: theme.text }} className="text-[16px] font-black uppercase tracking-widest pl-2">Minutos</span>
                                                             <div style={{ backgroundColor: theme.input }} className="flex-1 flex items-center gap-2 border border-black/5 rounded-[20px] px-4 py-3">
                                                                 <input 
                                                                     type="number" 
@@ -1628,7 +1622,7 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                                                         setFormData({...formData, rest_time_min: (hours * 60) + mins});
                                                                     }}
                                                                     style={{ color: theme.text }}
-                                                                    className="bg-transparent font-mono font-black text-lg w-full outline-none text-center"
+                                                                    className="bg-transparent font-mono font-black text-[20px] w-full outline-none text-center"
                                                                 />
                                                                 <span style={{ color: theme.text }} className="text-[9px] font-black opacity-40 uppercase tracking-widest">MIN</span>
                                                             </div>
@@ -1649,7 +1643,6 @@ const DoughWizardModal = ({ onClose, onSuccess, initialData, allDoughs = [] }) =
                                         <h3 style={{ color: theme.text }} className="text-3xl font-black tracking-tighter uppercase italic">
                                             {formData.dough_type === 'PREFERMENTO' || formData.dough_type === 'PRE-FERMENTO' ? 'Masas que emplean este pre-fermento' : 'Productos que emplean esta masa'}
                                         </h3>
-                                        <p style={{ color: theme.text }} className="text-[11px] font-black uppercase tracking-widest mt-2 opacity-50">Trazabilidad industrial descendente (Downstream)</p>
                                     </div>
 
                                     <div className="bg-white/5 border border-black/5 rounded-[40px] p-8">

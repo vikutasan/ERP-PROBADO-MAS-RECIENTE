@@ -433,9 +433,10 @@ if (errorMessage.includes("Conflicto de versión")) {
 ✅ OBLIGATORIO: Listener `beforeunload` + `navigator.sendBeacon` como último recurso.
 ```
 
-- Estado `lastSaveStatus`: `'unsaved'` | `'saving'` | `'saved'` | `'failed'`
+- Estado `lastSaveStatus`: `'unsaved'` | `'saving'` | `'saved'` | `'failed'` | `'queued'` *(v5.1)*
 - Si `failed` → badge rojo parpadeante `⚠️ SIN GUARDAR` visible en el Pizarrón.
 - Si `saved` → badge verde `✅ 11:05` con hora del último guardado exitoso.
+- Si `queued` → badge ámbar parpadeante `📥 GUARDADO LOCAL` (v5.1: auto-save encolado offline).
 - `beforeunload`: muestra diálogo nativo de advertencia si hay items no guardados.
 - `sendBeacon`: envía POST a `/api/v1/pos/tickets/emergency-save` con el carrito actual.
 - El endpoint de emergencia **nunca lanza excepciones** — siempre retorna 200.
@@ -611,6 +612,13 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
    → showCollisionModal pausa futuros auto-saves automáticamente
 8. LIBERA MUTEX
 9. El ticket aparece en el Pizarrón (get_open_tickets WHERE status=OPEN AND total>0)
+
+**v5.1 Resiliencia Offline:**
+Si en el paso 4 la conexión con el servidor falla (TypeError: Failed to fetch), y el status
+es `DRAFT`, el wrapper `resilientCreateTicket()` encola el payload completo en localStorage
+vía `enqueueOffline()`. El auto-save marca `setLastSaveStatus('queued')` y la UI muestra
+`📥 GUARDADO LOCAL`. Cuando `useNetworkHealth` detecta `netStatus = 'good'`,
+`useOfflineSync` hace flush FIFO automático de la cola.
 ```
 
 ### 3.3 Guardar en Pizarrón (Manual) — PROTOCOLO ZERO-LOSS (v4.0)
@@ -692,7 +700,7 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
 | `account_num` | STRING UNIQUE | Folio (`V11906`). Generado por `ticket_folio_seq` |
 | `terminal_id` | STRING | Terminal donde se creó (campo directo, NO derivado) |
 | `total` | FLOAT | Total calculado por el servidor desde items |
-| `status` | STRING | `OPEN`, `PAID`, `CANCELLED` |
+| `status` | STRING | `DRAFT`, `OPEN`, `PAID`, `CANCELLED` |
 | `version` | INT | Bloqueo optimista (se incrementa en cada update) |
 | `payment_details` | JSON | Lista de pagos mixtos |
 | `session_id` | FK → terminal_sessions | Sesión del terminal |
@@ -727,7 +735,7 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
 |-------|--------|
 | `terminal_id` | `ticket.terminal_id` → fallback: `ticket.session.terminal_id` |
 | `captured_by_name` | `ticket.captured_by.name` → fallback: `"SISTEMA"` |
-| `cashed_by_name` | Si OPEN: `"--- PENDIENTE ---"` / Si PAID: `ticket.cashed_by.name` → fallback: `"SISTEMA/AUTO"` |
+| `cashed_by_name` | Si DRAFT/OPEN: `"--- PENDIENTE ---"` / Si PAID: `ticket.cashed_by.name` → fallback: `"SISTEMA/AUTO"` |
 
 ---
 
@@ -764,12 +772,13 @@ async def heartbeat(db, terminal_id, occupier_id, ttl_minutes=15):
 ## 6. GARBAGE COLLECTION
 
 - `_cleanup_stale_empty_tickets()` elimina tickets con:
-  - `status = OPEN`
+  - `status = OPEN` **o** `status = DRAFT`
   - `total = 0`
   - Sin items
   - `created_at` > 24 horas de antigüedad
 - Throttled: máximo 1 ejecución por minuto
 - Se ejecuta automáticamente al reservar un ticket
+- ⚡ v5.0: El GC limpia ambos estados para no acumular borradores vacíos huérfanos
 
 ---
 
@@ -800,6 +809,16 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 - [ ] ¿El endpoint `/terminals/status` deduplica usuarios entre `terminal_locks` y `cash_sessions`? (REGLA 13)
 - [ ] ¿Las CashSessions >24h se marcan como expiradas? (REGLA 13)
 - [ ] ¿El `useEffect` que guarda el `localStorage` del carrito está protegido contra inicializaciones estáticas usando un candado de `cartState.key`? (v4.6 Anti-Wipe)
+- [ ] ¿Los tickets nuevos se crean con `status = 'DRAFT'` (no `OPEN`)? (REGLA 16 v5.0)
+- [ ] ¿El auto-save envía `status: 'DRAFT'` para cuentas en captura? (REGLA 16)
+- [ ] ¿El botón "Abrir Nueva Cuenta" envía `status: 'OPEN'` para publicar al Pizarrón? (REGLA 16)
+- [ ] ¿El endpoint `/tickets/drafts/{terminal_id}` se consulta al login de terminal? (REGLA 16)
+- [ ] ¿El DRAFT Guard en `_upsert_ticket_header` impide cobrar DRAFTs desde otra terminal? (REGLA 16)
+- [ ] ¿`handleTicketAction` usa `resilientCreateTicket()` para envolver `posService.createTicket()`? (REGLA 17 v5.1)
+- [ ] ¿Solo operaciones DRAFT se encolan offline? PAID y OPEN fallan ruidosamente (REGLA 17 v5.1)
+- [ ] ¿`useOfflineSync` está integrado y recibe `netStatus`, `createTicketFn`, `ticketVersionRef`? (REGLA 17)
+- [ ] ¿El banner de MODO OFFLINE se muestra cuando `offlinePending > 0`? (REGLA 17)
+- [ ] ¿La cola offline expira entradas > 10 minutos automáticamente? (REGLA 17)
 
 ---
 
@@ -825,6 +844,8 @@ Antes de hacer CUALQUIER cambio en el flujo de tickets:
 | `handleRecoverAccount` no sincronizaba `cartRef` | **Ticket V13000: artículos faltantes** — ARELY capturó items, VICTOR recuperó desde Pizarrón, auto-save envió carrito viejo de VICTOR sobreescribiendo items de ARELY | REGLA 14 v4.5: `cartRef.current = recovered` ANTES de `setCart()` |
 | `getTicketByAccountNum` usaba búsqueda fuzzy `ilike` | **Recuperación de ticket equivocado** — `ilike('%V1300%')` podía devolver V13000 o V13001 en vez de V1300 | REGLA 15 v4.5: Endpoint exacto `/tickets/by-account/{account_num}` |
 | `isActionRunningRef` nunca declarada | **Mutex bloqueado permanentemente** — ReferenceError silencioso en auto-heal del 409 dejaba `isRecoveringRef = true`, deshabilitando auto-save | v4.5: Referencia eliminada. El mutex se libera en `finally` con `releaseMutex()` |
+| Tickets nacen como `OPEN` (visible al Pizarrón de inmediato) | **Incidente V17484→V17485 (06/May/2026)** — OMEGA invocó desde el Pizarrón una cuenta de ALICIA que aún estaba en captura. El sistema auto-reasignó el folio al detectar colisión, confundiendo a ambas operadoras | REGLA 16 v5.0: Tickets nacen como `DRAFT` (invisibles). Solo aparecen en Pizarrón al enviar explícitamente → `OPEN` |
+| Auto-save fallaba silenciosamente al caerse la red | **Pérdida potencial de items en captura** — Si la red se caía durante >15s, los auto-saves consecutivos fallaban sin persistir. El capturista seguía trabajando creyendo que sus datos se guardaban, pero no había protección local | REGLA 17 v5.1: `resilientCreateTicket()` encola payloads DRAFT en localStorage. `useOfflineSync` hace flush automático al restablecerse la red. Banner `⚠️ MODO OFFLINE` alerta al operador |
 
 ---
 
@@ -866,6 +887,98 @@ T=30s   ✅ Auto-save lee cartRef.current (que es [BOLSA para V11907])
 ---
 
 ## REGLAS NUEVAS v4.5
+
+*(Ver secciones 14 y 15 más abajo — estas reglas preexistían antes del incidente V17484)*
+
+---
+
+## REGLA 16 — DRAFT: CAPTURA INVISIBLE HASTA CONFIRMACIÓN EXPLÍCITA (v5.0)
+
+```
+⛔ PROHIBIDO: Crear tickets con status='OPEN' desde el backend.
+⛔ PROHIBIDO: Auto-save enviando status='OPEN' (hace visible la cuenta en Pizarrón prematuramente).
+⛔ PROHIBIDO: Cobrar (→PAID) un DRAFT desde una terminal diferente a la que lo creó.
+✅ OBLIGATORIO: Tickets nuevos (reserve_ticket) y auto-save envían status='DRAFT'.
+✅ OBLIGATORIO: Solo el botón "ABRIR NUEVA CUENTA" (usuario explícito) envía status='OPEN'.
+✅ OBLIGATORIO: Al login de terminal, consultar /tickets/drafts/{terminal_id} y mostrar OrphanDraftModal.
+```
+
+**¿Por qué?** El Pizarrón mostraba tickets que el capturista **aún estaba editando**.
+Un cajero podía invocar una cuenta incompleta desde otra terminal, cobrarla, y al detectar
+la colisión el sistema auto-reasignaba el folio — confundiendo a ambos operadores
+(Incidente real: ALICIA en T5 → OMEGA en TCAJA → V17484 reasignado a V17485, 06/May/2026).
+
+**Flujo correcto v5.0:**
+```
+  Capturista agrega productos
+       ↓
+  auto-save → DRAFT (invisible al Pizarrón)
+  [el cajero NO puede ver esta cuenta]
+       ↓
+  Capturista termina de capturar
+  Click "ABRIR NUEVA CUENTA"
+       ↓
+  handleTicketAction('OPEN') → OPEN (visible al Pizarrón) ✅
+  [el cajero ve la cuenta lista, con todos los productos]
+       ↓
+  Cajero invoca → cobra → folio correcto, sin reasignaciones ✅
+```
+
+**DRAFT Guard en `_upsert_ticket_header()` (service.py):**
+```python
+# Un DRAFT solo puede cobrarse (→PAID) desde la MISMA terminal que lo creó.
+# Si otra terminal intenta cobrar un DRAFT → HTTP 400.
+if db_ticket.status == "DRAFT" and ticket.status == "PAID":
+    if safe_req_terminal != safe_db_terminal:
+        raise HTTPException(400,
+            f"El folio {ticket.account_num} es un borrador de {safe_db_terminal}. "
+            f"Debe enviarse al Pizarrón antes de cobrarse desde {safe_req_terminal}.")
+```
+
+**Flujo de borradores huérfanos (OrphanDraftModal):**
+```
+1. Juana captura en T2, no termina, cierra sesión → DRAFT queda en DB asociado a T2
+2. Alicia entra a T2
+3. Frontend: checkOrphanDrafts() → GET /api/v1/pos/tickets/drafts/T2
+4. Servidor responde: [{ account_num: 'V17900', total: 340, captured_by: 'Juana', items: [...] }]
+5. OrphanDraftModal aparece con 3 opciones:
+   a. "Cargar y Continuar" → handleRecoverAccount() → carrito de Juana cargado para Alicia
+   b. "Enviar al Pizarrón" → DRAFT→OPEN → visible en CAJA para cobrar
+   c. "Descartar Borrador" → DRAFT→CANCELLED → se pierde (con confirmación implícita)
+```
+
+**Badge BORRADOR en el POS:**
+```jsx
+{/* Mientras el ticket está en DRAFT, mostrar badge discreto */}
+{currentAccountNum && cart.length > 0 && !orderData && (
+    <span className="text-amber-400 text-xs">📝 BORRADOR</span>
+)}
+```
+
+**Endpoints v5.0:**
+```
+GET  /api/v1/pos/tickets/drafts/{terminal_id}
+     → Retorna array de DRAFTs con items para la terminal.
+     → Usado al login para detectar borradores huérfanos.
+
+POST /api/v1/pos/tickets (status: 'DRAFT')
+     → auto-save y primer guardado al agregar producto.
+
+POST /api/v1/pos/tickets (status: 'OPEN')
+     → Solo al click de "Abrir Nueva Cuenta".
+```
+
+---
+
+> **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
+>
+> Cualquier IA o desarrollador que modifique el sistema DEBE leerlo primero
+> y verificar que sus cambios no violan NINGUNA de las 17 reglas.
+>
+> **Las reglas 1, 2, 3, 9, 10, 12, 13, 14, 15, 16 y 17 son las más críticas.** Violarlas causa pérdida
+> silenciosa de datos en producción, modales falsos que interrumpen la operación,
+> sesiones fantasma que bloquean terminales indefinidamente, recuperación del ticket equivocado,
+> cobro de cuentas incompletas con reasignación de folios, o pérdida de auto-saves durante caídas de red.
 
 ### ⚡ REGLA 14 — SYNC OBLIGATORIO DE `cartRef` EN TODA RECUPERACIÓN (v4.5)
 
@@ -917,11 +1030,125 @@ async getTicketByAccountNum(accountNum) {
 
 ---
 
-> **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
->
-> Cualquier IA o desarrollador que modifique el sistema DEBE leerlo primero
-> y verificar que sus cambios no violan NINGUNA de las 15 reglas.
->
-> **Las reglas 1, 2, 3, 9, 10, 12, 13, 14 y 15 son las más críticas.** Violarlas causa pérdida
-> silenciosa de datos en producción, modales falsos que interrumpen la operación,
-> sesiones fantasma que bloquean terminales indefinidamente, o recuperación del ticket equivocado.
+## REGLA 17 — RESILIENCIA OFFLINE: AUTO-SAVE NUNCA SE PIERDE (v5.1)
+
+```
+⛔ PROHIBIDO: Que un auto-save falle silenciosamente sin respaldo local.
+⛔ PROHIBIDO: Encolar operaciones PAID u OPEN offline (requieren confirmación del servidor).
+⛔ PROHIBIDO: Reintentar entradas de la cola indefinidamente (máximo 3 intentos, expiración 10 min).
+✅ OBLIGATORIO: Envolver posService.createTicket() con resilientCreateTicket() en handleTicketAction.
+✅ OBLIGATORIO: Si la red falla y el status es DRAFT → enqueueOffline(payload) en localStorage.
+✅ OBLIGATORIO: useOfflineSync hace flush FIFO automático cuando netStatus transiciona a 'good'.
+✅ OBLIGATORIO: Banner visual persistente cuando offlinePending > 0.
+```
+
+**¿Por qué?** El auto-save cada 15 segundos es la línea de vida del POS. Si la red se cae
+(cable suelto, Docker reiniciando, switch apagado), el auto-save falla con `TypeError: Failed to fetch`.
+Sin resiliencia offline, los datos del capturista existen solo en la memoria del navegador.
+Si alguien presiona F5 o la pestaña se cierra, los datos se pierden.
+
+**Arquitectura:**
+```
+handleTicketAction()
+  ↓
+resilientCreateTicket(posService.createTicket, payload)
+  ↓
+┌─── RED OK? ───┐
+│  SÍ           │  NO (TypeError / AbortError)
+↓               ↓
+Servidor OK     ¿status === 'DRAFT'?
+→ version++     ├── SÍ → enqueueOffline(payload) → localStorage
+→ respuesta     │       → return { queued: true, localId }
+                │       → setLastSaveStatus('queued')
+                │       → badge "📥 GUARDADO LOCAL"
+                │
+                └── NO (PAID/OPEN) → throw Error
+                    → "Sin conexión. La operación requiere conexión."
+                    → El operador VE el error y puede reintentar
+```
+
+**Cola Offline (`cartPersistence.js`):**
+```javascript
+// Estructura de cada entrada en localStorage (key: 'rdr_offline_queue')
+{
+  id: '1715132400000-a7f3bk',  // timestamp-random
+  payload: { ... },             // Payload COMPLETO del ticket
+  enqueuedAt: '2026-05-08T...',
+  attempts: 0,
+  lastAttempt: null,
+  synced: false,
+  error: null
+}
+
+// Funciones disponibles:
+enqueueOffline(payload)   // Agrega a la cola FIFO
+dequeueNext()             // Toma la primera entrada pendiente (< 10 min)
+markSynced(entryId)       // Marca como sincronizada
+markAttempt(entryId, err) // Incrementa intentos
+getQueueSize()            // Cantidad de entradas pendientes
+cleanupQueue()            // Elimina entradas procesadas
+```
+
+**Sincronizador (`useOfflineSync.js`):**
+```javascript
+// Triggers:
+// 1. Transición netStatus: 'down' → 'good' (con 2s de delay)
+// 2. Polling cada 10s si hay pendientes y red está bien
+
+// Proceso de flush:
+while (entry = dequeueNext()) {
+    try {
+        result = await posService.createTicket(entry.payload); // Bypass del wrapper
+        markSynced(entry.id);
+        
+        // Si el ticket sincronizado es el activo en pantalla:
+        if (result.version && accountNumRef.current === entry.payload.account_num) {
+            ticketVersionRef.current = result.version; // SYNC inmediato
+        }
+    } catch (error) {
+        markAttempt(entry.id, error.message);
+        if (entry.attempts >= 3 || !isNetworkError(error)) {
+            markSynced(entry.id); // Descartar (error del servidor = payload inválido)
+        } else {
+            break; // Error de red — reintentar en el próximo ciclo
+        }
+    }
+}
+cleanupQueue(); // Limpiar entradas procesadas
+```
+
+**Banner visual:**
+```jsx
+{/* Barra persistente top-of-screen */}
+{offlinePending > 0 && (
+    <div className="fixed top-0 left-0 right-0 z-[250]">
+        <div className={offlinePending >= 3 ? 'bg-red-600' : 'bg-amber-500'}>
+            {isOfflineSyncing
+                ? '🔄 SINCRONIZANDO N OPERACIONES PENDIENTES...'
+                : '⚠️ MODO OFFLINE — N OPERACIONES PENDIENTES DE SINCRONIZACIÓN'}
+        </div>
+    </div>
+)}
+```
+
+**Reglas de encolamiento:**
+| Condición | Comportamiento |
+|---|---|
+| Red falla + status `DRAFT` | ✅ Se encola en localStorage |
+| Red falla + status `PAID` | ❌ Error ruidoso: "requiere conexión" |
+| Red falla + status `OPEN` | ❌ Error ruidoso: "requiere conexión" |
+| Entrada > 10 minutos en cola | ⏰ Se marca como EXPIRED automáticamente |
+| Entrada con 3+ intentos fallidos | ❌ Se descarta (payload probablemente inválido) |
+| Error del servidor (4xx/5xx) | ❌ Se propaga sin encolar (la red funciona) |
+
+**Archivos involucrados:**
+```
+services/resilientFetch.js    → Wrapper que detecta error de red y encola
+services/cartPersistence.js   → Cola FIFO en localStorage (enqueue/dequeue/mark)
+hooks/useOfflineSync.js       → Sincronizador automático (flush cuando red=good)
+RetailVisionPOS.jsx           → Integración: import + hook + banner + status 'queued'
+```
+
+**Cero cambios de backend.** Los payloads encolados son idénticos a los que se envían
+normalmente. Cuando la cola se sincroniza, el servidor los procesa como auto-saves normales.
+

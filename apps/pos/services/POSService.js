@@ -67,6 +67,12 @@ class POSService {
         return res.json();
     }
 
+    async getTerminalDrafts(terminalId) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/drafts/${encodeURIComponent(terminalId)}`, { cache: 'no-store' });
+        if (!res.ok) return [];
+        return res.json();
+    }
+
     async getTerminalsStatus() {
         const res = await fetch(`${CONFIG.API_BASE_URL}/pos/terminals/status`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error cargando estado de terminales");

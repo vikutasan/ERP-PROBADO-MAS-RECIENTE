@@ -8,6 +8,8 @@ import { useBeforeUnload } from './hooks/useBeforeUnload';
 import { useBarcodeScanner } from './hooks/useBarcodeScanner';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useNetworkHealth } from './hooks/useNetworkHealth';
+import { useOfflineSync } from './hooks/useOfflineSync';
+import { resilientCreateTicket } from './services/resilientFetch';
 import { CONFIG } from './config';
 
 // Sub-componentes
@@ -22,6 +24,9 @@ import { GestorDeCaja } from './components/GestorDeCaja';
 import { TerminalSelector } from './components/TerminalSelector';
 import { ProgramacionPedidoModal } from './components/ProgramacionPedidoModal';
 import { CollisionModal } from './components/CollisionModal';
+import { DraftsCorkboard } from './components/DraftsCorkboard';
+import { ForceLogoutModal, OfflineBanner, ToastNotification } from './components/POSOverlays';
+import { POSHeader } from './components/POSHeader';
 import { cashService } from './services/cashService';
 
 import { INITIAL_CATEGORIES, getProductEmoji, terminals } from './utils/posConstants';
@@ -49,6 +54,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
     const [isSendingToPizarron, setIsSendingToPizarron] = useState(false);
     const [ticketVersion, setTicketVersion] = useState(null); // Versión optimista del ticket activo
     const [showCollisionModal, setShowCollisionModal] = useState(false);
+    // v5.2 DRAFT: Pizarrón Alterno de Borradores
+    const [showDraftCorkboard, setShowDraftCorkboard] = useState(false);
+    const [terminalDrafts, setTerminalDrafts] = useState([]);
     const printRef = React.useRef();
     const savedTicketRef = React.useRef(null); // Ref inmediata para datos de impresión (no depende de re-render)
     const cartRef = React.useRef([]);           // Ref para auto-save anti-stale-closure
@@ -96,36 +104,27 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
     // --- Persistencia de Metadatos de Sesión ---
     useEffect(() => {
         if (!selectedTerminal) return;
-        const sessionKey = `pos_session_${selectedTerminal}`;
-        try {
-            const saved = localStorage.getItem(sessionKey);
-            if (saved) {
-                const data = JSON.parse(saved);
-                
-                // VALIDACIÓN POST-RESTORE: Solo confiar si el número de cuenta parece válido
-                if (data.currentAccountNum && data.currentAccountNum.startsWith('V')) {
-                    // PROTECCIÓN ANTI-ZOMBIE: 
-                    // Si restauramos un numero pero el carrito está vacío, 
-                    // es mejor descartarlo para evitar sobreescribir tickets viejos accidentalmente.
-                    if (cart.length === 0) {
-                        console.log("Descartando folio zombie recuperado (carrito vacío)");
-                        setCurrentAccountNum('');
-                        setOriginalCapturer(null);
-                    } else {
-                        setCurrentAccountNum(data.currentAccountNum);
-                        if (data.originalCapturer && typeof data.originalCapturer === 'object') {
-                            setOriginalCapturer(data.originalCapturer);
-                        }
-                    }
-                }
-                
-                if (data.orderType) setOrderType(data.orderType);
-                if (data.orderData) setOrderData(data.orderData);
-                
-                console.log("Sesión recuperada para terminal:", selectedTerminal);
-            }
-        } catch (e) { console.warn("Error al restaurar metadatos de sesión", e); }
-    }, [selectedTerminal]); // EJECUTAR SOLO AL CAMBIAR DE TERMINAL para evitar colisión con el Pizarrón
+        
+        // REGLA DE NEGOCIO (Zero-Auto-Restore): 
+        // A petición del usuario, la terminal SIEMPRE inicia en blanco.
+        // Si hubo un corte de luz, un F5, o el usuario salió de golpe, 
+        // NO se recupera la cuenta automáticamente en la pantalla principal.
+        // Todo trabajo interrumpido queda como DRAFT en el servidor gracias
+        // al auto-save, y DEBE ser recuperado manualmente desde el 
+        // Pizarrón de Borradores.
+        
+        console.log(`🧹 Inicializando Terminal ${selectedTerminal}. Descartando caché local para iniciar en blanco...`);
+        
+        localStorage.removeItem(`pos_session_${selectedTerminal}`);
+        localStorage.removeItem(`pos_cart_${selectedTerminal}`);
+        
+        clearCart();
+        setCurrentAccountNum('');
+        setOriginalCapturer(null);
+        setOrderType('VENTA_DIRECTA');
+        setOrderData(null);
+        
+    }, [selectedTerminal]); // EJECUTAR SOLO AL INICIAR LA TERMINAL
 
     useEffect(() => {
         if (!selectedTerminal) return;
@@ -237,7 +236,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                     // Delay mínimo para que React procese el addToCart
                     setTimeout(() => {
                         console.log('📡 ZERO-LOSS: Guardado inmediato del primer producto');
-                        handleTicketAction('OPEN', null, false)
+                        handleTicketAction('DRAFT', null, false)
                             .then(() => {
                                 setLastSaveStatus('saved');
                                 setLastSaveTime(new Date());
@@ -272,6 +271,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                 }
             };
             syncCashState();
+
+            // v5.0 DRAFT: Eliminada verificación intrusiva (Reemplazado por Pizarrón Alterno)
         }
     }, [selectedTerminal, currentAccountNum, generateNewAccountNum]);
 
@@ -283,10 +284,19 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         refs: { isGeneratingFolioRef, isRecoveringRef, accountNumRef, cartRef },
         setLastSaveStatus, 
         setLastSaveTime, 
-        onSave: () => handleTicketAction('OPEN', null, false)
+        onSave: () => handleTicketAction('DRAFT', null, false)
     });
 
     useBeforeUnload(cartRef, accountNumRef, CONFIG.API_BASE_URL);
+
+    // v5.1 OFFLINE RESILIENCY: Sincronizador de cola offline
+    const { pendingCount: offlinePending, isSyncing: isOfflineSyncing } = useOfflineSync({
+        netStatus,
+        createTicketFn: (payload) => posService.createTicket(payload),
+        ticketVersionRef,
+        setTicketVersion,
+        accountNumRef
+    });
 
     useBarcodeScanner(PRODUCTS, handleAddToCart);
 
@@ -399,7 +409,22 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
 
                 let savedTicket = null;
                 try {
-                    savedTicket = await posService.createTicket(payload);
+                    // v5.1 OFFLINE RESILIENCY: Envolver con wrapper resiliente
+                    // Si la red falla y es DRAFT → se encola localmente
+                    // Si la red falla y es PAID/OPEN → falla ruidosamente (requiere confirmación)
+                    savedTicket = await resilientCreateTicket(
+                        (p) => posService.createTicket(p),
+                        payload
+                    );
+                    
+                    // v5.1: Si fue encolado offline, no tenemos respuesta del servidor
+                    if (savedTicket?.queued) {
+                        console.log(`📥 Auto-save encolado offline: ${savedTicket.localId}`);
+                        setLastSaveStatus('queued');
+                        // NO actualizar version — no tenemos confirmación del servidor
+                        // NO limpiar carrito — seguimos en modo captura
+                        return;
+                    }
                 } catch (err) {
                     const errorMessage = err.message || "";
                     if (errorMessage.includes("ya ha sido pagado")) {
@@ -534,7 +559,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         if (accountNumRef.current && cartRef.current.length > 0) {
             try {
                 console.log(`🔒 FLUSH: Guardando cuenta activa ${accountNumRef.current} (${cartRef.current.length} items) antes de cambiar...`);
-                await handleTicketAction('OPEN', null, false);
+                await handleTicketAction('DRAFT', null, false);
                 console.log(`✅ FLUSH exitoso.`);
             } catch (e) {
                 console.error(`⚠️ FLUSH falló para ${accountNumRef.current}:`, e);
@@ -614,12 +639,74 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         }
 
         setShowCorkboard(false);
+        setShowDraftCorkboard(false); // Cerrar pizarrón alterno si estaba abierto
 
         // v3.0: Desbloquear auto-save DESPUÉS de que React procese todos los setState batched
         requestAnimationFrame(() => {
             isRecoveringRef.current = false;
         });
     };
+
+    // v5.2 DRAFT: Handlers para el Pizarrón Alterno de Borradores
+    const handleLoadDraft = (draft) => {
+        const account = {
+            accountNum: draft.account_num,
+            rawItems: draft.items,
+            version: draft.version,
+            capturedById: draft.captured_by_id,
+            capturedByName: draft.captured_by_name || draft.captured_by?.name,
+            orderType: draft.order_type,
+            deliveryType: draft.delivery_type,
+            clientName: draft.customer_name,
+            customerPhone: draft.customer_phone,
+            committedAt: draft.committed_at,
+            packagingType: draft.packaging_type,
+            deliveryAddress: draft.delivery_address,
+            orderNotes: draft.order_notes
+        };
+        handleRecoverAccount(account);
+    };
+
+    const handleDiscardDraft = async (draft) => {
+        try {
+            const terminalId = selectedTerminal || 'T1';
+            let session = await posService.getActiveSession(terminalId);
+            if (!session) session = await posService.createSession(terminalId);
+            await posService.createTicket({
+                account_num: draft.account_num,
+                session_id: session.id,
+                items: draft.items.map(i => ({ product_id: i.product.id, quantity: i.quantity })),
+                status: 'CANCELLED',
+                captured_by_id: draft.captured_by_id,
+                version: draft.version
+            });
+            setToastMessage('🗑️ Borrador descartado.');
+            setTimeout(() => setToastMessage(null), 3000);
+            
+            // Actualizar lista para UI fluida
+            setTerminalDrafts(prev => prev.filter(d => d.account_num !== draft.account_num));
+        } catch (e) {
+            console.error("Error cancelando borrador:", e);
+        }
+    };
+
+    useEffect(() => {
+        if (!showDraftCorkboard) return;
+
+        const fetchDrafts = async () => {
+            try {
+                const targetTerminal = selectedTerminal === 'CAJA' ? 'ALL' : selectedTerminal;
+                const drafts = await posService.getTerminalDrafts(targetTerminal);
+                setTerminalDrafts(drafts || []);
+            } catch (e) {
+                console.error("Error fetching drafts", e);
+            }
+        };
+
+        fetchDrafts();
+        const interval = setInterval(fetchDrafts, 5000);
+        return () => clearInterval(interval);
+    }, [showDraftCorkboard, selectedTerminal]);
 
     useEffect(() => {
         if (!showCorkboard) return;
@@ -673,157 +760,58 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         );
     }
 
+    // --- Handler para cambio de terminal (extraído del header inline) ---
+    const handleTerminalSwitch = async () => {
+        const canSwitch = !assignedTerminal || currentUser?.role === 'ADMIN' || currentUser?.permissions?.access_any_terminal === 'full';
+        if (!canSwitch) return;
+        try {
+            await posService.unlockTerminal(selectedTerminal, currentUser?.id);
+        } catch(e) { console.error("Could not unlock terminal", e); }
+        
+        // v5.2 DRAFT: Limpieza explícita del estado local para no dejar la terminal "sucia"
+        try {
+            localStorage.removeItem(`pos_session_${selectedTerminal}`);
+            localStorage.removeItem(`pos_cart_${selectedTerminal}`);
+            clearCart();
+            setCurrentAccountNum('');
+            setOriginalCapturer(null);
+        } catch(e) {}
+
+        setSelectedTerminal(null);
+    };
+
     // --- Componentes Locales (Mantenidos para preservar Grid estable) ---
     // ProductCard y ProductGrid han sido extraídos a sus propios archivos.
 
     return (
         <div className="flex flex-col h-full bg-transparent text-white overflow-hidden">
-            {/* Header: 3 zonas - Terminal | Cuenta+Tipo | Caja+Pizarron */}
-            <div className="p-4 pb-2 z-20">
-                <div className="flex justify-between items-center mb-3">
-                    {/* IZQUIERDA: Terminal */}
-                    <div className="flex-shrink-0">
-                        <button onClick={async () => {
-                            const canSwitch = !assignedTerminal || currentUser?.role === 'ADMIN' || currentUser?.permissions?.access_any_terminal === 'full';
-                            if (!canSwitch) return;
-                            try {
-                                await posService.unlockTerminal(selectedTerminal, currentUser?.id);
-                            } catch(e) { console.error("Could not unlock terminal", e); }
-                            setSelectedTerminal(null);
-                        }} className={`bg-zinc-900/90 border border-white/5 px-6 py-2 rounded-xl flex items-center transition-all group shadow-2xl ${assignedTerminal && currentUser?.role !== 'ADMIN' && currentUser?.permissions?.access_any_terminal !== 'full' ? 'cursor-default' : 'hover:bg-zinc-800'}`}>
-                            <div className="text-left">
-                                <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">
-                                    {selectedTerminal === 'CAJA' ? 'Caja Central' : `Terminal ${selectedTerminal}`}
-                                </p>
-                                {(!assignedTerminal || currentUser?.role === 'ADMIN' || currentUser?.permissions?.access_any_terminal === 'full') && (
-                                <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
-                                    Cambiar Estación
-                                </p>
-                                )}
-                                <p className={`text-[9px] font-black uppercase tracking-widest leading-none mt-1 flex items-center gap-1 ${netStatus === 'good' ? 'text-green-400' : netStatus === 'slow' ? 'text-yellow-400 animate-pulse' : 'text-red-500 animate-pulse'}`}>
-                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${netStatus === 'good' ? 'bg-green-400' : netStatus === 'slow' ? 'bg-yellow-400' : 'bg-red-500'}`}></span>
-                                    {netStatus === 'good' ? `RED OK` : netStatus === 'slow' ? 'RED LENTA' : 'SIN RED'}
-                                    {netStatus === 'good' && netLatency > 0 ? ` ${netLatency}ms` : ''}
-                                </p>
-                            </div>
-                        </button>
-                    </div>
-
-                    {/* CENTRO: Cuenta + Toggle Tipo + Botón Programación */}
-                    <div className="flex items-center gap-3 flex-1 justify-center">
-                        {/* Número de cuenta */}
-                        <div className="bg-black border border-white/10 px-8 py-2 rounded-3xl shadow-2xl flex flex-col items-center">
-                            <span className="text-[7px] font-black uppercase text-white tracking-[0.5em] mb-0.5">ESTADO DE TRANSACCION</span>
-                            <span className={`text-4xl font-black uppercase tracking-tighter italic drop-shadow-[0_0_12px_rgba(193,215,46,0.4)] ${
-                                currentAccountNum
-                                    ? orderData ? 'text-orange-400' : 'text-[#c1d72e]'
-                                    : 'text-orange-500 animate-pulse'
-                            }`}>
-                                {currentAccountNum
-                                    ? `CTA ${currentAccountNum}`
-                                    : 'NUEVA VENTA'}
-                            </span>
-                            {orderData && (
-                                <span className="text-[8px] font-black text-orange-400 uppercase tracking-widest animate-pulse mt-0.5">📦 PEDIDO TENTATIVO</span>
-                            )}
-                        </div>
-
-                        {/* Toggle: Venta Directa / Pedido */}
-                        <div className="flex bg-black/60 border border-white/10 rounded-2xl p-1 gap-1">
-                            <button
-                                id="btn-venta-directa"
-                                onClick={() => { setOrderType('VENTA_DIRECTA'); setOrderData(null); }}
-                                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${
-                                    orderType === 'VENTA_DIRECTA'
-                                        ? 'bg-[#c1d72e] text-black shadow-lg'
-                                        : 'text-white/50 hover:text-white'
-                                }`}
-                            >
-                                Venta Directa
-                            </button>
-                            <button
-                                id="btn-pedido"
-                                onClick={() => setOrderType('PEDIDO')}
-                                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${
-                                    orderType === 'PEDIDO'
-                                        ? 'bg-orange-500 text-white shadow-lg'
-                                        : 'text-white/50 hover:text-white'
-                                }`}
-                            >
-                                📦 Pedido
-                            </button>
-                        </div>
-
-                        {/* Botón Programación del Pedido — solo visible en modo PEDIDO */}
-                        {orderType === 'PEDIDO' && (
-                            <button
-                                id="btn-programacion-pedido"
-                                onClick={() => setShowProgramacion(true)}
-                                className="bg-orange-500/20 border border-orange-500/60 px-5 py-2 rounded-xl flex items-center gap-2 hover:bg-orange-500/30 hover:border-orange-400 transition-all shadow-xl animate-in fade-in duration-300"
-                            >
-                                <div className="text-left">
-                                    <p className="text-[13px] font-black uppercase text-white tracking-widest leading-none mb-0.5">Programación</p>
-                                    <p className="text-[11px] font-black text-orange-400 uppercase tracking-tighter leading-none">del Pedido</p>
-                                </div>
-                                <span className="text-xl">🗓️</span>
-                            </button>
-                        )}
-                    </div>
-
-                    {/* DERECHA: Caja + Pizarron */}
-                    <div className="flex-shrink-0 flex gap-2">
-                        <button
-                            onClick={() => setShowGestorCaja(true)}
-                            className="bg-black/60 border border-[#c1d72e]/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#c1d72e]/20 hover:border-[#c1d72e] transition-all shadow-xl"
-                            title={isCashEnabled ? 'Gestionar Caja (Activa)' : 'Habilitar como Caja'}
-                        >
-                            <div className="text-left">
-                                <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">Caja</p>
-                                <p className={`text-[14px] font-black uppercase tracking-tighter leading-none ${isCashEnabled ? 'text-[#c1d72e]' : 'text-[#c1d72e]/60'}`}>
-                                    {isCashEnabled ? '● Activa' : '○ Habilitar'}
-                                </p>
-                            </div>
-                        </button>
-
-                        <button
-                            onClick={() => setShowCorkboard(true)}
-                            className="bg-[#2d1e13] border border-orange-900/40 px-6 py-2 rounded-xl flex items-center hover:bg-[#3d2b1f] hover:border-orange-500/50 transition-all group shadow-xl"
-                        >
-                            <div className="text-left">
-                                <p className="text-[18px] font-black uppercase text-white tracking-widest leading-none mb-1">Pizarron</p>
-                                <p className="text-[14px] font-black text-orange-500 uppercase tracking-tighter leading-none">
-                                    {visibleAccounts.length} {selectedTerminal === 'CAJA' ? 'TOTALES' : 'MIAS'}
-                                </p>
-                                {/* v4.0 ZERO-LOSS: Badge de estado de guardado */}
-                                {lastSaveStatus === 'failed' && cart.length > 0 && (
-                                    <p className="text-[10px] font-black text-red-500 uppercase tracking-tighter leading-none animate-pulse mt-0.5">
-                                        ⚠️ SIN GUARDAR
-                                    </p>
-                                )}
-                                {lastSaveStatus === 'saving' && (
-                                    <p className="text-[10px] font-black text-yellow-400 uppercase tracking-tighter leading-none mt-0.5">
-                                        ⏳ Guardando...
-                                    </p>
-                                )}
-                                {lastSaveStatus === 'saved' && lastSaveTime && (
-                                    <p className="text-[10px] font-black text-green-400 uppercase tracking-tighter leading-none mt-0.5">
-                                        ✅ {lastSaveTime.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'})}
-                                    </p>
-                                )}
-                            </div>
-                        </button>
-                    </div>
-                </div>
-
-                <CategoryBar 
-                    categories={categories} 
-                    activeCategory={activeCategory} 
-                    setActiveCategory={setActiveCategory} 
-                    viewMode={viewMode} 
-                    setViewMode={setViewMode} 
-                    setCurrentPage={setCurrentPage} 
-                />
-            </div>
+            <POSHeader
+                selectedTerminal={selectedTerminal}
+                currentUser={currentUser}
+                assignedTerminal={assignedTerminal}
+                netStatus={netStatus}
+                netLatency={netLatency}
+                currentAccountNum={currentAccountNum}
+                cartLength={cart.length}
+                orderType={orderType}
+                orderData={orderData}
+                isCashEnabled={isCashEnabled}
+                visibleAccountsCount={visibleAccounts.length}
+                lastSaveStatus={lastSaveStatus}
+                lastSaveTime={lastSaveTime}
+                categories={categories}
+                activeCategory={activeCategory}
+                viewMode={viewMode}
+                onTerminalSwitch={handleTerminalSwitch}
+                onOrderTypeChange={setOrderType}
+                onOrderDataClear={() => setOrderData(null)}
+                onOpenProgramacion={() => setShowProgramacion(true)}
+                onOpenGestorCaja={() => setShowGestorCaja(true)}
+                onOpenCorkboard={() => setShowCorkboard(true)}
+                onCategoryChange={setActiveCategory}
+                onViewModeChange={setViewMode}
+                onPageChange={setCurrentPage}
+            />
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
@@ -883,6 +871,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                     openAccounts={visibleAccounts}
                     onSelectAccount={handleRecoverAccount}
                     onClose={() => setShowCorkboard(false)}
+                    onOpenDrafts={() => setShowDraftCorkboard(true)}
                 />
             )}
 
@@ -919,45 +908,28 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                 />
             )}
 
-            {/* Contenedor Principal (Fin) */}
-            {/* Modal de Auto-Expulsión (Polling Remoto) */}
-            {forceLogoutModal && (
-                <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] animate-in fade-in zoom-in duration-500">
-                    <div className="bg-gray-950 border border-red-500/30 p-12 rounded-[50px] shadow-[0_0_100px_rgba(255,0,0,0.3)] max-w-md w-full text-center relative overflow-hidden">
-                        <div className="absolute -top-40 -left-40 w-80 h-80 bg-red-600/20 blur-[100px] rounded-full"></div>
-                        <div className="text-8xl mb-6 relative z-10 animate-pulse">🚨</div>
-                        <h2 className="text-3xl font-black uppercase text-red-500 mb-4 relative z-10 tracking-tighter">SESIÓN TERMINADA</h2>
-                        <p className="text-sm font-bold text-gray-300 mb-10 relative z-10 leading-relaxed">
-                            Un Administrador ha forzado la liberación total de tu terminal.<br/><br/>
-                            <span className="text-red-400">Has sido desconectado por seguridad.</span>
-                        </p>
-                        <div className="flex justify-center relative z-10">
-                            <button 
-                                onClick={() => {
-                                    if (onForceLogout) onForceLogout();
-                                    else window.location.reload();
-                                }}
-                                className="w-full py-5 rounded-3xl bg-red-600 hover:bg-red-500 border border-red-500/50 font-black uppercase text-xs tracking-[0.2em] text-white transition-all shadow-[0_10px_40px_rgba(220,38,38,0.4)]"
-                            >
-                                SALIR AL LOGIN
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Toast de confirmación no-bloqueante */}
-            {toastMessage && (
-                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-4 fade-in duration-500">
-                    <div className="bg-[#c1d72e] text-black px-10 py-4 rounded-2xl shadow-[0_20px_60px_rgba(193,215,46,0.4)] font-black text-sm uppercase tracking-wider flex items-center gap-3">
-                        {toastMessage}
-                    </div>
-                </div>
-            )}
+            {/* Overlays globales (extraídos a POSOverlays.jsx) */}
+            <ForceLogoutModal visible={forceLogoutModal} onForceLogout={onForceLogout} />
+            <OfflineBanner pendingCount={offlinePending} isSyncing={isOfflineSyncing} />
+            <ToastNotification message={toastMessage} />
 
             {/* Modal de Conflicto de Versión */}
             {showCollisionModal && (
                 <CollisionModal onClose={() => setShowCollisionModal(false)} />
+            )}
+
+            {/* v5.2 DRAFT: Pizarrón Alterno de Borradores */}
+            {showDraftCorkboard && (
+                <DraftsCorkboard
+                    drafts={terminalDrafts}
+                    onLoadDraft={handleLoadDraft}
+                    onDiscardDraft={handleDiscardDraft}
+                    onClose={() => setShowDraftCorkboard(false)}
+                    onBackToMain={() => {
+                        setShowDraftCorkboard(false);
+                        setShowCorkboard(true);
+                    }}
+                />
             )}
         </div>
     );

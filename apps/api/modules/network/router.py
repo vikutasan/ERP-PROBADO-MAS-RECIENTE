@@ -36,7 +36,10 @@ async def list_incidents(
     else:
         target = datetime.utcnow()
 
-    start = target.replace(hour=0, minute=0, second=0, microsecond=0)
+    # El servidor guarda timestamps en UTC pero el usuario selecciona fechas en hora local (CST = UTC-6).
+    # "4 de Mayo" en México = 4 May 06:00 UTC → 5 May 06:00 UTC
+    tz_offset_hours = 6  # CST (Centro de México)
+    start = target.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=tz_offset_hours)
     end = start + timedelta(days=1)
 
     query = select(models.NetworkIncident).where(
@@ -66,7 +69,8 @@ async def incidents_summary(
     else:
         target = datetime.utcnow()
 
-    start = target.replace(hour=0, minute=0, second=0, microsecond=0)
+    tz_offset_hours = 6  # CST
+    start = target.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=tz_offset_hours)
     end = start + timedelta(days=1)
 
     # Total por terminal

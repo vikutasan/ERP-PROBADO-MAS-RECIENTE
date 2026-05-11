@@ -166,7 +166,7 @@ const FIELD_INFO_DATA = {
     }
 };
 
-export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, onSave, onSaveDB, initialData, recipeMatrix }) => {
+export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, onSave, onSaveDB, initialData, recipeMatrix, onOpenGlobalAgent }) => {
     // If theme is not provided (safety fallback), we use a default neutral theme
     const activeTheme = theme || { bg: '#f3f4f6', input: '#ffffff', text: '#1f2937', border: '#e5e7eb' };
 
@@ -820,16 +820,24 @@ export const ProcesoProduccionMasaUI = ({ masaId, masaNombre, theme, onClose, on
             <div className="max-w-[1400px] mx-auto p-8">
                 
                 {/* HEADER */}
-                <div style={{ backgroundColor: activeTheme.input, borderColor: activeTheme.border }} className="flex justify-between items-center mb-8 p-6 rounded-2xl shadow-sm border">
-                    <div>
-                        <h1 style={{ color: activeTheme.text }} className="text-3xl font-black italic uppercase">Configuración del Agente</h1>
-                        <div className="mt-2 flex items-center gap-4">
-                            <span style={{ backgroundColor: 'rgba(0,0,0,0.1)', color: activeTheme.text }} className="px-3 py-1.5 rounded-xl text-[12px] font-black uppercase tracking-widest">{masaId || 'N/A'}</span>
-                            <span style={{ color: activeTheme.text }} className="font-black text-lg uppercase tracking-tight">{masaNombre || 'Masa Seleccionada'}</span>
+                <div style={{ backgroundColor: activeTheme.input, borderColor: activeTheme.border }} className="flex flex-col xl:flex-row justify-between xl:items-center gap-6 mb-8 p-6 rounded-2xl shadow-sm border">
+                    <div className="flex-1 min-w-0">
+                        <h1 style={{ color: activeTheme.text }} className="text-3xl md:text-4xl font-black italic uppercase">Configuración del Agente</h1>
+                        <div className="mt-2 flex flex-wrap items-center gap-4">
+                            <span style={{ backgroundColor: 'rgba(0,0,0,0.1)', color: activeTheme.text }} className="px-3 py-1.5 rounded-xl text-[12px] font-black uppercase tracking-widest shrink-0">{masaId || 'N/A'}</span>
+                            <span style={{ color: activeTheme.text }} className="font-black text-lg md:text-xl uppercase tracking-tight">{masaNombre || 'Masa Seleccionada'}</span>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex gap-2 mr-4 border-r border-black/10 pr-4">
+                    <div className="flex flex-wrap items-center gap-4 shrink-0">
+                        <div className="flex flex-wrap gap-2 xl:mr-4 xl:border-r border-black/10 xl:pr-4">
+                            <button 
+                                onClick={onOpenGlobalAgent} 
+                                style={{ backgroundColor: activeTheme.text, color: activeTheme.bg }} 
+                                className="px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg"
+                                title="Ajustar Parámetros Generales de Voz"
+                            >
+                                <Mic size={14}/> Parámetros Generales
+                            </button>
                             <button 
                                 onClick={handleImportClick}
                                 style={{ color: activeTheme.text, backgroundColor: 'rgba(0,0,0,0.05)' }}

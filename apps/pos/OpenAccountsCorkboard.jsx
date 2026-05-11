@@ -6,7 +6,7 @@ import React from 'react';
  * Interfaz estilo corcho con Post-its para gestionar ventas en espera.
  */
 
-export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose }) => {
+export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose, onOpenDrafts }) => {
     // Ordenar por número de cuenta (de mayor a menor)
     const sortedAccounts = [...openAccounts].sort((a, b) => {
         const numA = parseInt(a.id.replace(/[^0-9]/g, '')) || 0;
@@ -55,12 +55,20 @@ export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose }
                         <h2 className="text-4xl font-black uppercase tracking-tighter italic text-[#2d1e13]">Cuentas en <span className="opacity-40">Espera</span></h2>
                         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#4a3221]">Pizarrón de Control R de Rico</p>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="w-12 h-12 rounded-full bg-[#2d1e13] text-white flex items-center justify-center font-black hover:scale-110 active:scale-95 transition-all shadow-xl"
-                    >
-                        ✕
-                    </button>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={() => { onClose(); onOpenDrafts(); }}
+                            className="h-12 px-6 rounded-full bg-amber-400 text-black flex items-center justify-center font-black hover:scale-105 active:scale-95 transition-all shadow-xl uppercase tracking-wider text-sm border-2 border-amber-600"
+                        >
+                            📝 Borradores sin enviar
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="w-12 h-12 rounded-full bg-[#2d1e13] text-white flex items-center justify-center font-black hover:scale-110 active:scale-95 transition-all shadow-xl"
+                        >
+                            ✕
+                        </button>
+                    </div>
                 </div>
 
                 {/* Grid de Post-its */}

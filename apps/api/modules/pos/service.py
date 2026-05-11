@@ -84,6 +84,22 @@ class POSService:
                     status_code=400, 
                     detail=f"El folio {ticket.account_num} ya ha sido pagado y no puede modificarse."
                 )
+
+            # v5.0 DRAFT GUARD: Un DRAFT solo puede cobrarse (→PAID) desde la misma terminal.
+            # Otra terminal debe enviarlo al pizarrón (→OPEN) primero.
+            if db_ticket.status == "DRAFT" and ticket.status == "PAID":
+                guard_req_tid = None
+                if ticket.session_id:
+                    guard_session = await db.get(models.TerminalSession, ticket.session_id)
+                    guard_req_tid = guard_session.terminal_id if guard_session else None
+                safe_guard_req = (guard_req_tid or "").strip().upper()
+                safe_guard_db = (db_ticket.terminal_id or "").strip().upper()
+                if safe_guard_req != safe_guard_db:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El folio {ticket.account_num} es un borrador de la terminal {safe_guard_db}. "
+                               f"Debe ser enviado al pizarrón antes de cobrarse desde {safe_guard_req}."
+                    )
             # Obtener el terminal_id de la petición entrante para verificaciones
             req_terminal_id = None
             if ticket.session_id:
@@ -253,7 +269,7 @@ class POSService:
             ticket_obj.terminal_id = ticket_obj.session.terminal_id if ticket_obj.session else "UNKNOWN"
         ticket_obj.captured_by_name = ticket_obj.captured_by.name if ticket_obj.captured_by else "SISTEMA"
         
-        if ticket_obj.status == "OPEN":
+        if ticket_obj.status in ("OPEN", "DRAFT"):
             ticket_obj.cashed_by_name = "--- PENDIENTE ---"
         else:
             ticket_obj.cashed_by_name = ticket_obj.cashed_by.name if ticket_obj.cashed_by else "SISTEMA/AUTO"
@@ -396,7 +412,7 @@ class POSService:
             select(models.Ticket)
             .options(selectinload(models.Ticket.items))
             .where(models.Ticket.terminal_id == terminal_id)
-            .where(models.Ticket.status == "OPEN")
+            .where(models.Ticket.status == "DRAFT")
             .where(models.Ticket.total == 0.0)
             .where(models.Ticket.created_at >= cutoff)
             .with_for_update(skip_locked=True)
@@ -410,34 +426,75 @@ class POSService:
 
     async def _cleanup_stale_empty_tickets(self, db: AsyncSession, terminal_id: str):
         """
-        Garbage Collector: elimina tickets vacíos huérfanos con más de 24 horas.
-        Throttled a máximo 1 ejecución por minuto para no degradar rendimiento.
+        Garbage Collector v5.1: elimina dos tipos de tickets obsoletos.
+        1. Tickets OPEN/DRAFT vacios (sin items) con mas de 24 horas.
+        2. Tickets DRAFT con items cuya antiguedad supere pos_draft_ttl_days (default: 1 dia).
+        Throttled a maximo 1 ejecucion por minuto para no degradar rendimiento.
         """
+        import logging
+        logger = logging.getLogger("pos.gc")
         now = datetime.utcnow()
         if POSService._last_gc_time and (now - POSService._last_gc_time) < timedelta(minutes=1):
-            return  # Throttle: no ejecutar más de 1x por minuto
+            return  # Throttle: no ejecutar mas de 1x por minuto
         POSService._last_gc_time = now
 
         try:
-            cutoff = now - timedelta(hours=24)
-            stale = await db.execute(
+            # --- PARTE 1: Tickets vacios (sin items) > 24h ---
+            cutoff_empty = now - timedelta(hours=24)
+            stale_empty = await db.execute(
                 select(models.Ticket)
                 .options(selectinload(models.Ticket.items))
-                .where(models.Ticket.status == "OPEN")
+                .where(models.Ticket.status.in_(["OPEN", "DRAFT"]))
                 .where(models.Ticket.total == 0.0)
-                .where(models.Ticket.created_at < cutoff)
+                .where(models.Ticket.created_at < cutoff_empty)
                 .limit(20)
             )
-            deleted_count = 0
-            for t in stale.scalars().all():
+            deleted_empty = 0
+            for t in stale_empty.scalars().all():
                 if len(t.items) == 0:
                     await db.delete(t)
-                    deleted_count += 1
-            if deleted_count > 0:
+                    deleted_empty += 1
+
+            # --- PARTE 2: DRAFTs con items que superan el TTL configurado ---
+            # Leer TTL desde system_settings (clave: pos_draft_ttl_days, default: 1)
+            draft_ttl_days = 1  # fallback seguro
+            try:
+                from modules.settings.service import get_setting_by_key
+                ttl_setting = await get_setting_by_key(db, "pos_draft_ttl_days")
+                draft_ttl_days = int(ttl_setting.value)
+            except Exception:
+                pass  # Si no existe la clave, usar el default
+
+            cutoff_draft = now - timedelta(days=draft_ttl_days)
+            stale_drafts = await db.execute(
+                select(models.Ticket)
+                .options(selectinload(models.Ticket.items))
+                .where(models.Ticket.status == "DRAFT")
+                .where(models.Ticket.total > 0)
+                .where(models.Ticket.created_at < cutoff_draft)
+                .limit(20)
+            )
+            deleted_drafts = 0
+            for t in stale_drafts.scalars().all():
+                logger.warning(
+                    f"🧹 GC DRAFT EXPIRADO: {t.account_num} | terminal={t.terminal_id} | "
+                    f"total=${t.total:.2f} | items={len(t.items)} | "
+                    f"creado={t.created_at.isoformat()} | TTL={draft_ttl_days}d"
+                )
+                # Cambiar a CANCELLED en vez de DELETE para mantener trazabilidad
+                t.status = "CANCELLED"
+                deleted_drafts += 1
+
+            if deleted_empty > 0 or deleted_drafts > 0:
                 await db.flush()
-                print(f"🧹 GC: Eliminados {deleted_count} tickets vacíos huérfanos (>24h)")
+                if deleted_empty > 0:
+                    logger.info(f"🧹 GC: Eliminados {deleted_empty} tickets vacios huerfanos (>24h)")
+                if deleted_drafts > 0:
+                    logger.warning(
+                        f"🟠 GC DRAFT: {deleted_drafts} borradores expirados (>{draft_ttl_days}d) marcados como CANCELLED"
+                    )
         except Exception as e:
-            print(f"⚠️ GC: Error limpiando tickets vacíos: {e}")
+            logger.error(f"⚠️ GC: Error en limpieza: {e}")
 
     async def _ensure_folio_sequence(self, db: AsyncSession):
         """
@@ -493,7 +550,7 @@ class POSService:
                     terminal_id=terminal_id,
                     captured_by_id=captured_by_id,
                     total=0.0,
-                    status="OPEN"
+                    status="DRAFT"
                 )
                 db.add(db_ticket)
                 await db.commit()
@@ -624,5 +681,88 @@ class POSService:
             engine="local",
             latency_ms=(time.time() - start_time) * 1000
         )
+
+    async def get_drafts_for_terminal(self, db: AsyncSession, terminal_id: str):
+        """Busca tickets DRAFT con items para una terminal especifica o para TODAS.
+        v5.0: Usado al login de terminal para detectar cuentas huerfanas (deprecated).
+        v5.2: Pizarrón Alterno de Borradores. 'ALL' permite ver borradores de todas las terminales."""
+        query = (
+            select(models.Ticket)
+            .options(
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
+                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
+                selectinload(models.Ticket.session),
+                selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
+                selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
+            )
+            .where(models.Ticket.status == "DRAFT")
+            .where(models.Ticket.total > 0)
+        )
+        
+        if terminal_id != "ALL":
+            query = query.where(models.Ticket.terminal_id == terminal_id)
+            
+        query = query.order_by(models.Ticket.created_at.desc())
+        
+        result = await db.execute(query)
+        tickets = result.scalars().all()
+        populated = [self._populate_flat_fields(t) for t in tickets]
+        # Inyectar edad en horas para que el frontend muestre "X horas sin enviarse"
+        now = datetime.utcnow()
+        for t in populated:
+            if t.created_at:
+                age = now - t.created_at
+                t.age_hours = round(age.total_seconds() / 3600, 1)
+            else:
+                t.age_hours = 0
+        return populated
+
+    async def get_stale_drafts_report(self, db: AsyncSession):
+        """v5.1: Reporta DRAFTs con items que estan proximos a expirar (dentro de las proximas 2h).
+        Usado por el endpoint de administracion para alertas preventivas."""
+        import logging
+        logger = logging.getLogger("pos.gc")
+        draft_ttl_days = 1
+        try:
+            from modules.settings.service import get_setting_by_key
+            ttl_setting = await get_setting_by_key(db, "pos_draft_ttl_days")
+            draft_ttl_days = int(ttl_setting.value)
+        except Exception:
+            pass
+
+        now = datetime.utcnow()
+        # Proximos a expirar = creados hace mas de (TTL - 2h)
+        warn_cutoff = now - timedelta(days=draft_ttl_days) + timedelta(hours=2)
+        hard_cutoff = now - timedelta(days=draft_ttl_days)
+
+        result = await db.execute(
+            select(models.Ticket)
+            .options(
+                selectinload(models.Ticket.items),
+                selectinload(models.Ticket.captured_by)
+            )
+            .where(models.Ticket.status == "DRAFT")
+            .where(models.Ticket.total > 0)
+            .where(models.Ticket.created_at < warn_cutoff)
+            .order_by(models.Ticket.created_at.asc())
+        )
+        tickets = result.scalars().all()
+        report = []
+        for t in tickets:
+            age = now - t.created_at
+            age_hours = round(age.total_seconds() / 3600, 1)
+            hours_left = max(0, round((draft_ttl_days * 24) - age_hours, 1))
+            report.append({
+                "account_num": t.account_num,
+                "terminal_id": t.terminal_id,
+                "total": t.total,
+                "items_count": len(t.items),
+                "captured_by": t.captured_by.name if t.captured_by else "DESCONOCIDO",
+                "created_at": t.created_at.isoformat(),
+                "age_hours": age_hours,
+                "hours_until_expiry": hours_left,
+                "already_expired": t.created_at < hard_cutoff
+            })
+        return {"ttl_days": draft_ttl_days, "drafts": report, "total": len(report)}
 
 pos_service = POSService()

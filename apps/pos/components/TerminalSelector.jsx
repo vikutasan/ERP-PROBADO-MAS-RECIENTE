@@ -120,6 +120,8 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
         reader.readAsDataURL(file);
     };
 
+
+
     // ==================== GESTOR WYSIWYG ====================
     if (showManager) {
         return (

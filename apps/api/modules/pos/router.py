@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -14,12 +14,15 @@ class LockRequest(BaseModel):
 from .occupancy import get_all_locks, lock_terminal, unlock_terminal, force_unlock, heartbeat
 from .models import TerminalLock
 from modules.settings.service import get_setting_by_key
+from .pos_audit import audit_pos_write
 
 router = APIRouter()
 
 @router.post("/sessions", response_model=schemas.TerminalSessionResponse)
-async def create_session(session: schemas.TerminalSessionCreate, db: AsyncSession = Depends(get_db)):
-    return await pos_service.create_session(db, session)
+async def create_session(session: schemas.TerminalSessionCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    result = await pos_service.create_session(db, session)
+    audit_pos_write(request, "POST /sessions", {"terminal_id": session.terminal_id, "session_id": result.id}, 200)
+    return result
 
 @router.get("/sessions/{terminal_id}/active", response_model=schemas.TerminalSessionResponse)
 async def get_active_session(terminal_id: str, db: AsyncSession = Depends(get_db)):
@@ -29,12 +32,19 @@ async def get_active_session(terminal_id: str, db: AsyncSession = Depends(get_db
     return session
 
 @router.post("/tickets/reserve", response_model=schemas.TicketResponse)
-async def reserve_ticket(req: schemas.ReserveTicketRequest, db: AsyncSession = Depends(get_db)):
-    return await pos_service.reserve_ticket(db, req.terminal_id, req.captured_by_id)
+async def reserve_ticket(req: schemas.ReserveTicketRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    result = await pos_service.reserve_ticket(db, req.terminal_id, req.captured_by_id)
+    audit_pos_write(request, "POST /tickets/reserve", {
+        "terminal_id": req.terminal_id, "captured_by_id": req.captured_by_id,
+        "account_num": result.account_num
+    }, 200)
+    return result
 
 @router.post("/tickets", response_model=schemas.TicketResponse)
-async def create_ticket(ticket: schemas.TicketCreate, db: AsyncSession = Depends(get_db)):
-    return await pos_service.create_ticket(db, ticket)
+async def create_ticket(ticket: schemas.TicketCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    result = await pos_service.create_ticket(db, ticket)
+    audit_pos_write(request, "POST /tickets", ticket, 200, extra=f"folio={ticket.account_num}")
+    return result
 
 @router.get("/tickets", response_model=List[schemas.TicketResponse])
 async def get_tickets(
@@ -58,6 +68,118 @@ async def get_ticket_by_account_num(account_num: str, db: AsyncSession = Depends
 async def get_open_tickets(db: AsyncSession = Depends(get_db)):
     return await pos_service.get_open_tickets(db)
 
+@router.get("/tickets/drafts/{terminal_id}", response_model=List[schemas.TicketResponse])
+async def get_terminal_drafts(terminal_id: str, db: AsyncSession = Depends(get_db)):
+    """v5.0: Devuelve tickets DRAFT con items para la terminal indicada.
+    Usado al login para detectar cuentas huérfanas dejadas por el usuario anterior.
+    v5.1: Respuesta incluye age_hours para mostrar antigüedad en el modal."""
+    return await pos_service.get_drafts_for_terminal(db, terminal_id.strip())
+
+@router.get("/tickets/drafts-report")
+async def get_drafts_expiry_report(db: AsyncSession = Depends(get_db)):
+    """v5.1: Reporte administrativo de DRAFTs próximos a expirar.
+    Útil para que el administrador tome acción antes de que el GC los cancele.
+    El TTL se configura en Ajustes del Sistema con la clave 'pos_draft_ttl_days'."""
+    return await pos_service.get_stale_drafts_report(db)
+
+@router.get("/audit")
+async def get_audit_log(
+    terminal_id: str = None,
+    date_from: str = None,
+    date_to: str = None,
+    limit: int = 200,
+    db: AsyncSession = Depends(get_db)
+):
+    """v5.1: Auditoría de operaciones POS por terminal y rango de fechas.
+    Combina datos de tickets (PostgreSQL) con log de seguridad (pos_audit.log).
+    Usado por el panel Auditar Terminales en la UI."""
+    from datetime import datetime, timedelta
+    from sqlalchemy.future import select
+    from sqlalchemy.orm import selectinload, subqueryload
+    from modules.pos import models
+    from modules.catalog.models import Product
+
+    # Defaults: hoy
+    now = datetime.utcnow()
+    try:
+        d_from = datetime.fromisoformat(date_from) if date_from else now.replace(hour=0, minute=0, second=0, microsecond=0)
+    except ValueError:
+        d_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        d_to = datetime.fromisoformat(date_to) if date_to else now
+    except ValueError:
+        d_to = now
+
+    query = (
+        select(models.Ticket)
+        .options(
+            selectinload(models.Ticket.items).selectinload(models.TicketItem.product),
+            selectinload(models.Ticket.captured_by),
+            selectinload(models.Ticket.cashed_by)
+        )
+        .where(models.Ticket.created_at >= d_from)
+        .where(models.Ticket.created_at <= d_to)
+        .order_by(models.Ticket.created_at.desc())
+        .limit(limit)
+    )
+    if terminal_id:
+        query = query.where(models.Ticket.terminal_id == terminal_id.strip())
+
+    result = await db.execute(query)
+    tickets = result.scalars().all()
+
+    events = []
+    for t in tickets:
+        captured_name = t.captured_by.name if t.captured_by else "DESCONOCIDO"
+        cashed_name = t.cashed_by.name if t.cashed_by else None
+        items_summary = []
+        for i in (t.items or []):
+            try:
+                name = i.product.name if i.product else f"#{i.product_id}"
+            except Exception:
+                name = f"#{i.product_id}"
+            items_summary.append({"name": name, "qty": i.quantity, "subtotal": float(i.subtotal or 0)})
+
+        events.append({
+            "id": t.id,
+            "account_num": t.account_num,
+            "terminal_id": t.terminal_id,
+            "status": t.status,
+            "total": float(t.total or 0),
+            "items_count": len(t.items or []),
+            "items": items_summary,
+            "captured_by_id": t.captured_by_id,
+            "captured_by_name": captured_name,
+            "cashed_by_id": t.cashed_by_id,
+            "cashed_by_name": cashed_name,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        })
+
+    # Leer últimas líneas del log de seguridad (alertas ⚠️)
+    security_alerts = []
+    try:
+        import os
+        log_path = "/app/logs/pos_audit.log"
+        if os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            for line in lines[-500:]:
+                if "⚠️" not in line:
+                    continue
+                if terminal_id and terminal_id not in line:
+                    continue
+                security_alerts.append(line.strip())
+    except Exception:
+        pass
+
+    return {
+        "terminal_id": terminal_id,
+        "date_from": d_from.isoformat(),
+        "date_to": d_to.isoformat(),
+        "total_events": len(events),
+        "events": events,
+        "security_alerts": security_alerts[-20:],
+    }
 @router.get("/terminals/status")
 async def get_terminals_status(db: AsyncSession = Depends(get_db)):
     """

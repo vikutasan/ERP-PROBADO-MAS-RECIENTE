@@ -159,10 +159,10 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                                 </>
                             ) : (
                                 <>
-                                    <span className="text-3xl grayscale group-hover:grayscale-0 animate-bounce">📌</span>
-                                    <div className="text-left">
-                                        <span className="block text-[14px] font-black uppercase tracking-tighter leading-none">ABRIR NUEVA CUENTA</span>
-                                        <span className="block text-[8px] font-bold text-black/40 group-hover:text-[#c1d72e]/40 uppercase tracking-widest mt-1">Enviar ticket al pizarron central</span>
+                                    <span className="text-5xl grayscale group-hover:grayscale-0 animate-bounce">📌</span>
+                                    <div className="text-left mt-1">
+                                        <span className="block text-3xl font-black uppercase tracking-tighter leading-none">ENVIAR CUENTA</span>
+                                        <span className="block text-[13px] font-black text-black/60 group-hover:text-[#c1d72e]/80 uppercase tracking-widest mt-1.5">Y ABRIR OTRA</span>
                                     </div>
                                 </>
                             )}
@@ -174,15 +174,6 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                 </div>
             </div>
 
-            {/* Leyenda de aclaraciones */}
-            <div className="mt-6 pt-4 border-t border-gray-200">
-                <p className="text-[9px] text-black/60 text-center leading-relaxed uppercase font-black">
-                    Cuenta con 3 dias a partir de la fecha de compra para realizar cualquier aclaracion
-                </p>
-                <p className="text-[10px] text-black text-center mt-2 font-black uppercase">
-                    ¡¡¡Gracias por su compra, disfrute su pan!!!
-                </p>
-            </div>
 
             {/* Modal de Edición de Cantidad */}
             {editMode && editingItem && (
