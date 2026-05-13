@@ -1,0 +1,209 @@
+"""
+MÓDULO: grandeza/router.py
+Endpoints REST para el módulo Reparto Pan Grandeza.
+Fase 0: CRUD base para productos, clientes, rutas, jornadas, GPS y settings.
+"""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+from datetime import date
+
+from core.database import get_db
+from . import schemas
+from .service import grandeza_service
+
+router = APIRouter()
+
+
+# ─── Productos Grandeza ───────────────────────────────────────────────────────
+
+@router.get("/products", response_model=List[schemas.GrandezaProductConfigResponse])
+async def get_grandeza_products(db: AsyncSession = Depends(get_db)):
+    """Lista productos habilitados para Reparto Pan Grandeza con precios B2B."""
+    return await grandeza_service.get_grandeza_products(db)
+
+@router.post("/products")
+async def upsert_grandeza_product(data: schemas.GrandezaProductConfigCreate, db: AsyncSession = Depends(get_db)):
+    """Habilitar/actualizar un producto para Grandeza con precio B2B."""
+    config = await grandeza_service.upsert_grandeza_product(db, data.product_id, data.b2b_price, data.is_enabled)
+    return {"message": "Producto configurado para Grandeza", "id": config.id}
+
+@router.delete("/products/{product_id}")
+async def disable_grandeza_product(product_id: int, db: AsyncSession = Depends(get_db)):
+    """Deshabilitar un producto del módulo Grandeza."""
+    config = await grandeza_service.disable_grandeza_product(db, product_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Producto no encontrado en Grandeza")
+    return {"message": "Producto deshabilitado de Grandeza"}
+
+
+# ─── Clientes ─────────────────────────────────────────────────────────────────
+
+@router.get("/clients", response_model=List[schemas.GrandezaClientResponse])
+async def get_clients(active_only: bool = True, db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.get_clients(db, active_only)
+
+@router.get("/clients/{client_id}", response_model=schemas.GrandezaClientResponse)
+async def get_client(client_id: int, db: AsyncSession = Depends(get_db)):
+    client = await grandeza_service.get_client(db, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return client
+
+@router.post("/clients", response_model=schemas.GrandezaClientResponse)
+async def create_client(data: schemas.GrandezaClientCreate, db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.create_client(db, data.model_dump())
+
+@router.put("/clients/{client_id}", response_model=schemas.GrandezaClientResponse)
+async def update_client(client_id: int, data: schemas.GrandezaClientUpdate, db: AsyncSession = Depends(get_db)):
+    client = await grandeza_service.update_client(db, client_id, data.model_dump(exclude_unset=True))
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return client
+
+
+# ─── Rutas por Día ────────────────────────────────────────────────────────────
+
+@router.get("/routes/{day_of_week}")
+async def get_route(day_of_week: str, db: AsyncSession = Depends(get_db)):
+    """Obtener la ruta de un día con clientes en orden de visita."""
+    slots = await grandeza_service.get_route_by_day(db, day_of_week)
+    return [
+        {
+            "slot_id": s.id,
+            "client_id": s.client_id,
+            "visit_order": s.visit_order,
+            "client": {
+                "id": s.client.id,
+                "name": s.client.name,
+                "business_name": s.client.business_name,
+                "phone": s.client.phone,
+                "address": s.client.address,
+                "google_maps_url": s.client.google_maps_url,
+                "facade_photo_url": s.client.facade_photo_url,
+            } if s.client else None
+        }
+        for s in slots
+    ]
+
+@router.put("/routes/{day_of_week}")
+async def set_route(day_of_week: str, slots: List[schemas.GrandezaRouteSlotCreate], db: AsyncSession = Depends(get_db)):
+    """Reemplazar la ruta completa de un día (reordenar o cambiar clientes)."""
+    await grandeza_service.set_route_slots(db, day_of_week, [s.model_dump() for s in slots])
+    return {"message": f"Ruta del {day_of_week} actualizada"}
+
+
+# ─── Jornadas ─────────────────────────────────────────────────────────────────
+
+@router.get("/journeys/{journey_date}")
+async def get_journey(journey_date: date, db: AsyncSession = Depends(get_db)):
+    journey = await grandeza_service.get_journey_by_date(db, journey_date)
+    if not journey:
+        raise HTTPException(status_code=404, detail="No hay jornada para esa fecha")
+    return journey
+
+@router.post("/journeys")
+async def create_journey(data: schemas.GrandezaJourneyCreate, db: AsyncSession = Depends(get_db)):
+    """Crear/abrir una jornada de reparto para una fecha."""
+    existing = await grandeza_service.get_journey_by_date(db, data.journey_date)
+    if existing:
+        raise HTTPException(status_code=409, detail="Ya existe una jornada para esa fecha")
+    journey = await grandeza_service.create_journey(db, data.model_dump())
+    return {"message": "Jornada creada", "id": journey.id}
+
+@router.patch("/journeys/{journey_id}")
+async def update_journey(journey_id: int, data: schemas.GrandezaJourneyUpdate, db: AsyncSession = Depends(get_db)):
+    journey = await grandeza_service.update_journey(db, journey_id, data.model_dump(exclude_unset=True))
+    if not journey:
+        raise HTTPException(status_code=404, detail="Jornada no encontrada")
+    return {"message": "Jornada actualizada"}
+
+
+# ─── Inventario ───────────────────────────────────────────────────────────────
+
+@router.get("/journeys/{journey_id}/inventory")
+async def get_inventory(journey_id: int, inventory_type: str = None, db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.get_inventory(db, journey_id, inventory_type)
+
+@router.put("/journeys/{journey_id}/inventory/{inventory_type}")
+async def set_inventory(journey_id: int, inventory_type: str, items: List[schemas.GrandezaInventoryCreate], db: AsyncSession = Depends(get_db)):
+    """Establecer inventario inicial o final de una jornada."""
+    if inventory_type not in ("INITIAL", "FINAL"):
+        raise HTTPException(status_code=400, detail="inventory_type debe ser INITIAL o FINAL")
+    await grandeza_service.set_inventory(db, journey_id, inventory_type, [i.model_dump() for i in items])
+    return {"message": f"Inventario {inventory_type} guardado"}
+
+
+# ─── GPS ──────────────────────────────────────────────────────────────────────
+
+@router.post("/journeys/{journey_id}/location")
+async def record_location(journey_id: int, data: schemas.GrandezaDriverLocationCreate, db: AsyncSession = Depends(get_db)):
+    """Registrar ubicación GPS del repartidor."""
+    loc = await grandeza_service.record_location(db, journey_id, data.lat, data.lng, data.accuracy)
+    return {"id": loc.id}
+
+@router.get("/journeys/{journey_id}/locations", response_model=List[schemas.GrandezaDriverLocationResponse])
+async def get_locations(journey_id: int, db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.get_locations(db, journey_id)
+
+
+# ─── Settings ─────────────────────────────────────────────────────────────────
+
+@router.get("/settings", response_model=List[schemas.GrandezaSettingResponse])
+async def get_settings(db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.get_settings(db)
+
+@router.put("/settings/{key}")
+async def update_setting(key: str, data: schemas.GrandezaSettingUpdate, db: AsyncSession = Depends(get_db)):
+    setting = await grandeza_service.upsert_setting(db, key, data.value)
+    return {"message": f"Setting '{key}' actualizado", "value": setting.value}
+
+
+# ─── Visitas ──────────────────────────────────────────────────────────────────
+
+@router.get("/journeys/{journey_id}/visits")
+async def get_visits(journey_id: int, db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.get_visits(db, journey_id)
+
+@router.post("/journeys/{journey_id}/visits")
+async def create_visit(journey_id: int, data: schemas.GrandezaVisitCreate, db: AsyncSession = Depends(get_db)):
+    visit = await grandeza_service.create_visit(db, journey_id, data.model_dump())
+    return visit
+
+@router.post("/visits/{visit_id}/items")
+async def set_visit_items(visit_id: int, items: List[schemas.GrandezaVisitItemCreate], db: AsyncSession = Depends(get_db)):
+    await grandeza_service.set_visit_items(db, visit_id, [i.model_dump() for i in items])
+    return {"message": "Items guardados"}
+
+@router.patch("/visits/{visit_id}")
+async def update_visit(visit_id: int, data: schemas.GrandezaVisitUpdate, db: AsyncSession = Depends(get_db)):
+    visit = await grandeza_service.update_visit(db, visit_id, data.model_dump(exclude_unset=True))
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visita no encontrada")
+    return {"message": "Visita actualizada"}
+
+
+# ─── Sugerencias ──────────────────────────────────────────────────────────────
+
+@router.get("/clients/{client_id}/suggestions")
+async def get_suggestions(client_id: int, db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.get_client_suggestions(db, client_id)
+
+
+# ─── Pedidos Grandeza ─────────────────────────────────────────────────────────
+
+@router.get("/orders")
+async def get_grandeza_orders(status: str = None, db: AsyncSession = Depends(get_db)):
+    return await grandeza_service.get_grandeza_orders(db, status)
+
+@router.post("/orders")
+async def create_grandeza_order(data: schemas.GrandezaOrderCreate, db: AsyncSession = Depends(get_db)):
+    order = await grandeza_service.create_grandeza_order(db, data.model_dump())
+    return order
+
+@router.patch("/orders/{order_id}")
+async def update_grandeza_order(order_id: int, data: schemas.GrandezaOrderUpdate, db: AsyncSession = Depends(get_db)):
+    order = await grandeza_service.update_grandeza_order(db, order_id, data.model_dump(exclude_unset=True))
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    return order

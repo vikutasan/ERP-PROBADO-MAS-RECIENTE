@@ -21,6 +21,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
     const [activeCategory, setActiveCategory] = useState('TODOS');
     const [editingProduct, setEditingProduct] = useState(null);
     const [products, setProducts] = useState([]);
+    const [grandezaConfigs, setGrandezaConfigs] = useState([]);
     const [categories, setCategories] = useState([]);
     const [masses, setMasses] = useState([]);
     const [globalIngredients, setGlobalIngredients] = useState(INITIAL_INGREDIENTS);
@@ -70,23 +71,36 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                     setCategories(normalized);
                 }
 
-                // Productos
-                const prodRes = await fetch(`${API_BASE}/products`);
-                if (prodRes.ok) {
-                    const prodData = await prodRes.json();
-                    const normalizedProds = prodData.map(p => ({
-                        ...p,
-                        categories: p.category ? [p.category.name] : [],
-                        nature: p.nature || 'MANUFACTURADO',
-                        technical_data: p.technical_sheet || {}
-                    }));
-                    setProducts(normalizedProds);
-                }
-
                 // Masas (Producción)
                 const massRes = await fetch(`${API_BASE.replace('/catalog', '/production')}/doughs`);
                 if (massRes.ok) {
                     setMasses(await massRes.json());
+                }
+
+                // Grandeza Configs
+                const grandRes = await fetch(`${API_BASE.replace('/catalog', '/grandeza')}/products`);
+                let grandData = [];
+                if (grandRes.ok) {
+                    grandData = await grandRes.json();
+                    setGrandezaConfigs(grandData);
+                }
+
+                // Normalizar Productos con Grandeza Config
+                const prodRes = await fetch(`${API_BASE}/products`);
+                if (prodRes.ok) {
+                    const prodData = await prodRes.json();
+                    const normalizedProds = prodData.map(p => {
+                        const gConf = grandData.find(g => g.product_id === p.id);
+                        return {
+                            ...p,
+                            categories: p.category ? [p.category.name] : [],
+                            nature: p.nature || 'MANUFACTURADO',
+                            technical_data: p.technical_sheet || {},
+                            grandeza_enabled: gConf ? gConf.is_enabled : false,
+                            grandeza_b2b_price: gConf ? gConf.b2b_price : p.price
+                        };
+                    });
+                    setProducts(normalizedProds);
                 }
             } catch (err) {
                 console.error("Error fetching data:", err);
@@ -108,15 +122,27 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
     }, [searchTerm, activeCategory, products]);
 
     const refreshProducts = async () => {
+        const grandRes = await fetch(`${API_BASE.replace('/catalog', '/grandeza')}/products`);
+        let grandData = [];
+        if (grandRes.ok) {
+            grandData = await grandRes.json();
+            setGrandezaConfigs(grandData);
+        }
+
         const prodRes = await fetch(`${API_BASE}/products`);
         if (prodRes.ok) {
             const prodData = await prodRes.json();
-            const normalizedProds = prodData.map(p => ({
-                ...p,
-                categories: p.category ? [p.category.name] : [],
-                nature: p.nature || 'MANUFACTURADO',
-                technical_data: p.technical_sheet || {}
-            }));
+            const normalizedProds = prodData.map(p => {
+                const gConf = grandData.find(g => g.product_id === p.id);
+                return {
+                    ...p,
+                    categories: p.category ? [p.category.name] : [],
+                    nature: p.nature || 'MANUFACTURADO',
+                    technical_data: p.technical_sheet || {},
+                    grandeza_enabled: gConf ? gConf.is_enabled : false,
+                    grandeza_b2b_price: gConf ? gConf.b2b_price : p.price
+                };
+            });
             setProducts(normalizedProds);
         }
     };
@@ -191,7 +217,29 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
             }
 
             if (res.ok) {
-                console.log("Producto guardado exitosamente");
+                const savedProduct = await res.json();
+                console.log("Producto guardado exitosamente:", savedProduct);
+                
+                // Guardar configuración de Grandeza
+                const productId = updatedProduct.id || savedProduct.id;
+                if (productId) {
+                    if (updatedProduct.grandeza_enabled) {
+                        await fetch(`${API_BASE.replace('/catalog', '/grandeza')}/products`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                product_id: productId,
+                                is_enabled: true,
+                                b2b_price: parseFloat(updatedProduct.grandeza_b2b_price) || 0
+                            })
+                        });
+                    } else {
+                        await fetch(`${API_BASE.replace('/catalog', '/grandeza')}/products/${productId}`, {
+                            method: 'DELETE'
+                        });
+                    }
+                }
+
                 await refreshProducts();
                 setEditingProduct(null);
                 // Notificación visual
@@ -225,6 +273,8 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
             image_url: '',
             nature: 'MANUFACTURADO',
             technical_data: {},
+            grandeza_enabled: false,
+            grandeza_b2b_price: 0,
             isNew: true
         };
         setEditingProduct(newProd);
@@ -763,6 +813,38 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                                         onChange={(e) => setEditingProduct({...editingProduct, image_url: e.target.value})}
                                     />
                                 </div>
+                            </div>
+
+                            {/* --- CONFIGURACIÓN REPARTO PAN GRANDEZA --- */}
+                            <div className={`p-6 rounded-[24px] border transition-all ${editingProduct.grandeza_enabled ? 'bg-amber-900/10 border-amber-500/30' : 'bg-gray-900/20 border-gray-800'}`}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2 text-amber-400">
+                                        <span>🍞</span> Reparto Pan Grandeza
+                                    </h4>
+                                    <label className="flex items-center cursor-pointer gap-2">
+                                        <span className="text-[10px] font-black text-gray-500 uppercase">Habilitar</span>
+                                        <div className={`relative w-12 h-6 rounded-full transition-colors ${editingProduct.grandeza_enabled ? 'bg-amber-500' : 'bg-gray-700'}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only"
+                                                checked={editingProduct.grandeza_enabled}
+                                                onChange={(e) => setEditingProduct({...editingProduct, grandeza_enabled: e.target.checked})}
+                                            />
+                                            <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${editingProduct.grandeza_enabled ? 'translate-x-6' : ''}`}></div>
+                                        </div>
+                                    </label>
+                                </div>
+                                {editingProduct.grandeza_enabled && (
+                                    <div className="mt-4 pt-4 border-t border-amber-900/20">
+                                        <label className="text-[10px] font-black text-amber-500 uppercase block mb-2">Establecer Precio B2B Grandeza ($)</label>
+                                        <input 
+                                            type="number"
+                                            className="w-1/2 max-w-[200px] bg-black/40 border border-amber-900/50 p-4 rounded-2xl text-lg font-bold outline-none focus:border-amber-500 text-amber-400 transition-all"
+                                            value={editingProduct.grandeza_b2b_price || ''}
+                                            onChange={(e) => setEditingProduct({...editingProduct, grandeza_b2b_price: e.target.value})}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             {/* --- CAMPOS DINAMICOS POR NATURALEZA --- */}

@@ -26,6 +26,7 @@ import { PurchaseManagerUI } from './inventory/PurchaseManagerUI';
 import { AuditoriaUI as AuditoriaControlUI } from './AuditoriaControlUI';
 import { SystemSettingsUI } from './settings/SystemSettingsUI';
 import { NetworkMonitorUI } from './network/NetworkMonitorUI';
+import { RepartoPanGrandezaUI } from './pos/RepartoPanGrandezaUI';
 import REAL_PRODUCTS from '../importar_productos_AQUI.json';
 
 /**
@@ -106,6 +107,7 @@ export const ExperimentCenterUI = () => {
         { id: 'auditoria', name: 'Auditoría y Control', color: 'bg-slate-900', icon: '📋', access: ['ADMIN', 'MANAGER'] },
         { id: 'settings', name: 'Ajustes del Sistema', color: 'bg-red-900', icon: '⚙️', access: ['ADMIN'] },
         { id: 'network_monitor', name: 'Monitoreo de Red', color: 'bg-cyan-900', icon: '📡', access: ['ADMIN', 'MANAGER'] },
+        { id: 'reparto_grandeza', name: 'Reparto Pan Grandeza', color: 'bg-amber-700', icon: '🍞', access: ['ADMIN', 'MANAGER', 'LOGISTICS'] },
     ];
 
 
@@ -311,6 +313,7 @@ export const ExperimentCenterUI = () => {
                         {activeModule === 'auditoria' && <AuditoriaControlUI />}
                         {activeModule === 'settings' && <SystemSettingsUI />}
                         {activeModule === 'network_monitor' && <NetworkMonitorUI />}
+                        {activeModule === 'reparto_grandeza' && <RepartoPanGrandezaUI onBack={() => setActiveModule('overview')} userPermissions={userPermissions} />}
                     </div>
 
                 </div>

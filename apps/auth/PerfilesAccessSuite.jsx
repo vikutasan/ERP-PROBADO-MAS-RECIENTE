@@ -26,6 +26,10 @@ const SYSTEM_MODULES = [
     { id: 'seguridad_acceso', name: 'Seguridad y Acceso', icon: '🔑' },
     { id: 'auditoria', name: 'Auditoría y Control', icon: '📋' },
     { id: 'analytics_financial_data', name: 'Cifras Monetarias', icon: '💰' },
+    { id: 'grandeza_params', name: 'Parámetros Generales Reparto Pan Grandeza', icon: '📋🍞' },
+    { id: 'grandeza_daily', name: 'Gestión Diaria Reparto Pan Grandeza', icon: '📅🍞' },
+    { id: 'grandeza_driver', name: 'Herramienta Repartidor Pan Grandeza', icon: '🚗🍞' },
+    { id: 'grandeza_edit_clients', name: 'Editar Información de Clientes Pan Grandeza', icon: '✏️👥' },
 ];
 
 export const PerfilesAccessSuite = ({ onClose, onPermissionsUpdate }) => {
