@@ -67,7 +67,7 @@ export const SystemSettingsUI = () => {
 
     if (loading) return <div className="p-20 text-center animate-pulse text-orange-500 font-black">CARGANDO AJUSTES...</div>;
 
-    const categories = [...new Set(settings.map(s => s.category))];
+    const categories = [...new Set(settings.map(s => s.category))].filter(cat => cat !== 'ai_agent');
 
     return (
         <div className="p-10 max-w-6xl mx-auto space-y-10 animate-in fade-in duration-700">
