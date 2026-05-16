@@ -123,6 +123,37 @@ class POSService {
         return res.ok;
     }
 
+    // ── FASE 2: Persistencia Inmediata ──────────────────────────────────
+    async addItemToTicket(data) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/items/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Error agregando item"); }
+        return res.json();
+    }
+
+    async updateItemQuantity(data) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/items/update`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Error actualizando item"); }
+        return res.json();
+    }
+
+    async removeItemFromTicket(data) {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/pos/tickets/items/remove`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Error eliminando item"); }
+        return res.json();
+    }
+
     async getSystemSettings() {
         const res = await fetch(`${CONFIG.API_BASE_URL}/settings`, { cache: 'no-store' });
         if (!res.ok) throw new Error("Error cargando ajustes");

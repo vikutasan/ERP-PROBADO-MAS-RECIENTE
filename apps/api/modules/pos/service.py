@@ -305,6 +305,206 @@ class POSService:
         await db.commit()
 
 
+    # ══════════════════════════════════════════════════════════════════════
+    # FASE 2: OPERACIONES ATÓMICAS DE ITEMS (Persistencia Inmediata)
+    # ══════════════════════════════════════════════════════════════════════
+
+    async def add_item_to_ticket(self, db: AsyncSession, payload):
+        """Agrega un producto al ticket de forma atómica.
+        Si el producto ya existe, incrementa la cantidad.
+        Si el ticket no existe, lo crea como DRAFT."""
+        from decimal import Decimal
+
+        # 1. Validar producto
+        product = await db.get(Product, payload.product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Producto {payload.product_id} no encontrado")
+        if not product.active:
+            raise HTTPException(status_code=400, detail=f"Producto {product.name} está inactivo")
+
+        # 2. Buscar o crear ticket
+        is_new = False
+        result = await db.execute(
+            select(models.Ticket)
+            .where(models.Ticket.account_num == payload.account_num)
+            .with_for_update()
+        )
+        db_ticket = result.scalars().first()
+
+        if not db_ticket:
+            # Crear ticket nuevo como DRAFT
+            is_new = True
+            session = await db.get(models.TerminalSession, payload.session_id)
+            if not session or not session.is_active:
+                raise HTTPException(status_code=400, detail="Sesión de terminal inválida")
+            db_ticket = models.Ticket(
+                account_num=payload.account_num,
+                session_id=payload.session_id,
+                terminal_id=payload.terminal_id or session.terminal_id,
+                captured_by_id=payload.captured_by_id,
+                total=0,
+                status="DRAFT",
+                version=1
+            )
+            db.add(db_ticket)
+            await db.flush()
+
+        if db_ticket.status == "PAID":
+            raise HTTPException(status_code=400, detail=f"El folio {payload.account_num} ya fue pagado")
+
+        # 3. Validar versión (bypass si es misma terminal — REGLA v4.4)
+        if payload.version is not None and payload.version != db_ticket.version:
+            self._check_version_bypass(db_ticket, payload.terminal_id, payload.version)
+
+        # 4. Buscar item existente o crear nuevo
+        existing_item = None
+        if not is_new:
+            # Solo buscar en DB si el ticket ya existía (evita lazy-load MissingGreenlet)
+            existing_result = await db.execute(
+                select(models.TicketItem)
+                .where(models.TicketItem.ticket_id == db_ticket.id)
+                .where(models.TicketItem.product_id == payload.product_id)
+            )
+            existing_item = existing_result.scalars().first()
+
+        if existing_item:
+            existing_item.quantity += payload.quantity
+            existing_item.subtotal = product.price * existing_item.quantity
+        else:
+            subtotal = product.price * payload.quantity
+            new_item = models.TicketItem(
+                ticket_id=db_ticket.id,
+                product_id=product.id,
+                quantity=payload.quantity,
+                unit_price=product.price,
+                subtotal=subtotal
+            )
+            db.add(new_item)
+
+        # 5. Recalcular total
+        await db.flush()  # Para que el nuevo item tenga ID
+        items_result = await db.execute(
+            select(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
+        )
+        all_items = items_result.scalars().all()
+        db_ticket.total = sum(item.subtotal for item in all_items)
+        db_ticket.version = (db_ticket.version or 1) + 1
+
+        if payload.captured_by_id:
+            db_ticket.captured_by_id = payload.captured_by_id
+
+        ticket_id = db_ticket.id
+        await db.commit()
+        db.expire_all()
+        return await self._get_full_ticket(db, ticket_id)
+
+    async def update_item_quantity(self, db: AsyncSession, payload):
+        """Actualiza la cantidad de un item existente de forma atómica."""
+        # 1. Buscar ticket con lock
+        result = await db.execute(
+            select(models.Ticket)
+            .where(models.Ticket.account_num == payload.account_num)
+            .with_for_update()
+        )
+        db_ticket = result.scalars().first()
+        if not db_ticket:
+            raise HTTPException(status_code=404, detail=f"Ticket {payload.account_num} no encontrado")
+        if db_ticket.status == "PAID":
+            raise HTTPException(status_code=400, detail=f"El folio {payload.account_num} ya fue pagado")
+
+        # 2. Validar versión
+        if payload.version is not None and payload.version != db_ticket.version:
+            raise HTTPException(status_code=409, detail=f"Conflicto de versión en {payload.account_num}")
+
+        # 3. Buscar item por query directa (evita lazy-load)
+        item_result = await db.execute(
+            select(models.TicketItem)
+            .where(models.TicketItem.ticket_id == db_ticket.id)
+            .where(models.TicketItem.product_id == payload.product_id)
+        )
+        target_item = item_result.scalars().first()
+
+        if not target_item:
+            raise HTTPException(status_code=404, detail=f"Producto {payload.product_id} no está en el ticket")
+
+        target_item.quantity = payload.new_quantity
+        target_item.subtotal = target_item.unit_price * payload.new_quantity
+
+        # 4. Recalcular total desde DB
+        await db.flush()
+        all_items_result = await db.execute(
+            select(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
+        )
+        all_items = all_items_result.scalars().all()
+        db_ticket.total = sum(i.subtotal for i in all_items)
+        db_ticket.version = (db_ticket.version or 1) + 1
+
+        ticket_id = db_ticket.id
+        await db.commit()
+        db.expire_all()
+        return await self._get_full_ticket(db, ticket_id)
+
+    async def remove_item_from_ticket(self, db: AsyncSession, payload):
+        """Elimina un producto del ticket de forma atómica."""
+        # 1. Buscar ticket con lock
+        result = await db.execute(
+            select(models.Ticket)
+            .where(models.Ticket.account_num == payload.account_num)
+            .with_for_update()
+        )
+        db_ticket = result.scalars().first()
+        if not db_ticket:
+            raise HTTPException(status_code=404, detail=f"Ticket {payload.account_num} no encontrado")
+        if db_ticket.status == "PAID":
+            raise HTTPException(status_code=400, detail=f"El folio {payload.account_num} ya fue pagado")
+
+        # 2. Validar versión
+        if payload.version is not None and payload.version != db_ticket.version:
+            raise HTTPException(status_code=409, detail=f"Conflicto de versión en {payload.account_num}")
+
+        # 3. Buscar item por query directa (evita lazy-load)
+        item_result = await db.execute(
+            select(models.TicketItem)
+            .where(models.TicketItem.ticket_id == db_ticket.id)
+            .where(models.TicketItem.product_id == payload.product_id)
+        )
+        target_item = item_result.scalars().first()
+
+        if not target_item:
+            raise HTTPException(status_code=404, detail=f"Producto {payload.product_id} no está en el ticket")
+
+        await db.delete(target_item)
+
+        # 4. Recalcular total
+        await db.flush()
+        remaining = await db.execute(
+            select(models.TicketItem).where(models.TicketItem.ticket_id == db_ticket.id)
+        )
+        remaining_items = remaining.scalars().all()
+        db_ticket.total = sum(i.subtotal for i in remaining_items)
+        db_ticket.version = (db_ticket.version or 1) + 1
+
+        ticket_id = db_ticket.id
+        await db.commit()
+        db.expire_all()
+        return await self._get_full_ticket(db, ticket_id)
+
+    def _check_version_bypass(self, db_ticket, terminal_id, client_version):
+        """v4.4: Bypass de versión si la petición viene de la misma terminal."""
+        safe_req = (terminal_id or "").strip().upper()
+        safe_db = (db_ticket.terminal_id or "").strip().upper()
+        if safe_req and safe_req == safe_db:
+            import logging
+            logging.getLogger("pos.optimistic_lock").info(
+                f"Bypass de version para {db_ticket.account_num} en {terminal_id}. Retry de red perdonado."
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Conflicto de versión en folio {db_ticket.account_num}. "
+                       f"Versión del cliente: {client_version}, versión actual: {db_ticket.version}."
+            )
+
     async def get_open_tickets(self, db: AsyncSession):
         """Obtiene todos los tickets en estado OPEN."""
         result = await db.execute(

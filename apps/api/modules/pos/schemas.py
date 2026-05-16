@@ -4,6 +4,30 @@ from datetime import datetime
 from modules.catalog.schemas import ProductResponse
 from modules.security.schemas import EmployeeResponse
 
+# --- Atomic Item Operations (Fase 2: Persistencia Inmediata) ---
+class TicketItemAdd(BaseModel):
+    """Agregar un producto al ticket de forma atómica."""
+    account_num: str
+    product_id: int
+    quantity: int = 1
+    session_id: int
+    terminal_id: Optional[str] = None
+    captured_by_id: Optional[int] = None
+    version: Optional[int] = None
+
+class TicketItemUpdate(BaseModel):
+    """Actualizar cantidad de un item existente."""
+    account_num: str
+    product_id: int
+    new_quantity: int
+    version: Optional[int] = None
+
+class TicketItemRemove(BaseModel):
+    """Eliminar un producto del ticket."""
+    account_num: str
+    product_id: int
+    version: Optional[int] = None
+
 # --- Ticket Item ---
 class TicketItemBase(BaseModel):
     product_id: int

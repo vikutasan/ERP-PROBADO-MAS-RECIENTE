@@ -288,6 +288,50 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         setSelectedTerminal(null);
     };
 
+    // --- FASE 2: Wrappers con persistencia inmediata ---
+    const handleUpdateQuantity = async (productId, newQuantity) => {
+        updateQuantity(productId, newQuantity); // UI instantánea
+        if (!accountNumRef.current) return;
+        try {
+            const result = await posService.updateItemQuantity({
+                account_num: accountNumRef.current,
+                product_id: productId,
+                new_quantity: newQuantity,
+                version: ticketVersionRef.current
+            });
+            if (result?.version) {
+                ticketVersionRef.current = result.version;
+                setTicketVersion(result.version);
+            }
+            setLastSaveStatus('saved');
+            setLastSaveTime(new Date());
+        } catch (e) {
+            console.warn('Update quantity persistence failed:', e);
+            setLastSaveStatus('failed');
+        }
+    };
+
+    const handleRemoveFromCart = async (productId) => {
+        removeFromCart(productId); // UI instantánea
+        if (!accountNumRef.current) return;
+        try {
+            const result = await posService.removeItemFromTicket({
+                account_num: accountNumRef.current,
+                product_id: productId,
+                version: ticketVersionRef.current
+            });
+            if (result?.version) {
+                ticketVersionRef.current = result.version;
+                setTicketVersion(result.version);
+            }
+            setLastSaveStatus('saved');
+            setLastSaveTime(new Date());
+        } catch (e) {
+            console.warn('Remove item persistence failed:', e);
+            setLastSaveStatus('failed');
+        }
+    };
+
     return (
         <div className="flex flex-col h-full bg-transparent text-white overflow-hidden">
             <POSHeader
@@ -344,8 +388,8 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
 
                 <SalesReceipt 
                     cart={cart} 
-                    removeFromCart={removeFromCart} 
-                    updateQuantity={updateQuantity}
+                    removeFromCart={handleRemoveFromCart} 
+                    updateQuantity={handleUpdateQuantity}
                     total={total} 
                     currentAccountNum={currentAccountNum} 
                     selectedTerminal={selectedTerminal} 
