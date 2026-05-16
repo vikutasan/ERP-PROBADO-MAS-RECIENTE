@@ -18,6 +18,15 @@
 
 ---
 
+## ⛔ INCIDENTE DE RED (16/Mayo/2026): APAGÓN Y CAMBIO DE IP DHCP
+
+**Fecha:** 16/Mayo/2026
+**Síntoma:** El sistema "no cargaba" en ninguna de las terminales (CAJA, T2, T3, T4, T5, T6) y se quedaba en pantalla en blanco o cargando infinitamente tras un apagón donde se usó una planta de luz a gasolina.
+**Causa raíz:** Las tablets estaban configuradas para conectarse a la IP `192.168.1.117`. Al ocurrir el apagón, el módem se reinició y asignó IPs dinámicas (DHCP) en el orden en que los dispositivos se conectaron. El servidor recibió la IP nueva `192.168.1.13`, por lo que las tablets apuntaban a una dirección vacía en la red. Adicionalmente, al reiniciar los contenedores de Docker, la API de FastAPI colapsó en el arranque por la falta de la dependencia `python-multipart` (requerida por el módulo reciente de subida de imágenes).
+**Solución Implementada:**
+1. Se generó un script batch (`REPARAR_CONEXION_TABLETS.bat`) que fija la IP del adaptador de red de Windows en `192.168.1.117` de forma estática, blindando al servidor contra futuros apagones.
+2. Se añadió `python-multipart>=0.0.9` al `requirements.txt` de la API y se reconstruyó el contenedor para garantizar la estabilidad del servidor.
+
 ---
 
 ## ⛔ INCIDENTE QUE ORIGINÓ LA VERSIÓN 4.6 (OFFLINE DATA WIPE)
