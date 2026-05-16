@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import json
+import os
+import shutil
+import uuid
 
 from core.database import get_db
 from . import schemas
@@ -39,6 +42,17 @@ async def delete_category(category_id: int, db: AsyncSession = Depends(get_db)):
 async def reorder_categories(category_ids: List[int], db: AsyncSession = Depends(get_db)):
     await catalog_service.reorder_categories(db, category_ids)
     return {"message": "Categorias reordenadas"}
+
+@router.post("/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    # Guardar en static/catalog que está montado en /static/catalog
+    os.makedirs("static/catalog", exist_ok=True)
+    ext = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    filepath = os.path.join("static", "catalog", filename)
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return {"url": f"/static/catalog/{filename}"}
 
 # ─── Productos ───────────────────────────────────────────────────────────────
 

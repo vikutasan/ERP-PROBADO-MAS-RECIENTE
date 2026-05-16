@@ -1,0 +1,627 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+
+const DriverBackground = () => (
+    <>
+        <div className="absolute inset-0 z-0 pointer-events-none" style={{
+            backgroundImage: 'url("/assets/wood_bg.jpg")',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+        }} />
+    </>
+);
+
+/**
+ * HERRAMIENTA REPARTIDOR — Pan Grandeza (Fase 3)
+ * UI optimizada para smartphone. El repartidor la usa en ruta.
+ */
+export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
+    const API = `http://${window.location.hostname}:5001/api/v1`;
+    const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
+
+    // ─── State ───
+    const [loading, setLoading] = useState(true);
+    const [journey, setJourney] = useState(null);
+    const [grandezaProducts, setGrandezaProducts] = useState([]);
+    const [initialInventory, setInitialInventory] = useState([]);
+    const [clients, setClients] = useState([]);
+    const [routeSlots, setRouteSlots] = useState([]);
+    const [visits, setVisits] = useState([]);  // Visitas completadas hoy
+    const [activeVisit, setActiveVisit] = useState(null); // Visita abierta
+    const [visitItems, setVisitItems] = useState([]);
+    const [paymentReceived, setPaymentReceived] = useState('');
+    const [incidentNotes, setIncidentNotes] = useState('');
+    const [extClientName, setExtClientName] = useState('');
+    const [toast, setToast] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [view, setView] = useState('route'); // route | visit | summary | order
+    const [editingClient, setEditingClient] = useState(null);
+    const canEditClients = userPermissions.all === 'full' || userPermissions.grandeza_edit_clients === 'full';
+
+    const todayStr = () => {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    };
+
+    const dayNames = { 0:'DOMINGO',1:'LUNES',2:'MARTES',3:'MIERCOLES',4:'JUEVES',5:'VIERNES',6:'SABADO' };
+    const todayDay = dayNames[new Date().getDay()];
+
+    const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null), 3000); };
+
+    // ─── Load ───
+    useEffect(() => { loadAll(); }, []);
+
+    // ─── GPS cada 60 seg ───
+    useEffect(() => {
+        if (!journey || journey.status !== 'EN_RUTA') return;
+        const sendGPS = () => {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.getCurrentPosition(pos => {
+                fetch(`${API}/grandeza/journeys/${journey.id}/location`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
+                }).catch(() => {});
+            }, () => {}, { enableHighAccuracy: false, maximumAge: 30000 });
+        };
+        sendGPS();
+        const interval = setInterval(sendGPS, 60000);
+        return () => clearInterval(interval);
+    }, [journey]);
+
+    const loadAll = async () => {
+        setLoading(true);
+        try {
+            const [prodRes, jRes, cliRes, routeRes] = await Promise.all([
+                fetch(`${API}/grandeza/products`),
+                fetch(`${API}/grandeza/journeys/${todayStr()}`),
+                fetch(`${API}/grandeza/clients`),
+                fetch(`${API}/grandeza/routes/${todayDay}`),
+            ]);
+
+            if (prodRes.ok) setGrandezaProducts((await prodRes.json()).filter(p => p.is_enabled));
+            if (cliRes.ok) setClients(await cliRes.json());
+            if (routeRes.ok) setRouteSlots(await routeRes.json());
+
+            if (jRes.ok) {
+                const j = await jRes.json();
+                setJourney(j);
+                const invRes = await fetch(`${API}/grandeza/journeys/${j.id}/inventory?inventory_type=INITIAL`);
+                if (invRes.ok) setInitialInventory(await invRes.json());
+                // Cargar visitas existentes de la API
+                const visRes = await fetch(`${API}/grandeza/journeys/${j.id}/visits`);
+                if (visRes.ok) setVisits(await visRes.json());
+            }
+        } catch(e) { console.error(e); }
+        finally { setLoading(false); }
+    };
+
+    // ─── Cálculos en vivo ───
+    const getProductInfo = (pid) => grandezaProducts.find(p => p.product_id === pid) || {};
+    const getClientInfo = (cid) => clients.find(c => c.id === cid) || {};
+
+    const completedVisits = visits;
+
+    const runningTotals = useMemo(() => {
+        let totalCash = parseFloat(journey?.cash_fund || 0);
+        let totalExchangePieces = 0;
+        let freshRemaining = {};
+        // Inicializar piezas frescas restantes
+        initialInventory.forEach(i => { freshRemaining[i.product_id] = i.fresh_qty; });
+        // Restar de visitas completadas
+        completedVisits.forEach(v => {
+            totalCash += (v.sale_amount || 0);
+            (v.items || []).forEach(it => {
+                totalExchangePieces += it.exchange_qty || 0;
+                if (freshRemaining[it.product_id] !== undefined) {
+                    freshRemaining[it.product_id] -= it.actual_fresh_qty || 0;
+                }
+            });
+        });
+        return { totalCash, totalExchangePieces, freshRemaining, freshTotal: Object.values(freshRemaining).reduce((a,b)=>a+b, 0) };
+    }, [journey, initialInventory, completedVisits]);
+
+    // ─── Visita: Abrir ───
+    const openVisit = async (slot, isExt = false) => {
+        const client = isExt ? null : getClientInfo(slot.client_id);
+        // Obtener sugerencias del historial
+        let suggestions = [];
+        if (!isExt && slot.client_id) {
+            try {
+                const sgRes = await fetch(`${API}/grandeza/clients/${slot.client_id}/suggestions`);
+                if (sgRes.ok) suggestions = await sgRes.json();
+            } catch(e) {}
+        }
+        const items = grandezaProducts.map(gp => {
+            const sg = suggestions.find(s => s.product_id === gp.product_id);
+            return {
+                product_id: gp.product_id, product_name: gp.product_name,
+                product_sku: gp.product_sku, b2b_price: gp.b2b_price,
+                exchange_qty: 0,
+                suggested_fresh_qty: sg ? sg.suggested_qty : 0,
+                actual_fresh_qty: 0, missing_qty: 0,
+            };
+        });
+        setVisitItems(items);
+        setPaymentReceived(''); setIncidentNotes('');
+        setExtClientName(isExt ? '' : (client?.name || ''));
+        setActiveVisit({ client_id: isExt ? null : slot.client_id, client,
+            visit_order: isExt ? 999 : slot.visit_order,
+            visit_type: isExt ? 'EXTEMPORANEA' : 'PROGRAMADA', slot });
+        setView('visit');
+    };
+
+    // ─── Visita: Cálculos ───
+    const visitCalc = useMemo(() => {
+        let exchangeTotal = 0, freshTotal = 0;
+        visitItems.forEach(it => {
+            exchangeTotal += (it.exchange_qty || 0) * (it.b2b_price || 0);
+            freshTotal += (it.actual_fresh_qty || 0) * (it.b2b_price || 0);
+        });
+        const saleAmount = freshTotal - exchangeTotal;
+        const change = (parseFloat(paymentReceived) || 0) - saleAmount;
+        return { exchangeTotal, freshTotal, saleAmount, change };
+    }, [visitItems, paymentReceived]);
+
+    const updateItem = (pid, field, value) => {
+        setVisitItems(prev => prev.map(it =>
+            it.product_id === pid ? { ...it, [field]: parseInt(value) || 0 } : it
+        ));
+    };
+
+    // ─── Visita: Guardar (persiste en API) ───
+    const saveVisit = async () => {
+        setSaving(true);
+        try {
+            const payload = {
+                client_id: activeVisit.client_id,
+                visit_order: activeVisit.visit_order,
+                visit_type: activeVisit.visit_type,
+                ext_client_name: activeVisit.visit_type === 'EXTEMPORANEA' ? extClientName : null,
+                items: visitItems.filter(it => it.exchange_qty > 0 || it.actual_fresh_qty > 0).map(it => ({
+                    product_id: it.product_id, exchange_qty: it.exchange_qty,
+                    suggested_fresh_qty: it.suggested_fresh_qty, actual_fresh_qty: it.actual_fresh_qty,
+                    missing_qty: it.missing_qty, unit_price: it.b2b_price,
+                })),
+                sale_amount: visitCalc.saleAmount,
+                payment_received: parseFloat(paymentReceived) || 0,
+                change_given: Math.max(0, visitCalc.change),
+                total_exchange_amount: visitCalc.exchangeTotal,
+                total_fresh_amount: visitCalc.freshTotal,
+                incident_notes: incidentNotes || null,
+            };
+            const res = await fetch(`${API}/grandeza/journeys/${journey.id}/visits`, {
+                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                // Recargar visitas desde API
+                const visRes = await fetch(`${API}/grandeza/journeys/${journey.id}/visits`);
+                if (visRes.ok) setVisits(await visRes.json());
+                showToast(`✅ Visita registrada — Venta: $${visitCalc.saleAmount.toFixed(2)}`);
+                setView('route'); setActiveVisit(null);
+            } else { showToast('❌ Error del servidor', 'error'); }
+        } catch(e) {
+            showToast('❌ Error de red', 'error');
+        } finally { setSaving(false); }
+    };
+
+    // ─── WhatsApp ───
+    const sendWhatsApp = () => {
+        const client = activeVisit?.client;
+        const phone = client?.phone?.replace(/\D/g, '');
+        if (!phone) { showToast('⚠️ Cliente sin teléfono', 'error'); return; }
+
+        let msg = `🍞 *NOTA DE VENTA — PAN GRANDEZA*\n`;
+        msg += `📅 ${todayStr()}\n`;
+        msg += `👤 ${client?.business_name || client?.name || extClientName}\n`;
+        msg += `────────────────\n`;
+
+        const activeItems = visitItems.filter(it => it.actual_fresh_qty > 0 || it.exchange_qty > 0);
+        if (activeItems.some(it => it.exchange_qty > 0)) {
+            msg += `\n🔄 *CAMBIOS RECOGIDOS:*\n`;
+            activeItems.filter(it => it.exchange_qty > 0).forEach(it => {
+                msg += `  • ${it.product_name}: ${it.exchange_qty} pzas × $${it.b2b_price.toFixed(2)} = $${(it.exchange_qty * it.b2b_price).toFixed(2)}\n`;
+            });
+            msg += `  *Subtotal cambios: -$${visitCalc.exchangeTotal.toFixed(2)}*\n`;
+        }
+        if (activeItems.some(it => it.actual_fresh_qty > 0)) {
+            msg += `\n🍞 *PRODUCTO FRESCO:*\n`;
+            activeItems.filter(it => it.actual_fresh_qty > 0).forEach(it => {
+                msg += `  • ${it.product_name}: ${it.actual_fresh_qty} pzas × $${it.b2b_price.toFixed(2)} = $${(it.actual_fresh_qty * it.b2b_price).toFixed(2)}\n`;
+            });
+            msg += `  *Subtotal fresco: $${visitCalc.freshTotal.toFixed(2)}*\n`;
+        }
+        msg += `\n────────────────\n`;
+        msg += `💰 *TOTAL A COBRAR: $${visitCalc.saleAmount.toFixed(2)}*\n`;
+        msg += `💵 Recibido: $${(parseFloat(paymentReceived)||0).toFixed(2)}\n`;
+        if (visitCalc.change > 0) msg += `🔙 Cambio: $${visitCalc.change.toFixed(2)}\n`;
+        msg += `\n_R de Rico • Pan Grandeza_`;
+
+        const url = `https://wa.me/52${phone}?text=${encodeURIComponent(msg)}`;
+        window.open(url, '_blank');
+    };
+
+    // ─── Render: Loading ───
+    if (loading) return (
+        <div className="h-screen flex items-center justify-center relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
+            <div className="relative z-10 text-center"><img src={LOGO_URL} alt="Grandeza" className="w-20 h-20 rounded-2xl object-cover mx-auto mb-4 animate-pulse border border-amber-500/30 shadow-2xl" /><p className="text-amber-400 font-bold text-sm uppercase tracking-widest animate-pulse drop-shadow-md">Cargando ruta...</p></div>
+        </div>
+    );
+
+    // ─── Render: No journey ───
+    if (!journey || journey.status === 'PREPARANDO') return (
+        <div className="h-screen flex flex-col text-white relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
+            <div className="relative z-10 p-4 flex items-center justify-between border-b border-amber-500/20 bg-black/40">
+                <div className="flex items-center gap-3"><span className="text-2xl drop-shadow-md">🚗</span><span className="font-black uppercase text-sm text-amber-400 drop-shadow-md">Repartidor</span></div>
+                <button onClick={onBack} className="text-xs text-gray-300 font-bold uppercase drop-shadow-md bg-black/30 px-3 py-2 rounded-lg">← Volver</button>
+            </div>
+            <div className="relative z-10 flex-1 flex items-center justify-center p-8">
+                <div className="text-center space-y-4">
+                    <div className="text-6xl drop-shadow-2xl">⏳</div>
+                    <h2 className="text-xl font-black uppercase tracking-tighter text-amber-400 drop-shadow-lg">Sin ruta activa</h2>
+                    <p className="text-sm text-amber-100/70 font-medium">{journey ? 'La jornada está en preparación. Espera a que el gerente despache la ruta.' : 'No hay jornada abierta para hoy.'}</p>
+                </div>
+            </div>
+        </div>
+    );
+
+    // ─── Render: Vista de Visita Activa ───
+    if (view === 'visit' && activeVisit) {
+        const client = activeVisit.client;
+        const isExt = activeVisit.visit_type === 'EXTEMPORANEA';
+        return (
+            <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+                <DriverBackground />
+                {/* Header visita */}
+                <div className="relative z-10 p-4 border-b border-amber-500/20 flex items-center justify-between bg-black/40">
+                    <button onClick={() => { setView('route'); setActiveVisit(null); }} className="text-xs text-gray-400 font-bold">← Ruta</button>
+                    <span className="text-xs font-black text-amber-400 uppercase">
+                        {isExt ? 'Venta Extemporánea' : `Visita #${activeVisit.visit_order}`}
+                    </span>
+                </div>
+
+                <div className="relative z-10 flex-1 overflow-y-auto pb-32">
+                    {/* Info cliente */}
+                    <div className="p-4 border-b border-amber-500/20 bg-black/20">
+                        {isExt ? (
+                            <div>
+                                <label className="text-[10px] font-black text-gray-500 uppercase mb-1 block">Nombre del cliente</label>
+                                <input value={extClientName} onChange={e => setExtClientName(e.target.value)} placeholder="¿A quién le vendes?" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none focus:border-amber-500" />
+                            </div>
+                        ) : (
+                            <div className="flex gap-3">
+                                {client?.facade_photo_url && <img src={`http://${window.location.hostname}:5001${client.facade_photo_url}`} className="w-16 h-16 rounded-xl object-cover border border-white/10" />}
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-black text-lg leading-tight truncate">{client?.name}</h3>
+                                    <p className="text-xs text-gray-400 truncate">{client?.business_name}</p>
+                                    <div className="flex gap-2 mt-2">
+                                        {client?.phone && <a href={`tel:${client.phone}`} className="text-xs bg-blue-500/20 text-blue-400 px-3 py-1 rounded-lg font-bold">📞 Llamar</a>}
+                                        {client?.google_maps_url && <a href={client.google_maps_url} target="_blank" className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-lg font-bold">📍 Mapa</a>}
+                                        {canEditClients && <button onClick={() => setEditingClient(client)} className="text-xs bg-white/5 text-gray-400 px-3 py-1 rounded-lg font-bold">✏️</button>}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Productos */}
+                    <div className="p-4 space-y-3">
+                        <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest">Productos</h4>
+                        {visitItems.map(it => (
+                            <div key={it.product_id} className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+                                <div className="flex justify-between items-center mb-3">
+                                    <div>
+                                        <div className="font-bold text-sm">{it.product_name}</div>
+                                        <div className="text-xs text-gray-500">${it.b2b_price?.toFixed(2)} c/u {it.suggested_fresh_qty > 0 && <span className="text-blue-400">• Sugerido: {it.suggested_fresh_qty}</span>}</div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[9px] font-black text-red-400 uppercase block mb-1">🔄 Cambios</label>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => updateItem(it.product_id, 'exchange_qty', Math.max(0, it.exchange_qty - 1))} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 font-bold">−</button>
+                                            <input type="number" value={it.exchange_qty} onChange={e => updateItem(it.product_id, 'exchange_qty', e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-lg text-center font-black text-white p-2 outline-none" />
+                                            <button onClick={() => updateItem(it.product_id, 'exchange_qty', it.exchange_qty + 1)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 font-bold">+</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[9px] font-black text-emerald-400 uppercase block mb-1">🍞 Frescas</label>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => updateItem(it.product_id, 'actual_fresh_qty', Math.max(0, it.actual_fresh_qty - 1))} className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold">−</button>
+                                            <input type="number" value={it.actual_fresh_qty} onChange={e => updateItem(it.product_id, 'actual_fresh_qty', e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-lg text-center font-black text-white p-2 outline-none" />
+                                            <button onClick={() => updateItem(it.product_id, 'actual_fresh_qty', it.actual_fresh_qty + 1)} className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold">+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Resumen Financiero */}
+                    <div className="p-4 space-y-2">
+                        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                            <div className="flex justify-between text-sm"><span className="text-red-400">🔄 Cambios (recompra)</span><span className="font-black text-red-400">-${visitCalc.exchangeTotal.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-emerald-400">🍞 Frescas</span><span className="font-black text-emerald-400">${visitCalc.freshTotal.toFixed(2)}</span></div>
+                            <div className="border-t border-white/10 pt-2 flex justify-between text-lg"><span className="font-black">TOTAL VENTA</span><span className="font-black text-white">${visitCalc.saleAmount.toFixed(2)}</span></div>
+                        </div>
+                        {/* Pago */}
+                        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+                            <label className="text-[10px] font-black text-amber-400 uppercase block mb-2">💵 Dinero Recibido</label>
+                            <input type="number" value={paymentReceived} onChange={e => setPaymentReceived(e.target.value)} placeholder="0.00" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xl font-black text-white outline-none focus:border-amber-500" />
+                            {visitCalc.change > 0 && <div className="mt-2 text-sm font-black text-amber-400">🔙 Cambio: ${visitCalc.change.toFixed(2)}</div>}
+                            {visitCalc.change < 0 && parseFloat(paymentReceived) > 0 && <div className="mt-2 text-sm font-black text-red-400">⚠️ Faltan: ${Math.abs(visitCalc.change).toFixed(2)}</div>}
+                        </div>
+                        {/* Incidentes */}
+                        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+                            <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">📝 Notas / Incidente</label>
+                            <textarea value={incidentNotes} onChange={e => setIncidentNotes(e.target.value)} placeholder="Opcional: documenta cualquier incidente..." className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-white/30 min-h-[60px] resize-none" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Barra de acciones fija */}
+                <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 flex gap-2 z-50">
+                    <button onClick={sendWhatsApp} className="px-4 py-3 bg-green-600 rounded-xl text-xs font-black text-white uppercase">📱 WhatsApp</button>
+                    <button onClick={saveVisit} disabled={saving} className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50">
+                        {saving ? 'Guardando...' : '✅ Completar Visita'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // ─── Render: Vista de Resumen ───
+    if (view === 'summary') {
+        const totalVentas = visits.reduce((s,v) => s + (v.sale_amount||0), 0);
+        const totalCobrado = visits.reduce((s,v) => s + (v.payment_received||0), 0);
+        const totalCambiosDado = visits.reduce((s,v) => s + (v.change_given||0), 0);
+        return (
+            <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+                <DriverBackground />
+                <div className="relative z-10 p-4 border-b border-amber-500/20 flex items-center justify-between bg-black/40">
+                    <button onClick={() => setView('route')} className="text-xs text-gray-300 font-bold bg-black/30 px-3 py-2 rounded-lg drop-shadow-md">← Ruta</button>
+                    <span className="text-xs font-black text-emerald-400 uppercase drop-shadow-md">📊 Resumen del Día</span>
+                </div>
+                <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
+                            <div className="text-2xl font-black text-emerald-400">{visits.length}</div>
+                            <div className="text-[9px] font-black text-emerald-500/60 uppercase">Visitas</div>
+                        </div>
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-center">
+                            <div className="text-2xl font-black text-amber-400">${totalVentas.toFixed(0)}</div>
+                            <div className="text-[9px] font-black text-amber-500/60 uppercase">Venta Total</div>
+                        </div>
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 text-center">
+                            <div className="text-2xl font-black text-blue-400">${totalCobrado.toFixed(0)}</div>
+                            <div className="text-[9px] font-black text-blue-500/60 uppercase">Cobrado</div>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+                            <div className="text-2xl font-black text-white">${runningTotals.totalCash.toFixed(0)}</div>
+                            <div className="text-[9px] font-black text-gray-500 uppercase">Efectivo en Mano</div>
+                        </div>
+                    </div>
+                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest pt-2">Detalle de Visitas</h4>
+                    {visits.map((v, i) => (
+                        <div key={v.id || i} className="bg-white/[0.02] border border-white/5 rounded-xl p-3 flex justify-between items-center">
+                            <div>
+                                <div className="font-bold text-sm">{v.client_name || v.ext_client_name || `Visita ${i+1}`}</div>
+                                <div className="text-xs text-gray-500">{v.visit_type === 'EXTEMPORANEA' ? '⚡ Extemporánea' : `📋 Programada`}</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="font-black text-emerald-400 text-sm">${(v.sale_amount||0).toFixed(2)}</div>
+                                <div className="text-xs text-gray-500">${(v.payment_received||0).toFixed(2)} cobrado</div>
+                            </div>
+                        </div>
+                    ))}
+                    {visits.length === 0 && <p className="text-center text-gray-600 py-8 font-bold text-sm">Aún no hay visitas registradas</p>}
+                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest pt-2">Inventario Restante</h4>
+                    {grandezaProducts.map(gp => {
+                        const remaining = runningTotals.freshRemaining[gp.product_id] || 0;
+                        return (
+                            <div key={gp.product_id} className="flex justify-between items-center bg-white/[0.02] border border-white/5 rounded-xl p-3">
+                                <span className="font-bold text-sm">{gp.product_name}</span>
+                                <span className={`font-black text-sm ${remaining > 0 ? 'text-blue-400' : 'text-gray-500'}`}>{remaining} pzas</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+
+    // ─── Render: Vista de Pedido ───
+    if (view === 'order') {
+        return <OrderView API={API} clients={clients} grandezaProducts={grandezaProducts} onBack={() => setView('route')} showToast={showToast} />;
+    }
+
+    // ─── Render: Vista de Ruta (principal) ───
+    const visitedIds = new Set(visits.map(v => v.client_id));
+
+    return (
+        <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
+            {/* Header */}
+            <div className="relative z-10 p-4 border-b border-amber-500/20 bg-black/40 shadow-xl">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-amber-500/30">
+                            <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover" />
+                        </div>
+                        <div>
+                            <h1 className="font-black text-lg uppercase tracking-tighter leading-none">Repartidor</h1>
+                            <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">{todayDay} — {todayStr()}</p>
+                        </div>
+                    </div>
+                    <button onClick={onBack} className="text-xs text-gray-500 font-bold uppercase px-3 py-2 bg-white/5 rounded-lg">← Salir</button>
+                </div>
+                {/* Totales en vivo */}
+                <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 text-center">
+                        <div className="text-sm font-black text-emerald-400">${runningTotals.totalCash.toFixed(0)}</div>
+                        <div className="text-[8px] font-black text-emerald-500/60 uppercase">Efectivo</div>
+                    </div>
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-2 text-center">
+                        <div className="text-sm font-black text-red-400">{runningTotals.totalExchangePieces}</div>
+                        <div className="text-[8px] font-black text-red-500/60 uppercase">Cambios</div>
+                    </div>
+                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-2 text-center">
+                        <div className="text-sm font-black text-blue-400">{runningTotals.freshTotal}</div>
+                        <div className="text-[8px] font-black text-blue-500/60 uppercase">Frescas</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Lista de clientes en ruta */}
+            <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-2 pb-24">
+                {routeSlots.map((slot, idx) => {
+                    const client = getClientInfo(slot.client_id);
+                    const done = visitedIds.has(slot.client_id);
+                    return (
+                        <button key={slot.slot_id || idx} onClick={() => !done && openVisit(slot)} disabled={done}
+                            className={`w-full text-left p-4 rounded-2xl border transition-all ${done ? 'bg-emerald-500/5 border-emerald-500/20 opacity-60' : 'bg-white/[0.02] border-white/5 active:scale-[0.98]'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${done ? 'bg-emerald-500 text-black' : 'bg-white/10 text-white'}`}>
+                                    {done ? '✓' : idx + 1}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-bold text-sm truncate">{client?.name || `Cliente #${slot.client_id}`}</div>
+                                    <div className="text-xs text-gray-500 truncate">{client?.business_name || ''}</div>
+                                </div>
+                                {client?.google_maps_url && (
+                                    <a href={client.google_maps_url} target="_blank" onClick={e => e.stopPropagation()} className="text-lg">📍</a>
+                                )}
+                            </div>
+                        </button>
+                    );
+                })}
+
+                {routeSlots.length === 0 && (
+                    <div className="text-center py-12 text-gray-500">
+                        <div className="text-3xl mb-2">🗺️</div>
+                        <p className="font-bold text-sm">No hay clientes en la ruta de hoy</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Barra inferior fija */}
+            <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 flex gap-2 z-50">
+                <button onClick={() => openVisit({client_id: null, visit_order: 999}, true)}
+                    className="flex-1 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs font-black text-amber-400 uppercase">
+                    + Ext.
+                </button>
+                <button onClick={() => setView('order')}
+                    className="flex-1 py-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs font-black text-blue-400 uppercase">
+                    📋 Pedido
+                </button>
+                <button onClick={() => setView('summary')}
+                    className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-gray-300 uppercase">
+                    📊 Resumen
+                </button>
+            </div>
+
+            {/* Toast */}
+            {toast && <div className={`fixed top-4 left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
+        </div>
+    );
+};
+
+// ─── Sub-Componente: Levantar Pedido ─────────────────────────────────────────
+const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
+    const [selectedClient, setSelectedClient] = useState('');
+    const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price })));
+    const [deliveryDate, setDeliveryDate] = useState('');
+    const [payMethod, setPayMethod] = useState('EFECTIVO');
+    const [notes, setNotes] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const totalAmount = orderItems.reduce((s, it) => s + (it.qty * it.unit_price), 0);
+    const client = clients.find(c => c.id === parseInt(selectedClient));
+
+    const submitOrder = async () => {
+        if (!deliveryDate) { showToast('⚠️ Selecciona fecha de entrega', 'error'); return; }
+        if (totalAmount <= 0) { showToast('⚠️ Agrega productos al pedido', 'error'); return; }
+        setSaving(true);
+        try {
+            const res = await fetch(`${API}/grandeza/orders`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    client_id: parseInt(selectedClient) || null,
+                    client_name: client?.name || 'Cliente en ruta',
+                    items: orderItems.filter(it => it.qty > 0),
+                    total_amount: totalAmount,
+                    payment_method: payMethod,
+                    delivery_date: deliveryDate,
+                    notes: notes || null,
+                })
+            });
+            if (res.ok) {
+                showToast('✅ Pedido levantado exitosamente');
+                onBack();
+            } else { showToast('❌ Error al crear pedido', 'error'); }
+        } catch(e) { showToast('❌ Error de red', 'error'); }
+        finally { setSaving(false); }
+    };
+
+    return (
+        <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
+            <div className="relative z-10 p-4 border-b border-amber-500/20 flex items-center justify-between bg-black/40">
+                <button onClick={onBack} className="text-xs text-gray-300 font-bold bg-black/30 px-3 py-2 rounded-lg drop-shadow-md">← Ruta</button>
+                <span className="text-xs font-black text-blue-400 uppercase drop-shadow-md">📋 Levantar Pedido</span>
+            </div>
+            <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-4 pb-28">
+                {/* Cliente */}
+                <div>
+                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Cliente</label>
+                    <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none">
+                        <option value="">Seleccionar cliente...</option>
+                        {clients.map(c => <option key={c.id} value={c.id}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
+                    </select>
+                </div>
+                {/* Fecha de entrega */}
+                <div>
+                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Fecha de Entrega</label>
+                    <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none" />
+                </div>
+                {/* Forma de pago */}
+                <div>
+                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Forma de Pago</label>
+                    <div className="flex gap-2">
+                        {['EFECTIVO','TRANSFERENCIA'].map(m => (
+                            <button key={m} onClick={() => setPayMethod(m)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase border ${payMethod === m ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-white/5 border-white/10 text-gray-500'}`}>{m === 'EFECTIVO' ? '💵' : '📲'} {m}</button>
+                        ))}
+                    </div>
+                </div>
+                {/* Productos */}
+                <div>
+                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">Productos</label>
+                    {orderItems.map(it => (
+                        <div key={it.product_id} className="flex items-center justify-between bg-white/[0.02] border border-white/5 rounded-xl p-3 mb-2">
+                            <div className="flex-1"><div className="font-bold text-sm">{it.product_name}</div><div className="text-xs text-gray-500">${it.unit_price.toFixed(2)}</div></div>
+                            <div className="flex items-center gap-1">
+                                <button onClick={() => setOrderItems(prev => prev.map(x => x.product_id === it.product_id ? {...x, qty: Math.max(0, x.qty-1)} : x))} className="w-8 h-8 rounded-lg bg-white/5 text-white font-bold">−</button>
+                                <input type="number" value={it.qty} onChange={e => setOrderItems(prev => prev.map(x => x.product_id === it.product_id ? {...x, qty: parseInt(e.target.value)||0} : x))} className="w-14 bg-black/40 border border-white/10 rounded-lg text-center font-black text-white p-2 outline-none" />
+                                <button onClick={() => setOrderItems(prev => prev.map(x => x.product_id === it.product_id ? {...x, qty: x.qty+1} : x))} className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 font-bold">+</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div>
+                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Notas</label>
+                    <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Instrucciones especiales..." className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white outline-none resize-none min-h-[50px]" />
+                </div>
+            </div>
+            {/* Barra fija */}
+            <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 z-50">
+                <div className="flex justify-between items-center mb-3">
+                    <span className="font-black text-lg">Total: <span className="text-blue-400">${totalAmount.toFixed(2)}</span></span>
+                    <span className="text-xs text-gray-500 font-bold">{payMethod}</span>
+                </div>
+                <button onClick={submitOrder} disabled={saving} className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50">
+                    {saving ? 'Procesando...' : '📋 Confirmar Pedido'}
+                </button>
+            </div>
+        </div>
+    );
+};

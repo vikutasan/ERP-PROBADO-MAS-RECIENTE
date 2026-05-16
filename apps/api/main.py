@@ -11,6 +11,7 @@ from modules.orders.router import router as orders_router
 from modules.delivery_settings.router import router as delivery_settings_router
 from modules.analytics.router import router as analytics_router
 from modules.network.router import router as network_router
+from modules.grandeza.router import router as grandeza_router
 from core.database import AsyncSessionLocal, engine, Base
 from modules.catalog.models import Category
 from modules.security.models import SecurityProfile, Employee
@@ -26,6 +27,11 @@ from modules.orders.models import Order
 from modules.delivery_settings.models import DeliverySettings
 from modules.analytics.models import DailyContext
 from modules.network.models import NetworkIncident
+from modules.grandeza.models import (
+    GrandezaProductConfig, GrandezaClient, GrandezaRouteSlot,
+    GrandezaJourney, GrandezaInventory, GrandezaVisit, GrandezaVisitItem,
+    GrandezaDriverLocation, GrandezaSettings
+)
 
 app = FastAPI(
     title="R de Rico ERP API",
@@ -184,6 +190,7 @@ app.include_router(orders_router, prefix="/api/v1/orders", tags=["Orders"])
 app.include_router(delivery_settings_router, prefix="/api/v1/delivery-settings", tags=["DeliverySettings"])
 app.include_router(analytics_router, prefix="/api/v1", tags=["Analytics"])
 app.include_router(network_router, prefix="/api/v1/network", tags=["Network"])
+app.include_router(grandeza_router, prefix="/api/v1/grandeza", tags=["Grandeza"])
 
 # Montar carpetas de archivos estáticos
 app.mount("/static/catalog", StaticFiles(directory="static/catalog"), name="catalog")
