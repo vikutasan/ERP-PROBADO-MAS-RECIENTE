@@ -1152,3 +1152,183 @@ RetailVisionPOS.jsx           → Integración: import + hook + banner + status 
 **Cero cambios de backend.** Los payloads encolados son idénticos a los que se envían
 normalmente. Cuando la cola se sincroniza, el servidor los procesa como auto-saves normales.
 
+---
+
+## REGLA 18 — NUNCA MODIFICAR ARCHIVOS EN EL VOLUMEN DOCKER MONTADO MIENTRAS LOS CONTAINERS CORREN (v5.2)
+
+```
+⛔ PROHIBIDO: Editar archivos Python (.py) en apps/api/ mientras rderico-api-dev está corriendo.
+⛔ PROHIBIDO: Editar archivos JS/JSX en la raíz del proyecto mientras rderico-pos-dev está corriendo.
+⛔ PROHIBIDO: Ejecutar git add/commit/checkout que modifique archivos en el directorio montado con containers activos.
+✅ OBLIGATORIO: Detener los containers ANTES de modificar código fuente.
+✅ OBLIGATORIO: Para migraciones SQL puras → detener solo la API, ejecutar SQL, reiniciar API.
+✅ OBLIGATORIO: Verificar que el API responde 200 OK después de cada reinicio.
+```
+
+**¿Por qué?** El ERP R de Rico corre en Docker con volúmenes montados (bind mounts):
+```yaml
+# docker-compose.yml
+pos:
+  volumes:
+    - .:/app              # ← TODO el proyecto montado en vivo
+api:
+  volumes:
+    - ./apps/api:/app     # ← Backend montado en vivo
+```
+
+Esto significa que **cualquier cambio en un archivo local se refleja INMEDIATAMENTE dentro del container**.
+Tanto Vite (frontend, hot-reload) como Uvicorn (backend, --reload) vigilan cambios en `/app` y se
+reinician automáticamente al detectarlos.
+
+### Incidente Real — 15 de Mayo 2026
+
+**Contexto:** Se intentó migrar campos monetarios de FLOAT a DECIMAL (Fase 1 del plan de estabilización
+basado en el análisis del POS de SISYTEC). Se modificaron 3 archivos de modelos Python directamente
+en la carpeta montada mientras los containers corrían.
+
+**Cadena de fallos:**
+
+```
+1. Se editaron models.py (pos, catalog, cash) en la carpeta local
+       ↓
+2. Uvicorn (API) detectó cambios → se reinició con modelos nuevos
+   Vite (POS) detectó cambios → crash con error "EIO: i/o error, stat '/app'"
+       ↓
+3. Frontend crasheó completamente (Vite FSWatcher bug en Docker/Windows)
+   → Todas las terminales perdieron la interfaz web
+       ↓
+4. Se intentó docker compose up --build para reconstruir
+   → python-multipart se perdió al recrear el container
+   → API no arrancaba: "RuntimeError: Form data requires python-multipart"
+       ↓
+5. Se instaló python-multipart manualmente + reinicio
+   → API arrancó pero las terminales mostraban "Sin conexión al servidor"
+       ↓
+6. Se revirtieron TODOS los cambios (git checkout + ALTER TABLE a FLOAT + restart)
+   → POS volvió a funcionar normalmente
+```
+
+**Tiempo de interrupción total: ~45 minutos durante horario de cierre.**
+
+### Procedimiento Correcto para Modificaciones
+
+**Para migraciones de base de datos (SQL puro, sin cambios de código):**
+```bash
+# 1. Detener SOLO la API (el frontend puede seguir corriendo, la DB sigue arriba)
+docker stop rderico-api-dev
+
+# 2. Ejecutar SQL directamente contra PostgreSQL
+docker exec rderico-db-dev psql -U user -d rderico -c "ALTER TABLE ...;"
+
+# 3. Reiniciar la API
+docker start rderico-api-dev
+
+# 4. Verificar
+# Esperar ~10 segundos y probar un endpoint
+curl http://192.168.1.117:5001/api/v1/pos/tickets/open
+```
+
+**Para cambios de código fuente (modelos, servicios, componentes):**
+```bash
+# 1. Detener TODOS los containers
+docker compose down
+
+# 2. Hacer los cambios de código (editar archivos)
+# ... editar models.py, service.py, etc.
+
+# 3. Levantar todo
+docker compose up -d
+
+# 4. Verificar que TODO arrancó
+docker logs rderico-api-dev --tail 5   # Debe decir "Application startup complete"
+docker logs rderico-pos-dev --tail 5   # Debe decir "VITE ready in Xms"
+```
+
+**Para operaciones git (commit, checkout, branch):**
+```bash
+# Los comandos git modifican archivos → activan hot-reload → pueden crashear containers
+# 1. Detener containers ANTES de git
+docker compose stop
+
+# 2. Hacer operaciones git
+git add . && git commit -m "..."
+git checkout otra-rama
+
+# 3. Levantar containers
+docker compose start
+```
+
+### Resultado Final de la Migración FLOAT → DECIMAL
+
+La migración se completó exitosamente usando el procedimiento correcto (SQL puro):
+
+```bash
+docker stop rderico-api-dev
+docker exec rderico-db-dev psql -U user -d rderico -c "
+  ALTER TABLE tickets ALTER COLUMN total TYPE NUMERIC(12,2);
+  ALTER TABLE ticket_items ALTER COLUMN unit_price TYPE NUMERIC(12,2);
+  ALTER TABLE ticket_items ALTER COLUMN subtotal TYPE NUMERIC(12,2);
+  ALTER TABLE products ALTER COLUMN price TYPE NUMERIC(12,2);
+  ALTER TABLE products ALTER COLUMN cost TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN opening_float TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN physical_cash TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN physical_credit TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN physical_debit TYPE NUMERIC(12,2);
+  ALTER TABLE cash_movements ALTER COLUMN amount TYPE NUMERIC(12,2);
+"
+docker start rderico-api-dev
+```
+
+**10 columnas migradas. Cero downtime perceptible. Los modelos SQLAlchemy con `Float` funcionan
+correctamente contra columnas `NUMERIC` en PostgreSQL — la conversión es automática y transparente.
+Los archivos de modelos se actualizarán en la próxima ventana de mantenimiento programada.**
+
+### Checklist Actualizado (agregar a Sección 7)
+
+- [ ] ¿Los containers Docker están DETENIDOS antes de modificar cualquier archivo de código?
+- [ ] ¿Las migraciones SQL se ejecutan con la API detenida para evitar deadlocks?
+- [ ] ¿Se verificó que la API responde 200 OK después de cada reinicio?
+- [ ] ¿Las operaciones git (add, commit, checkout) se hacen con containers detenidos?
+- [ ] ¿Todas las variables aritméticas que interactúan con columnas NUMERIC usan `Decimal`, no `float`?
+
+### Bug Crítico: TypeError float + Decimal (15 de Mayo 2026)
+
+**Contexto:** Tras migrar las columnas monetarias de `FLOAT` a `NUMERIC(12,2)` en PostgreSQL,
+el endpoint `POST /api/v1/pos/tickets` comenzó a devolver **500 Internal Server Error**.
+
+**Error exacto:**
+```
+TypeError: unsupported operand type(s) for +=: 'float' and 'decimal.Decimal'
+```
+
+**Ubicación:** `service.py`, línea 51 en `_get_items_and_total()`:
+```python
+# ❌ ANTES (ROTO):
+total = 0.0                      # ← float
+subtotal = product.price * qty   # ← Decimal (viene de columna NUMERIC)
+total += subtotal                # ← float + Decimal = TypeError 💥
+
+# ✅ DESPUÉS (CORREGIDO):
+from decimal import Decimal
+total = Decimal(0)               # ← Decimal
+subtotal = product.price * qty   # ← Decimal
+total += subtotal                # ← Decimal + Decimal = OK ✅
+```
+
+**¿Por qué pasó?** Cuando SQLAlchemy lee de una columna `NUMERIC`, retorna objetos `decimal.Decimal`
+de Python, no `float`. Python **no permite** mezclar `float + Decimal` en operaciones aritméticas
+(a diferencia de `float + int` que sí funciona). Esto causó que TODA operación de guardar tickets
+fallara con 500, lo cual el frontend interpretaba como "Sin conexión al servidor" porque
+`resilientFetch.js` clasifica cualquier error no-red como error del servidor y lo re-lanza,
+que a su vez hace que `handleTicketAction` falle y muestre el toast de error.
+
+**Regla derivada:** Cuando se migran columnas de FLOAT a NUMERIC en PostgreSQL, se DEBE:
+1. Buscar TODAS las variables Python que inicializan con `0.0` y que interactúan con esas columnas
+2. Cambiarlas a `Decimal(0)` o simplemente `0` (Python auto-promueve `int` a `Decimal`)
+3. Verificar el endpoint con un POST real, no solo con GET (los GET no hacen aritmética)
+
+**Comando para buscar posibles problemas futuros:**
+```bash
+grep -rn "= 0\.0" apps/api/modules/*/service.py
+```
+

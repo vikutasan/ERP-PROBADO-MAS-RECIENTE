@@ -48,7 +48,8 @@ class POSService:
 
     async def _get_items_and_total(self, db: AsyncSession, items: List[schemas.TicketItemCreate]):
         """Valida stock/existencia y calcula el valor total del carrito."""
-        total = 0.0
+        from decimal import Decimal
+        total = Decimal(0)
         db_items = []
         for item in items:
             product = await db.get(Product, item.product_id)
@@ -549,7 +550,7 @@ class POSService:
                     session_id=session_id,
                     terminal_id=terminal_id,
                     captured_by_id=captured_by_id,
-                    total=0.0,
+                    total=0,
                     status="DRAFT"
                 )
                 db.add(db_ticket)

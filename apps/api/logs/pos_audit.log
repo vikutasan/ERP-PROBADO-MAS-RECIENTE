@@ -20855,3 +20855,173 @@
 ✅ POS_AUDIT | 2026-05-16T02:41:27.447658 | POST /tickets | ip=172.18.0.1 | session=3 | employee=37 | terminal=None | account=V21687 | req_status=OPEN | http=200 | audit=OK | folio=V21687
 ✅ POS_AUDIT | 2026-05-16T02:41:35.044365 | POST /tickets | ip=172.18.0.1 | session=2 | employee=37 | terminal=None | account=V21687 | req_status=PAID | http=200 | audit=OK | folio=V21687
 ✅ POS_AUDIT | 2026-05-16T02:41:35.716220 | POST /tickets | ip=172.18.0.1 | session=4 | employee=24 | terminal=None | account=V21688 | req_status=OPEN | http=200 | audit=OK | folio=V21688
+✅ POS_AUDIT | 2026-05-16T02:41:58.005709 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21688 | req_status=PAID | http=200 | audit=OK | folio=V21688
+✅ POS_AUDIT | 2026-05-16T02:42:21.276516 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=37 | terminal=T2 | account=V21689 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:42:21.516316 | POST /tickets | ip=172.18.0.1 | session=3 | employee=37 | terminal=None | account=V21689 | req_status=DRAFT | http=200 | audit=OK | folio=V21689
+✅ POS_AUDIT | 2026-05-16T02:42:57.644772 | POST /tickets | ip=172.18.0.1 | session=3 | employee=37 | terminal=None | account=V21689 | req_status=DRAFT | http=200 | audit=OK | folio=V21689
+✅ POS_AUDIT | 2026-05-16T02:43:52.202441 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21690 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:43:52.426002 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21690 | req_status=DRAFT | http=200 | audit=OK | folio=V21690
+✅ POS_AUDIT | 2026-05-16T02:44:02.734316 | POST /tickets | ip=172.18.0.1 | session=3 | employee=37 | terminal=None | account=V21689 | req_status=OPEN | http=200 | audit=OK | folio=V21689
+✅ POS_AUDIT | 2026-05-16T02:44:36.795942 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21691 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:44:36.990487 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21691 | req_status=DRAFT | http=200 | audit=OK | folio=V21691
+✅ POS_AUDIT | 2026-05-16T02:44:49.816858 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21690 | req_status=DRAFT | http=200 | audit=OK | folio=V21690
+✅ POS_AUDIT | 2026-05-16T02:44:52.246525 | POST /tickets | ip=172.18.0.1 | session=2 | employee=37 | terminal=None | account=V21689 | req_status=PAID | http=200 | audit=OK | folio=V21689
+✅ POS_AUDIT | 2026-05-16T02:45:04.398835 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21690 | req_status=OPEN | http=200 | audit=OK | folio=V21690
+✅ POS_AUDIT | 2026-05-16T02:45:23.614103 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21690 | req_status=PAID | http=200 | audit=OK | folio=V21690
+✅ POS_AUDIT | 2026-05-16T02:45:32.512386 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21692 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:45:32.783493 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21692 | req_status=DRAFT | http=200 | audit=OK | folio=V21692
+✅ POS_AUDIT | 2026-05-16T02:46:03.976046 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21692 | req_status=OPEN | http=200 | audit=OK | folio=V21692
+✅ POS_AUDIT | 2026-05-16T02:46:13.090978 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21692 | req_status=PAID | http=200 | audit=OK | folio=V21692
+✅ POS_AUDIT | 2026-05-16T02:46:38.156133 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21693 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:46:38.351232 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21693 | req_status=DRAFT | http=200 | audit=OK | folio=V21693
+✅ POS_AUDIT | 2026-05-16T02:46:53.652173 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21691 | req_status=DRAFT | http=200 | audit=OK | folio=V21691
+✅ POS_AUDIT | 2026-05-16T02:47:08.877810 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21691 | req_status=DRAFT | http=200 | audit=OK | folio=V21691
+✅ POS_AUDIT | 2026-05-16T02:47:42.725356 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21691 | req_status=OPEN | http=200 | audit=OK | folio=V21691
+✅ POS_AUDIT | 2026-05-16T02:47:44.421578 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T4 | account=V21694 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:47:44.656792 | POST /tickets | ip=172.18.0.1 | session=4 | employee=24 | terminal=None | account=V21694 | req_status=DRAFT | http=200 | audit=OK | folio=V21694
+✅ POS_AUDIT | 2026-05-16T02:47:57.797787 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21695 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:47:58.009991 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21695 | req_status=DRAFT | http=200 | audit=OK | folio=V21695
+✅ POS_AUDIT | 2026-05-16T02:48:13.059125 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21691 | req_status=PAID | http=200 | audit=OK | folio=V21691
+✅ POS_AUDIT | 2026-05-16T02:48:34.724069 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21693 | req_status=DRAFT | http=200 | audit=OK | folio=V21693
+✅ POS_AUDIT | 2026-05-16T02:48:34.929002 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21695 | req_status=DRAFT | http=200 | audit=OK | folio=V21695
+✅ POS_AUDIT | 2026-05-16T02:48:38.303734 | POST /tickets | ip=172.18.0.1 | session=4 | employee=24 | terminal=None | account=V21694 | req_status=OPEN | http=200 | audit=OK | folio=V21694
+✅ POS_AUDIT | 2026-05-16T02:48:43.119769 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21693 | req_status=OPEN | http=200 | audit=OK | folio=V21693
+✅ POS_AUDIT | 2026-05-16T02:48:46.652688 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21695 | req_status=OPEN | http=200 | audit=OK | folio=V21695
+✅ POS_AUDIT | 2026-05-16T02:48:54.995535 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21693 | req_status=PAID | http=200 | audit=OK | folio=V21693
+✅ POS_AUDIT | 2026-05-16T02:49:07.458053 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21696 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:49:07.783925 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21696 | req_status=DRAFT | http=200 | audit=OK | folio=V21696
+✅ POS_AUDIT | 2026-05-16T02:49:27.820652 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21694 | req_status=PAID | http=200 | audit=OK | folio=V21694
+✅ POS_AUDIT | 2026-05-16T02:49:31.493531 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21697 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:49:31.698931 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21697 | req_status=DRAFT | http=200 | audit=OK | folio=V21697
+✅ POS_AUDIT | 2026-05-16T02:49:35.444136 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21696 | req_status=DRAFT | http=200 | audit=OK | folio=V21696
+✅ POS_AUDIT | 2026-05-16T02:50:17.323286 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21695 | req_status=PAID | http=200 | audit=OK | folio=V21695
+✅ POS_AUDIT | 2026-05-16T02:50:20.000307 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21696 | req_status=DRAFT | http=200 | audit=OK | folio=V21696
+✅ POS_AUDIT | 2026-05-16T02:50:31.599793 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21696 | req_status=OPEN | http=200 | audit=OK | folio=V21696
+✅ POS_AUDIT | 2026-05-16T02:50:56.453431 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21696 | req_status=PAID | http=200 | audit=OK | folio=V21696
+✅ POS_AUDIT | 2026-05-16T02:51:49.813076 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21697 | req_status=DRAFT | http=200 | audit=OK | folio=V21697
+✅ POS_AUDIT | 2026-05-16T02:52:49.732534 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21697 | req_status=DRAFT | http=200 | audit=OK | folio=V21697
+✅ POS_AUDIT | 2026-05-16T02:52:52.976598 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21697 | req_status=OPEN | http=200 | audit=OK | folio=V21697
+✅ POS_AUDIT | 2026-05-16T02:53:07.608829 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21697 | req_status=PAID | http=200 | audit=OK | folio=V21697
+✅ POS_AUDIT | 2026-05-16T02:57:24.343606 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21698 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T02:57:24.568101 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21698 | req_status=DRAFT | http=200 | audit=OK | folio=V21698
+✅ POS_AUDIT | 2026-05-16T02:58:12.258912 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21698 | req_status=OPEN | http=200 | audit=OK | folio=V21698
+✅ POS_AUDIT | 2026-05-16T02:58:17.643333 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21698 | req_status=PAID | http=200 | audit=OK | folio=V21698
+✅ POS_AUDIT | 2026-05-16T03:00:15.816736 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=4 | terminal=T3 | account=V21699 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:00:16.047632 | POST /tickets | ip=172.18.0.1 | session=5 | employee=4 | terminal=None | account=V21699 | req_status=DRAFT | http=200 | audit=OK | folio=V21699
+✅ POS_AUDIT | 2026-05-16T03:00:36.081410 | POST /tickets | ip=172.18.0.1 | session=5 | employee=4 | terminal=None | account=V21699 | req_status=OPEN | http=200 | audit=OK | folio=V21699
+✅ POS_AUDIT | 2026-05-16T03:01:26.737674 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21700 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:01:26.948284 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21700 | req_status=DRAFT | http=200 | audit=OK | folio=V21700
+✅ POS_AUDIT | 2026-05-16T03:01:41.359913 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21700 | req_status=OPEN | http=200 | audit=OK | folio=V21700
+✅ POS_AUDIT | 2026-05-16T03:01:48.643732 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21700 | req_status=PAID | http=200 | audit=OK | folio=V21700
+✅ POS_AUDIT | 2026-05-16T03:04:22.299857 | POST /tickets | ip=172.18.0.1 | session=2 | employee=4 | terminal=None | account=V21699 | req_status=PAID | http=200 | audit=OK | folio=V21699
+✅ POS_AUDIT | 2026-05-16T03:04:29.113577 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21663 | req_status=PAID | http=200 | audit=OK | folio=V21663
+✅ POS_AUDIT | 2026-05-16T03:04:34.947120 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21657 | req_status=PAID | http=200 | audit=OK | folio=V21657
+✅ POS_AUDIT | 2026-05-16T03:04:42.976836 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21641 | req_status=PAID | http=200 | audit=OK | folio=V21641
+✅ POS_AUDIT | 2026-05-16T03:04:50.156887 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21624 | req_status=PAID | http=200 | audit=OK | folio=V21624
+✅ POS_AUDIT | 2026-05-16T03:04:56.917728 | POST /tickets | ip=172.18.0.1 | session=2 | employee=37 | terminal=None | account=V21622 | req_status=PAID | http=200 | audit=OK | folio=V21622
+✅ POS_AUDIT | 2026-05-16T03:05:02.300460 | POST /tickets | ip=172.18.0.1 | session=2 | employee=4 | terminal=None | account=V21618 | req_status=PAID | http=200 | audit=OK | folio=V21618
+✅ POS_AUDIT | 2026-05-16T03:05:08.315262 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21551 | req_status=PAID | http=200 | audit=OK | folio=V21551
+✅ POS_AUDIT | 2026-05-16T03:05:13.876654 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21532 | req_status=PAID | http=200 | audit=OK | folio=V21532
+✅ POS_AUDIT | 2026-05-16T03:05:53.888015 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21701 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:05:54.108428 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21701 | req_status=DRAFT | http=200 | audit=OK | folio=V21701
+✅ POS_AUDIT | 2026-05-16T03:06:39.272969 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21701 | req_status=OPEN | http=200 | audit=OK | folio=V21701
+✅ POS_AUDIT | 2026-05-16T03:06:49.128969 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21701 | req_status=PAID | http=200 | audit=OK | folio=V21701
+✅ POS_AUDIT | 2026-05-16T03:08:37.659732 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=4 | terminal=T3 | account=V21702 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:08:38.067993 | POST /tickets | ip=172.18.0.1 | session=5 | employee=4 | terminal=None | account=V21702 | req_status=DRAFT | http=200 | audit=OK | folio=V21702
+✅ POS_AUDIT | 2026-05-16T03:09:07.004760 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21703 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:09:07.252272 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21703 | req_status=DRAFT | http=200 | audit=OK | folio=V21703
+✅ POS_AUDIT | 2026-05-16T03:09:35.432770 | POST /tickets | ip=172.18.0.1 | session=5 | employee=4 | terminal=None | account=V21702 | req_status=OPEN | http=200 | audit=OK | folio=V21702
+✅ POS_AUDIT | 2026-05-16T03:09:45.650609 | POST /tickets | ip=172.18.0.1 | session=2 | employee=4 | terminal=None | account=V21702 | req_status=PAID | http=200 | audit=OK | folio=V21702
+✅ POS_AUDIT | 2026-05-16T03:10:20.523639 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21703 | req_status=OPEN | http=200 | audit=OK | folio=V21703
+✅ POS_AUDIT | 2026-05-16T03:10:27.143841 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21704 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:10:27.350824 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21704 | req_status=DRAFT | http=200 | audit=OK | folio=V21704
+✅ POS_AUDIT | 2026-05-16T03:10:30.536079 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21703 | req_status=PAID | http=200 | audit=OK | folio=V21703
+✅ POS_AUDIT | 2026-05-16T03:11:29.365793 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21705 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:11:29.574121 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21705 | req_status=DRAFT | http=200 | audit=OK | folio=V21705
+✅ POS_AUDIT | 2026-05-16T03:11:37.980246 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21704 | req_status=OPEN | http=200 | audit=OK | folio=V21704
+✅ POS_AUDIT | 2026-05-16T03:11:43.389613 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21704 | req_status=PAID | http=200 | audit=OK | folio=V21704
+✅ POS_AUDIT | 2026-05-16T03:11:51.363145 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21705 | req_status=DRAFT | http=200 | audit=OK | folio=V21705
+✅ POS_AUDIT | 2026-05-16T03:12:41.262576 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21706 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:12:41.503987 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21706 | req_status=DRAFT | http=200 | audit=OK | folio=V21706
+✅ POS_AUDIT | 2026-05-16T03:13:14.166038 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21705 | req_status=DRAFT | http=200 | audit=OK | folio=V21705
+✅ POS_AUDIT | 2026-05-16T03:13:20.149895 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21706 | req_status=DRAFT | http=200 | audit=OK | folio=V21706
+✅ POS_AUDIT | 2026-05-16T03:13:21.132869 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21706 | req_status=OPEN | http=200 | audit=OK | folio=V21706
+✅ POS_AUDIT | 2026-05-16T03:13:28.030462 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=4 | terminal=T4 | account=V21707 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:13:28.237451 | POST /tickets | ip=172.18.0.1 | session=4 | employee=4 | terminal=None | account=V21707 | req_status=DRAFT | http=200 | audit=OK | folio=V21707
+✅ POS_AUDIT | 2026-05-16T03:13:30.335243 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21708 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:13:30.564273 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21708 | req_status=DRAFT | http=200 | audit=OK | folio=V21708
+✅ POS_AUDIT | 2026-05-16T03:13:36.181038 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21705 | req_status=DRAFT | http=200 | audit=OK | folio=V21705
+✅ POS_AUDIT | 2026-05-16T03:13:49.969520 | POST /tickets | ip=172.18.0.1 | session=4 | employee=4 | terminal=None | account=V21707 | req_status=OPEN | http=200 | audit=OK | folio=V21707
+✅ POS_AUDIT | 2026-05-16T03:13:50.047943 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21708 | req_status=DRAFT | http=200 | audit=OK | folio=V21708
+✅ POS_AUDIT | 2026-05-16T03:13:50.704601 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21706 | req_status=PAID | http=200 | audit=OK | folio=V21706
+✅ POS_AUDIT | 2026-05-16T03:13:51.495085 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21708 | req_status=OPEN | http=200 | audit=OK | folio=V21708
+✅ POS_AUDIT | 2026-05-16T03:14:22.018418 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21708 | req_status=PAID | http=200 | audit=OK | folio=V21708
+✅ POS_AUDIT | 2026-05-16T03:14:23.119531 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21705 | req_status=OPEN | http=200 | audit=OK | folio=V21705
+✅ POS_AUDIT | 2026-05-16T03:15:01.496981 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21705 | req_status=PAID | http=200 | audit=OK | folio=V21705
+✅ POS_AUDIT | 2026-05-16T03:15:03.045809 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21709 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:15:03.291349 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21709 | req_status=DRAFT | http=200 | audit=OK | folio=V21709
+✅ POS_AUDIT | 2026-05-16T03:15:30.565857 | POST /tickets | ip=172.18.0.1 | session=2 | employee=4 | terminal=None | account=V21707 | req_status=PAID | http=200 | audit=OK | folio=V21707
+✅ POS_AUDIT | 2026-05-16T03:15:30.904859 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21710 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:15:31.134443 | POST /tickets | ip=172.18.0.1 | session=3 | employee=13 | terminal=None | account=V21710 | req_status=DRAFT | http=200 | audit=OK | folio=V21710
+✅ POS_AUDIT | 2026-05-16T03:16:06.174884 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21709 | req_status=DRAFT | http=200 | audit=OK | folio=V21709
+✅ POS_AUDIT | 2026-05-16T03:16:14.372810 | POST /tickets | ip=172.18.0.1 | session=5 | employee=24 | terminal=None | account=V21709 | req_status=OPEN | http=200 | audit=OK | folio=V21709
+✅ POS_AUDIT | 2026-05-16T03:16:21.022544 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21709 | req_status=PAID | http=200 | audit=OK | folio=V21709
+✅ POS_AUDIT | 2026-05-16T03:18:42.709413 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21711 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:23:14.462977 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=24 | terminal=T3 | account=V21711 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:27:46.979403 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=13 | terminal=T2 | account=V21712 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:37:45.411177 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T2 | account=V21713 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:42:21.798182 | POST /tickets | ip=172.18.0.1 | session=3 | employee=1 | terminal=None | account=V21713 | req_status=DRAFT | http=200 | audit=OK | folio=V21713
+✅ POS_AUDIT | 2026-05-16T03:42:22.036102 | POST /tickets | ip=172.18.0.1 | session=3 | employee=1 | terminal=None | account=V21713 | req_status=DRAFT | http=200 | audit=OK | folio=V21713
+✅ POS_AUDIT | 2026-05-16T03:43:58.610170 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T2 | account=V21714 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:43:58.821763 | POST /tickets | ip=172.18.0.1 | session=3 | employee=1 | terminal=None | account=V21714 | req_status=DRAFT | http=200 | audit=OK | folio=V21714
+✅ POS_AUDIT | 2026-05-16T03:44:00.166969 | POST /tickets | ip=172.18.0.1 | session=3 | employee=1 | terminal=None | account=V21714 | req_status=OPEN | http=200 | audit=OK | folio=V21714
+✅ POS_AUDIT | 2026-05-16T03:44:42.189015 | POST /tickets | ip=172.18.0.1 | session=2 | employee=1 | terminal=None | account=V21714 | req_status=PAID | http=200 | audit=OK | folio=V21714
+✅ POS_AUDIT | 2026-05-16T03:44:48.011132 | POST /tickets | ip=172.18.0.1 | session=2 | employee=1 | terminal=None | account=V21713 | req_status=PAID | http=200 | audit=OK | folio=V21713
+✅ POS_AUDIT | 2026-05-16T03:44:54.337640 | POST /tickets | ip=172.18.0.1 | session=2 | employee=24 | terminal=None | account=V21528 | req_status=PAID | http=200 | audit=OK | folio=V21528
+✅ POS_AUDIT | 2026-05-16T03:45:00.037715 | POST /tickets | ip=172.18.0.1 | session=2 | employee=13 | terminal=None | account=V21517 | req_status=PAID | http=200 | audit=OK | folio=V21517
+✅ POS_AUDIT | 2026-05-16T03:52:33.455514 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21715 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T03:53:25.131553 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21715 | req_status=None | http=200 | audit=OK
+⚠️ POS_AUDIT | 2026-05-16T04:02:55.350315 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=None | terminal=T6 | account=V21716 | req_status=None | http=200 | audit=NO_EMPLOYEE
+✅ POS_AUDIT | 2026-05-16T04:06:42.252987 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21716 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:08:18.993990 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21717 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:09:20.121951 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21717 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:11:01.414919 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21717 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:12:45.019637 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:13:18.539654 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:13:35.031643 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:13:37.824106 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21718 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:13:37.855354 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21718 | req_status=DRAFT | http=200 | audit=OK | folio=V21718
+✅ POS_AUDIT | 2026-05-16T04:13:38.224037 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21718 | req_status=DRAFT | http=200 | audit=OK | folio=V21718
+✅ POS_AUDIT | 2026-05-16T04:13:39.472279 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21718 | req_status=OPEN | http=200 | audit=OK | folio=V21718
+✅ POS_AUDIT | 2026-05-16T04:14:02.657942 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:14:18.467995 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:14:34.559448 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:15:02.732336 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:15:18.777824 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:15:40.408482 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:16:02.611075 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:16:18.818751 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:16:34.493094 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:17:02.385556 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:17:18.834426 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:17:34.630728 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:18:21.149615 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:18:36.691893 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:19:02.449380 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:19:18.365385 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:19:34.074873 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:20:02.479035 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21717 | req_status=DRAFT | http=200 | audit=OK | folio=V21717
+✅ POS_AUDIT | 2026-05-16T04:21:28.883978 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21719 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:21:29.228777 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21719 | req_status=DRAFT | http=200 | audit=OK | folio=V21719
+✅ POS_AUDIT | 2026-05-16T04:21:31.020492 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21719 | req_status=OPEN | http=200 | audit=OK | folio=V21719
+✅ POS_AUDIT | 2026-05-16T04:31:22.803021 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21720 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:34:35.743184 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21720 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:36:43.116348 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21721 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:51:46.236596 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21722 | req_status=None | http=200 | audit=OK
+⚠️ POS_AUDIT | 2026-05-16T04:55:02.412834 | POST /tickets | ip=172.18.0.1 | session=1 | employee=None | terminal=None | account=VTEST99 | req_status=OPEN | http=200 | audit=NO_EMPLOYEE | folio=VTEST99
+✅ POS_AUDIT | 2026-05-16T04:56:03.021733 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21723 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:56:03.297312 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21723 | req_status=DRAFT | http=200 | audit=OK | folio=V21723
+✅ POS_AUDIT | 2026-05-16T04:56:04.815431 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21723 | req_status=OPEN | http=200 | audit=OK | folio=V21723
+✅ POS_AUDIT | 2026-05-16T04:56:13.388453 | POST /tickets/reserve | ip=172.18.0.1 | session=None | employee=1 | terminal=T6 | account=V21724 | req_status=None | http=200 | audit=OK
+✅ POS_AUDIT | 2026-05-16T04:56:13.608724 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21724 | req_status=DRAFT | http=200 | audit=OK | folio=V21724
+✅ POS_AUDIT | 2026-05-16T04:56:16.451067 | POST /tickets | ip=172.18.0.1 | session=1 | employee=1 | terminal=None | account=V21724 | req_status=OPEN | http=200 | audit=OK | folio=V21724
