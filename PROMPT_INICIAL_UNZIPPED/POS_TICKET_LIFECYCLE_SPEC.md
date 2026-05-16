@@ -4,14 +4,17 @@
 > CUALQUIER lógica relacionada con tickets, folios, carrito, cobros, auto-save,
 > pizarrón, auditoría, o impresión.
 >
-> **Este documento reemplaza las versiones 3.0, 4.0 y 4.3.1.** La versión 4.5
+> **Este documento incluye las versiones 3.0 a 4.6 (modelo batch auto-save) y la
+> versión 6.0 (modelo SISYTEC de persistencia inmediata).** Ambas arquitecturas
+> están documentadas para referencia histórica y para facilitar el rollback si
+> fuera necesario.
 > cierra la última vulnerabilidad de pérdida de datos: `cartRef` no se sincronizaba
 > sincrónicamente en `handleRecoverAccount`, permitiendo que el auto-save sobreescribiera
 > el ticket recuperado con el carrito viejo. También reemplaza la búsqueda fuzzy
 > (`ilike`) de `getTicketByAccountNum` con un endpoint de búsqueda exacta.
 >
-> Última actualización: 2026-05-02
-> Versión: 4.6 — ANTI-WIPE (STORAGE KEY SYNC)
+> Última actualización: 2026-05-16
+> Versión: 6.0 — PERSISTENCIA INMEDIATA (Modelo SISYTEC)
 
 ---
 
@@ -1331,4 +1334,313 @@ que a su vez hace que `handleTicketAction` falle y muestre el toast de error.
 ```bash
 grep -rn "= 0\.0" apps/api/modules/*/service.py
 ```
+
+---
+---
+
+# 🔄 FASE 2: TRANSICIÓN A PERSISTENCIA INMEDIATA (v6.0)
+
+> **Fecha:** 16/Mayo/2026
+> **Versión:** 6.0 — Modelo SISYTEC
+
+## CONTEXTO Y MOTIVACIÓN
+
+Tras experimentar los incidentes documentados en las versiones 3.0 a 5.2 (pérdida
+de datos por closures obsoletos, race conditions, auto-save silencioso, wipe de
+carrito por F5, sobreescritura cruzada, conflictos de versión fantasma, sesiones
+fantasma, etc.), se revisó el modelo del sistema POS anterior de la empresa
+(**SISYTEC**) y se identificó una diferencia arquitectónica fundamental:
+
+| Aspecto | Modelo Anterior (v3.0–v5.2) | Modelo SISYTEC |
+|---------|---------------------------|----------------|
+| Persistencia | **Batch** — auto-save cada 15s enviaba el carrito COMPLETO | **Inmediata** — cada acción se persiste al instante |
+| Ventana de pérdida | Hasta 15 segundos de captura perdida | **Cero** — cada toque al carrito ya está en DB |
+| Complejidad | Alta — mutex, refs, closures, debounce, cola offline | Baja — POST atómico por acción |
+| Payload | Todo el carrito en cada save (N items) | Solo el item que cambió (1 item) |
+| Conflictos | Frecuentes — dos saves del mismo ticket colisionaban | Raros — operaciones granulares con FOR UPDATE |
+
+**Decisión:** Se optó por implementar el modelo SISYTEC de persistencia inmediata,
+manteniendo la arquitectura anterior como red de seguridad (auto-save reducido a 60s).
+
+> ⚠️ **NOTA IMPORTANTE:** Toda la documentación anterior (Reglas 1-18, incidentes,
+> diagramas de race conditions, flujos de auto-save) se preserva INTENCIONALMENTE.
+> Si por alguna razón se necesita revertir a la arquitectura batch, la experiencia
+> ganada con cada incidente sigue disponible como referencia.
+
+---
+
+## ARQUITECTURA v6.0 — PERSISTENCIA INMEDIATA
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│  TERMINAL    │──ADD───▶│  API (FastAPI)│──INSERT─▶│  PostgreSQL  │
+│  (React)     │──UPD───▶│  Endpoints   │──UPDATE─▶│  FOR UPDATE  │
+│              │──DEL───▶│  Atómicos    │──DELETE─▶│  NUMERIC(12,2)│
+└──────────────┘         └──────────────┘         └──────────────┘
+       │                        │                        │
+       ▼                        ▼                        ▼
+  UI Optimista           expire_all()              ticket_folio_seq
+  (estado local           DB Queries               (secuencia atómica)
+   reacciona              Directas (no             Bloqueo por fila
+   instantáneo)           selectinload)            version++
+```
+
+### Diferencia clave vs modelo anterior
+
+```
+❌ ANTES (v3.0–v5.2):
+  Capturista toca producto → cart.push(item) → espera 15s → envía TODO el carrito
+  [ventana de 15s donde los datos solo existen en memoria del navegador]
+
+✅ AHORA (v6.0):
+  Capturista toca producto → cart.push(item) → POST /tickets/items/add → DB
+  [dato persistido en <100ms, sin ventana de pérdida]
+```
+
+---
+
+## ENDPOINTS ATÓMICOS (v6.0)
+
+### `POST /api/v1/pos/tickets/items/add`
+
+**Schema:** `TicketItemAdd`
+```python
+class TicketItemAdd(BaseModel):
+    account_num: str
+    product_id: int
+    quantity: int = 1
+    session_id: int
+    terminal_id: Optional[str] = None
+    captured_by_id: Optional[int] = None
+    version: Optional[int] = None
+```
+
+**Comportamiento:**
+1. Valida que el producto existe y está activo
+2. Busca el ticket por `account_num` con `FOR UPDATE`
+3. Si no existe → crea ticket nuevo como `DRAFT` con folio del payload
+4. Si el producto ya existe en el ticket → incrementa cantidad
+5. Si es nuevo → inserta `TicketItem`
+6. Recalcula total desde DB (query directa, NO lazy-load)
+7. Incrementa `version += 1`
+8. `expire_all()` + `_get_full_ticket()` para respuesta limpia
+
+### `PUT /api/v1/pos/tickets/items/update`
+
+**Schema:** `TicketItemUpdate`
+```python
+class TicketItemUpdate(BaseModel):
+    account_num: str
+    product_id: int
+    new_quantity: int
+    version: Optional[int] = None
+```
+
+**Comportamiento:**
+1. Busca ticket con `FOR UPDATE`
+2. Valida versión (409 si no coincide)
+3. Busca item por query directa (NO `db_ticket.items`)
+4. Actualiza `quantity` y `subtotal`
+5. Recalcula total con `SUM(subtotal)` desde DB
+6. `version += 1`, commit, expire_all, respuesta limpia
+
+### `DELETE /api/v1/pos/tickets/items/remove`
+
+**Schema:** `TicketItemRemove`
+```python
+class TicketItemRemove(BaseModel):
+    account_num: str
+    product_id: int
+    version: Optional[int] = None
+```
+
+**Comportamiento:**
+1. Busca ticket con `FOR UPDATE`
+2. Valida versión
+3. Busca y elimina item por query directa
+4. Recalcula total de items restantes
+5. `version += 1`, commit, expire_all, respuesta limpia
+
+---
+
+## LECCIÓN APRENDIDA: MissingGreenlet en Async SQLAlchemy
+
+**Problema:** Los 3 endpoints atómicos fallaban con:
+```
+sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called;
+can't call await_only() here.
+```
+
+**Causa:** En SQLAlchemy async, acceder a relaciones cargadas por `selectinload`
+después de un `commit()` intenta hacer lazy-load, lo cual es imposible en contexto
+async. También, iterar `db_ticket.items` cuando el ticket es recién creado (sin
+items cargados) dispara el mismo error.
+
+**Solución (aplicada en los 3 métodos):**
+1. **NO usar `selectinload`** en los queries de los endpoints atómicos
+2. **NO iterar `db_ticket.items`** — usar queries directas:
+   ```python
+   # ❌ ANTES (MissingGreenlet):
+   for item in db_ticket.items:  # ← lazy-load en async = 💥
+       if item.product_id == payload.product_id: ...
+   
+   # ✅ DESPUÉS (query directa):
+   result = await db.execute(
+       select(models.TicketItem)
+       .where(TicketItem.ticket_id == db_ticket.id)
+       .where(TicketItem.product_id == payload.product_id)
+   )
+   target_item = result.scalars().first()
+   ```
+3. **`db.expire_all()`** después de cada `commit()` para limpiar cache de sesión
+4. **Guardar `ticket_id`** antes del commit (los atributos expiran post-commit)
+5. **`_get_full_ticket()`** hace un SELECT limpio con eager loading para la respuesta
+
+---
+
+## CAMBIOS EN FRONTEND (v6.0)
+
+### POSService.js — 3 métodos nuevos
+
+```javascript
+async addItemToTicket(data)        // POST /tickets/items/add
+async updateItemQuantity(data)     // PUT  /tickets/items/update
+async removeItemFromTicket(data)   // DELETE /tickets/items/remove
+```
+
+### useTicketActions.js — handleAddToCart reescrito
+
+```
+❌ ANTES:
+handleAddToCart(product)
+  → cartAddToCart(product)
+  → if (!currentAccountNum) → generateNewAccountNum()
+  → setTimeout(100ms) → handleTicketAction('DRAFT')  ← batch save completo
+
+✅ AHORA:
+handleAddToCart(product)
+  → cartAddToCart(product)                            ← UI instantánea
+  → if (!accountNum) → generateNewAccountNum()
+  → posService.addItemToTicket({                      ← atómico, 1 item
+      account_num, product_id, quantity,
+      session_id, terminal_id, captured_by_id, version
+    })
+  → ticketVersionRef.current = result.version         ← sync versión
+```
+
+### RetailVisionPOS.jsx — Wrappers de persistencia
+
+```javascript
+// Antes: SalesReceipt recibía updateQuantity y removeFromCart directos de useCart
+// Ahora: Recibe wrappers que persisten inmediatamente
+
+const handleUpdateQuantity = async (productId, newQuantity) => {
+    updateQuantity(productId, newQuantity);        // UI instantánea
+    await posService.updateItemQuantity({...});    // Persiste al servidor
+    ticketVersionRef.current = result.version;     // Sync versión
+};
+
+const handleRemoveFromCart = async (productId) => {
+    removeFromCart(productId);                     // UI instantánea
+    await posService.removeItemFromTicket({...});  // Persiste al servidor
+    ticketVersionRef.current = result.version;     // Sync versión
+};
+```
+
+### useAutoSave.js — Reducido a respaldo de emergencia
+
+```
+ANTES: setInterval(15000)   ← 15 segundos, línea de vida principal
+AHORA: setInterval(60000)   ← 60 segundos, respaldo de emergencia
+```
+
+El auto-save ya no es el mecanismo principal de persistencia. Solo existe como
+red de seguridad para el caso improbable de que una operación atómica falle
+y el item quede solo en estado local.
+
+---
+
+## ARCHIVOS MODIFICADOS (v6.0)
+
+| Archivo | Cambio |
+|---------|--------|
+| `apps/api/modules/pos/schemas.py` | +3 schemas: `TicketItemAdd`, `TicketItemUpdate`, `TicketItemRemove` |
+| `apps/api/modules/pos/service.py` | +3 métodos: `add_item_to_ticket`, `update_item_quantity`, `remove_item_from_ticket` |
+| `apps/api/modules/pos/router.py` | +3 endpoints: `/tickets/items/add`, `/update`, `/remove` |
+| `apps/pos/services/POSService.js` | +3 métodos: `addItemToTicket`, `updateItemQuantity`, `removeItemFromTicket` |
+| `apps/pos/hooks/useTicketActions.js` | `handleAddToCart` reescrito con persistencia inmediata |
+| `apps/pos/RetailVisionPOS.jsx` | +2 wrappers: `handleUpdateQuantity`, `handleRemoveFromCart` |
+| `apps/pos/hooks/useAutoSave.js` | Intervalo: 15s → 60s |
+
+---
+
+## REGLAS QUE SIGUEN VIGENTES CON v6.0
+
+| Regla | Vigente | Nota |
+|-------|---------|------|
+| 1 — Refs para callbacks | ✅ | Los wrappers aún leen de `accountNumRef`, `ticketVersionRef` |
+| 2 — Auto-save intervalo real | ✅ | Ahora es 60s pero misma lógica |
+| 3 — Protocolo anti-overwrite | ✅ | La recuperación del Pizarrón sigue igual |
+| 4 — Secuencia atómica | ✅ | Folios siguen usando `ticket_folio_seq` |
+| 5 — Serialización única | ✅ | `_get_full_ticket()` sigue siendo el camino único |
+| 6 — FOR UPDATE | ✅ | Los 3 endpoints atómicos usan FOR UPDATE |
+| 7 — captured_by_id | ✅ | Se envía en `addItemToTicket` |
+| 8 — Cero alert() | ✅ | Sin cambios |
+| 9 — Confirmación obligatoria | ✅ | El Pizarrón sigue requiriendo confirmación |
+| 10 — Bloqueo optimista | ✅ | `version` se envía y valida en cada operación atómica |
+| 11 — Visibilidad de guardado | ✅ | Badge sigue mostrando estado |
+| 12 — Mutex | ✅ | `handleTicketAction` sigue serializado |
+| 13 — Ocupación de terminal | ✅ | Sin cambios |
+| 14 — Sync cartRef | ✅ | Sin cambios para recuperación |
+| 15 — Búsqueda exacta | ✅ | Sin cambios |
+| 16 — DRAFT invisible | ✅ | Tickets atómicos nacen como DRAFT |
+| 17 — Resiliencia offline | ✅ | El auto-save de 60s sigue encolando offline |
+| 18 — REGLA 18 Docker | ✅ | Siempre detener containers antes de editar |
+
+---
+
+## CÓMO REVERTIR A LA ARQUITECTURA ANTERIOR (ROLLBACK)
+
+Si por alguna razón la persistencia inmediata causa problemas y se necesita
+volver al modelo batch de auto-save:
+
+1. **`useTicketActions.js`:** Restaurar `handleAddToCart` al modelo de
+   `setTimeout(100ms) → handleTicketAction('DRAFT')` (ver Sección 3.1)
+2. **`RetailVisionPOS.jsx`:** Pasar `updateQuantity` y `removeFromCart`
+   directos de `useCart` al `SalesReceipt` (sin wrappers)
+3. **`useAutoSave.js`:** Cambiar intervalo de 60000 a 15000
+4. **Backend:** Los endpoints atómicos pueden quedarse — no interfieren
+   con el flujo batch. Simplemente dejan de ser invocados.
+
+> ⚠️ Al revertir, se vuelve a la ventana de pérdida de 15 segundos.
+> Todas las reglas de la sección 2 (Refs, Mutex, isRecoveringRef, etc.)
+> vuelven a ser la primera línea de defensa.
+
+---
+
+## AJUSTES DEL SISTEMA ACTIVOS (v6.0)
+
+Tras la limpieza de configuración, quedan solo 6 ajustes relevantes:
+
+| Key | Valor | Categoría | Propósito |
+|-----|-------|-----------|-----------|
+| `pos_terminals_config` | JSON | pos | Define terminales disponibles (T2-T6, CAJA) |
+| `pos_terminal_lock_ttl_m` | 20 | security | TTL del lock de terminal (minutos) |
+| `pos_heartbeat_interval_ms` | 60000 | polling | Mantiene el lock vivo |
+| `pos_terminal_status_polling_ms` | 3000 | polling | Actualiza selector de terminales |
+| `pos_terminal_check_lock_interval_ms` | 15000 | polling | Detecta si te quitaron la terminal |
+| `pos_draft_ttl_days` | 1 | POS | GC limpia borradores >1 día |
+
+**Eliminados:** 5 ajustes de `ai_agent` que no se usan en producción.
+
+---
+
+> **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
+>
+> Versión 6.0 implementa persistencia inmediata inspirada en el modelo SISYTEC.
+> Las reglas 1-18 y toda la documentación de incidentes se preservan como
+> referencia histórica y guía de rollback.
+>
+> **Commit de referencia:** `27e5e02` en rama `backup_pre_pos_refactor`
+> **Fecha:** 16/Mayo/2026
 
