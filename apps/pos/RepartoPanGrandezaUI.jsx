@@ -123,25 +123,22 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
     return (
         <div className="h-full flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
             {/* Header */}
-            <div className="relative z-10 p-8 pb-4">
+            <div className="relative z-20 pt-8 pb-2 px-10 bg-black border-b border-white/10 shadow-2xl">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/20 border border-amber-500/30">
-                            <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover" />
+                    <div className="flex items-center gap-8">
+                        <div className="w-40 h-40 rounded-[48px] overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center">
+                            <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                         </div>
                         <div>
-                            <h1 className="text-4xl font-black uppercase tracking-tighter text-white leading-none">
+                            <h1 className="text-6xl font-black uppercase tracking-tighter text-white leading-none">
                                 Reparto <span className="text-amber-400">Pan Grandeza</span>
                             </h1>
-                            <p className="text-sm font-bold text-gray-500 uppercase tracking-widest mt-1">
-                                Sistema de Gestión de Repartos
-                            </p>
                         </div>
                     </div>
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                            className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-base font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all"
                         >
                             ← Volver
                         </button>
@@ -199,17 +196,11 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
                 @keyframes zoom-in-95 { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
             `}</style>
 
-            {/* Capa de textura yute (CSS puro) */}
+            {/* Capa de textura de madera */}
             <div className="absolute inset-0 z-0 pointer-events-none" style={{
-                backgroundImage: `
-                    url("data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23000' stroke-width='0.3' opacity='0.15'%3E%3Cpath d='M0 0h40M0 2h40M0 4h40M0 6h40M0 8h40M0 10h40M0 12h40M0 14h40M0 16h40M0 18h40M0 20h40M0 22h40M0 24h40M0 26h40M0 28h40M0 30h40M0 32h40M0 34h40M0 36h40M0 38h40'/%3E%3Cpath d='M0 0v40M2 0v40M4 0v40M6 0v40M8 0v40M10 0v40M12 0v40M14 0v40M16 0v40M18 0v40M20 0v40M22 0v40M24 0v40M26 0v40M28 0v40M30 0v40M32 0v40M34 0v40M36 0v40M38 0v40'/%3E%3C/g%3E%3C/svg%3E"),
-                    url("data:image/svg+xml,%3Csvg width='6' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='6' height='6' fill='none'/%3E%3Crect x='0' y='0' width='1' height='1' fill='%23ffffff' opacity='0.03'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23000000' opacity='0.05'/%3E%3C/svg%3E")
-                `,
-                backgroundSize: '40px 40px, 6px 6px',
-            }} />
-            {/* Capa de gradiente cálido */}
-            <div className="absolute inset-0 z-0 pointer-events-none" style={{
-                background: 'radial-gradient(ellipse at 30% 20%, rgba(139,109,63,0.25) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(101,67,33,0.2) 0%, transparent 60%), linear-gradient(180deg, rgba(58,46,30,0.3) 0%, rgba(42,32,22,0.5) 100%)'
+                backgroundImage: 'url("/assets/wood_bg.jpg")',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
             }} />
         </div>
     );

@@ -15,8 +15,15 @@ export const ProductCard = ({ product, onAdd }) => {
 
     const imgClass = "max-w-full max-h-full object-contain drop-shadow-2xl mix-blend-normal";
 
+    const resolveUrl = (url) => {
+        if (!url) return null;
+        if (url.startsWith('http')) return url;
+        const hostBase = CONFIG.API_BASE_URL.replace('/api/v1', '');
+        return `${hostBase}${url.startsWith('/') ? '' : '/'}${url}`;
+    };
+
     const IMG_CHAIN = [
-        { key: 'API_IMG',    src: product.image, next: 'TRY_PNG' },
+        { key: 'API_IMG',    src: resolveUrl(product.image), next: 'TRY_PNG' },
         { key: 'TRY_PNG',    src: skuPngUrl,     next: 'TRY_JPG' },
         { key: 'TRY_JPG',    src: skuJpgUrl,     next: 'LEGACY_PNG' },
         { key: 'LEGACY_PNG', src: legacyPng,     next: 'LEGACY_JPG' },

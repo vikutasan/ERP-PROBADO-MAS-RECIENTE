@@ -50,7 +50,7 @@ export const useAutoSave = ({
                 console.warn(`Auto-save falló:`, e);
                 setStatusRef.current('failed');
             }
-        }, 15000);
+        }, 60000); // FASE 2: Reducido de 15s a 60s — ahora es respaldo de emergencia
 
         return () => clearInterval(autoSaveTimer);
     }, [currentAccountNum, showCheckout, showCollisionModal, refs]);

@@ -46,6 +46,34 @@ async def create_ticket(ticket: schemas.TicketCreate, request: Request, db: Asyn
     audit_pos_write(request, "POST /tickets", ticket, 200, extra=f"folio={ticket.account_num}")
     return result
 
+# ── FASE 2: Endpoints Atómicos de Items (Persistencia Inmediata) ────────
+@router.post("/tickets/items/add", response_model=schemas.TicketResponse)
+async def add_item_to_ticket(payload: schemas.TicketItemAdd, request: Request, db: AsyncSession = Depends(get_db)):
+    """Agrega un producto al ticket. Si ya existe, incrementa cantidad."""
+    result = await pos_service.add_item_to_ticket(db, payload)
+    audit_pos_write(request, "POST /tickets/items/add", {
+        "account_num": payload.account_num, "product_id": payload.product_id, "qty": payload.quantity
+    }, 200)
+    return result
+
+@router.put("/tickets/items/update", response_model=schemas.TicketResponse)
+async def update_item_quantity(payload: schemas.TicketItemUpdate, request: Request, db: AsyncSession = Depends(get_db)):
+    """Actualiza la cantidad de un item existente."""
+    result = await pos_service.update_item_quantity(db, payload)
+    audit_pos_write(request, "PUT /tickets/items/update", {
+        "account_num": payload.account_num, "product_id": payload.product_id, "new_qty": payload.new_quantity
+    }, 200)
+    return result
+
+@router.delete("/tickets/items/remove", response_model=schemas.TicketResponse)
+async def remove_item_from_ticket(payload: schemas.TicketItemRemove, request: Request, db: AsyncSession = Depends(get_db)):
+    """Elimina un producto del ticket."""
+    result = await pos_service.remove_item_from_ticket(db, payload)
+    audit_pos_write(request, "DELETE /tickets/items/remove", {
+        "account_num": payload.account_num, "product_id": payload.product_id
+    }, 200)
+    return result
+
 @router.get("/tickets", response_model=List[schemas.TicketResponse])
 async def get_tickets(
     terminal_id: str = None, 

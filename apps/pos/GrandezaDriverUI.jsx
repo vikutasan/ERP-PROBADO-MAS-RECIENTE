@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 
+const DriverBackground = () => (
+    <>
+        <div className="absolute inset-0 z-0 pointer-events-none" style={{
+            backgroundImage: 'url("/assets/wood_bg.jpg")',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+        }} />
+    </>
+);
+
 /**
  * HERRAMIENTA REPARTIDOR — Pan Grandeza (Fase 3)
  * UI optimizada para smartphone. El repartidor la usa en ruta.
@@ -231,23 +241,25 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
     // ─── Render: Loading ───
     if (loading) return (
-        <div className="h-screen bg-[#0a0a0a] flex items-center justify-center">
-            <div className="text-center"><img src={LOGO_URL} alt="Grandeza" className="w-20 h-20 rounded-2xl object-cover mx-auto mb-4 animate-pulse border border-amber-500/30" /><p className="text-gray-500 font-bold text-sm uppercase tracking-widest animate-pulse">Cargando ruta...</p></div>
+        <div className="h-screen flex items-center justify-center relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
+            <div className="relative z-10 text-center"><img src={LOGO_URL} alt="Grandeza" className="w-20 h-20 rounded-2xl object-cover mx-auto mb-4 animate-pulse border border-amber-500/30 shadow-2xl" /><p className="text-amber-400 font-bold text-sm uppercase tracking-widest animate-pulse drop-shadow-md">Cargando ruta...</p></div>
         </div>
     );
 
     // ─── Render: No journey ───
     if (!journey || journey.status === 'PREPARANDO') return (
-        <div className="h-screen bg-[#0a0a0a] flex flex-col text-white">
-            <div className="p-4 flex items-center justify-between border-b border-white/5">
-                <div className="flex items-center gap-3"><span className="text-2xl">🚗</span><span className="font-black uppercase text-sm">Repartidor</span></div>
-                <button onClick={onBack} className="text-xs text-gray-500 font-bold uppercase">← Volver</button>
+        <div className="h-screen flex flex-col text-white relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
+            <div className="relative z-10 p-4 flex items-center justify-between border-b border-amber-500/20 bg-black/40">
+                <div className="flex items-center gap-3"><span className="text-2xl drop-shadow-md">🚗</span><span className="font-black uppercase text-sm text-amber-400 drop-shadow-md">Repartidor</span></div>
+                <button onClick={onBack} className="text-xs text-gray-300 font-bold uppercase drop-shadow-md bg-black/30 px-3 py-2 rounded-lg">← Volver</button>
             </div>
-            <div className="flex-1 flex items-center justify-center p-8">
+            <div className="relative z-10 flex-1 flex items-center justify-center p-8">
                 <div className="text-center space-y-4">
-                    <div className="text-6xl">⏳</div>
-                    <h2 className="text-xl font-black uppercase tracking-tighter">Sin ruta activa</h2>
-                    <p className="text-sm text-gray-500">{journey ? 'La jornada está en preparación. Espera a que el gerente despache la ruta.' : 'No hay jornada abierta para hoy.'}</p>
+                    <div className="text-6xl drop-shadow-2xl">⏳</div>
+                    <h2 className="text-xl font-black uppercase tracking-tighter text-amber-400 drop-shadow-lg">Sin ruta activa</h2>
+                    <p className="text-sm text-amber-100/70 font-medium">{journey ? 'La jornada está en preparación. Espera a que el gerente despache la ruta.' : 'No hay jornada abierta para hoy.'}</p>
                 </div>
             </div>
         </div>
@@ -258,18 +270,19 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         const client = activeVisit.client;
         const isExt = activeVisit.visit_type === 'EXTEMPORANEA';
         return (
-            <div className="h-screen bg-[#0a0a0a] flex flex-col text-white overflow-hidden">
+            <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+                <DriverBackground />
                 {/* Header visita */}
-                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/40">
+                <div className="relative z-10 p-4 border-b border-amber-500/20 flex items-center justify-between bg-black/40">
                     <button onClick={() => { setView('route'); setActiveVisit(null); }} className="text-xs text-gray-400 font-bold">← Ruta</button>
                     <span className="text-xs font-black text-amber-400 uppercase">
                         {isExt ? 'Venta Extemporánea' : `Visita #${activeVisit.visit_order}`}
                     </span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto pb-32">
+                <div className="relative z-10 flex-1 overflow-y-auto pb-32">
                     {/* Info cliente */}
-                    <div className="p-4 border-b border-white/5">
+                    <div className="p-4 border-b border-amber-500/20 bg-black/20">
                         {isExt ? (
                             <div>
                                 <label className="text-[10px] font-black text-gray-500 uppercase mb-1 block">Nombre del cliente</label>
@@ -363,12 +376,13 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         const totalCobrado = visits.reduce((s,v) => s + (v.payment_received||0), 0);
         const totalCambiosDado = visits.reduce((s,v) => s + (v.change_given||0), 0);
         return (
-            <div className="h-screen bg-[#0a0a0a] flex flex-col text-white overflow-hidden">
-                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/40">
-                    <button onClick={() => setView('route')} className="text-xs text-gray-400 font-bold">← Ruta</button>
-                    <span className="text-xs font-black text-emerald-400 uppercase">📊 Resumen del Día</span>
+            <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+                <DriverBackground />
+                <div className="relative z-10 p-4 border-b border-amber-500/20 flex items-center justify-between bg-black/40">
+                    <button onClick={() => setView('route')} className="text-xs text-gray-300 font-bold bg-black/30 px-3 py-2 rounded-lg drop-shadow-md">← Ruta</button>
+                    <span className="text-xs font-black text-emerald-400 uppercase drop-shadow-md">📊 Resumen del Día</span>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                             <div className="text-2xl font-black text-emerald-400">{visits.length}</div>
@@ -425,9 +439,10 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const visitedIds = new Set(visits.map(v => v.client_id));
 
     return (
-        <div className="h-screen bg-[#0a0a0a] flex flex-col text-white overflow-hidden">
+        <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
             {/* Header */}
-            <div className="p-4 border-b border-white/5 bg-black/40">
+            <div className="relative z-10 p-4 border-b border-amber-500/20 bg-black/40 shadow-xl">
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-amber-500/30">
@@ -458,7 +473,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             </div>
 
             {/* Lista de clientes en ruta */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 pb-24">
+            <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-2 pb-24">
                 {routeSlots.map((slot, idx) => {
                     const client = getClientInfo(slot.client_id);
                     const done = visitedIds.has(slot.client_id);
@@ -549,12 +564,13 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     };
 
     return (
-        <div className="h-screen bg-[#0a0a0a] flex flex-col text-white overflow-hidden">
-            <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/40">
-                <button onClick={onBack} className="text-xs text-gray-400 font-bold">← Ruta</button>
-                <span className="text-xs font-black text-blue-400 uppercase">📋 Levantar Pedido</span>
+        <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+            <DriverBackground />
+            <div className="relative z-10 p-4 border-b border-amber-500/20 flex items-center justify-between bg-black/40">
+                <button onClick={onBack} className="text-xs text-gray-300 font-bold bg-black/30 px-3 py-2 rounded-lg drop-shadow-md">← Ruta</button>
+                <span className="text-xs font-black text-blue-400 uppercase drop-shadow-md">📋 Levantar Pedido</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-28">
+            <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-4 pb-28">
                 {/* Cliente */}
                 <div>
                     <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Cliente</label>

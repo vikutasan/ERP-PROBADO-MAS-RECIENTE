@@ -90,8 +90,44 @@ export const PedidosProduccionUI = ({ onBack }) => {
     const loadOrders = async () => {
         setIsLoading(true);
         try {
+            // Pedidos POS
             const resp = await fetch(`${API_BASE}/orders/pendientes`);
-            if (resp.ok) setOrders(await resp.json());
+            let posOrders = [];
+            if (resp.ok) posOrders = (await resp.json()).map(o => ({ ...o, source: 'POS' }));
+
+            // Pedidos Grandeza
+            let gOrders = [];
+            try {
+                const gResp = await fetch(`${API_BASE}/grandeza/orders`);
+                if (gResp.ok) {
+                    const raw = await gResp.json();
+                    gOrders = raw
+                        .filter(o => !['ENTREGADO','CANCELADO'].includes(o.status))
+                        .map(o => ({
+                            id: `G-${o.id}`,
+                            _grandeza_id: o.id,
+                            source: 'GRANDEZA',
+                            status: o.status,
+                            customer_name: o.client_name || 'Cliente Grandeza',
+                            delivery_type: 'REPARTO_GRANDEZA',
+                            committed_at: o.delivery_date,
+                            packaging_type: 'PROPIO',
+                            notes: o.notes,
+                            total_amount: o.total_amount,
+                            payment_method: o.payment_method,
+                            ticket: {
+                                account_num: `🍞G-${o.id}`,
+                                items: (o.items || []).map(it => ({
+                                    quantity: it.qty,
+                                    product: { name: it.product_name, sku: '' },
+                                    product_id: it.product_id
+                                }))
+                            }
+                        }));
+                }
+            } catch(e) {}
+
+            setOrders([...posOrders, ...gOrders]);
         } catch (e) { console.error('Error cargando pedidos:', e); }
         finally { setIsLoading(false); }
     };
@@ -104,12 +140,23 @@ export const PedidosProduccionUI = ({ onBack }) => {
 
     const updateStatus = async (orderId, newStatus) => {
         try {
-            const resp = await fetch(`${API_BASE}/orders/${orderId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus })
-            });
-            if (resp.ok) loadOrders();
+            // Detectar si es pedido Grandeza
+            if (String(orderId).startsWith('G-')) {
+                const gId = String(orderId).replace('G-', '');
+                const resp = await fetch(`${API_BASE}/grandeza/orders/${gId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (resp.ok) loadOrders();
+            } else {
+                const resp = await fetch(`${API_BASE}/orders/${orderId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (resp.ok) loadOrders();
+            }
         } catch (e) { console.error('Error actualizando estado:', e); }
     };
 
@@ -250,7 +297,10 @@ const OrderRow = ({ order, color, onViewDetails, onUpdateStatus }) => {
             {/* Folio y Cliente */}
             <div className="w-24 flex-shrink-0">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Folio</p>
-                <p className="text-xl font-black text-black italic tracking-tighter">{order.ticket?.account_num || `#${order.id}`}</p>
+                <p className="text-xl font-black text-black italic tracking-tighter">
+                    {order.ticket?.account_num || `#${order.id}`}
+                    {order.source === 'GRANDEZA' && <span className="text-xs ml-1 text-amber-600 not-italic">🍞</span>}
+                </p>
             </div>
 
             <div className="flex-1 min-w-0">
@@ -260,8 +310,10 @@ const OrderRow = ({ order, color, onViewDetails, onUpdateStatus }) => {
                 </h4>
                 <div className="flex items-center gap-4 mt-1 text-[10px] font-bold text-gray-500 italic">
                     <span className="flex items-center gap-1">
-                        {isPickup ? <Store size={10} className="text-orange-600" /> : <Truck size={10} className="text-blue-600" />}
-                        {isPickup ? 'Pick Up' : 'Domicilio'}
+                        {order.source === 'GRANDEZA' 
+                            ? <><span className="text-amber-600">🍞</span> Reparto Grandeza</>
+                            : <>{isPickup ? <Store size={10} className="text-orange-600" /> : <Truck size={10} className="text-blue-600" />}
+                            {isPickup ? 'Pick Up' : 'Domicilio'}</>}
                     </span>
                     <span className="flex items-center gap-1 text-orange-600">
                         <Clock size={10} />

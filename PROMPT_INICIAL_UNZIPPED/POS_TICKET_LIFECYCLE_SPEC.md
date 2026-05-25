@@ -4,16 +4,28 @@
 > CUALQUIER lógica relacionada con tickets, folios, carrito, cobros, auto-save,
 > pizarrón, auditoría, o impresión.
 >
-> **Este documento reemplaza las versiones 3.0, 4.0 y 4.3.1.** La versión 4.5
+> **Este documento incluye las versiones 3.0 a 4.6 (modelo batch auto-save) y la
+> versión 6.0 (modelo SISYTEC de persistencia inmediata).** Ambas arquitecturas
+> están documentadas para referencia histórica y para facilitar el rollback si
+> fuera necesario.
 > cierra la última vulnerabilidad de pérdida de datos: `cartRef` no se sincronizaba
 > sincrónicamente en `handleRecoverAccount`, permitiendo que el auto-save sobreescribiera
 > el ticket recuperado con el carrito viejo. También reemplaza la búsqueda fuzzy
 > (`ilike`) de `getTicketByAccountNum` con un endpoint de búsqueda exacta.
 >
-> Última actualización: 2026-05-02
-> Versión: 4.6 — ANTI-WIPE (STORAGE KEY SYNC)
+> Última actualización: 2026-05-16
+> Versión: 6.0 — PERSISTENCIA INMEDIATA (Modelo SISYTEC)
 
 ---
+
+## ⛔ INCIDENTE DE RED (16/Mayo/2026): APAGÓN Y CAMBIO DE IP DHCP
+
+**Fecha:** 16/Mayo/2026
+**Síntoma:** El sistema "no cargaba" en ninguna de las terminales (CAJA, T2, T3, T4, T5, T6) y se quedaba en pantalla en blanco o cargando infinitamente tras un apagón donde se usó una planta de luz a gasolina.
+**Causa raíz:** Las tablets estaban configuradas para conectarse a la IP `192.168.1.117`. Al ocurrir el apagón, el módem se reinició y asignó IPs dinámicas (DHCP) en el orden en que los dispositivos se conectaron. El servidor recibió la IP nueva `192.168.1.13`, por lo que las tablets apuntaban a una dirección vacía en la red. Adicionalmente, al reiniciar los contenedores de Docker, la API de FastAPI colapsó en el arranque por la falta de la dependencia `python-multipart` (requerida por el módulo reciente de subida de imágenes).
+**Solución Implementada:**
+1. Se generó un script batch (`REPARAR_CONEXION_TABLETS.bat`) que fija la IP del adaptador de red de Windows en `192.168.1.117` de forma estática, blindando al servidor contra futuros apagones.
+2. Se añadió `python-multipart>=0.0.9` al `requirements.txt` de la API y se reconstruyó el contenedor para garantizar la estabilidad del servidor.
 
 ---
 
@@ -1151,4 +1163,493 @@ RetailVisionPOS.jsx           → Integración: import + hook + banner + status 
 
 **Cero cambios de backend.** Los payloads encolados son idénticos a los que se envían
 normalmente. Cuando la cola se sincroniza, el servidor los procesa como auto-saves normales.
+
+---
+
+## REGLA 18 — NUNCA MODIFICAR ARCHIVOS EN EL VOLUMEN DOCKER MONTADO MIENTRAS LOS CONTAINERS CORREN (v5.2)
+
+```
+⛔ PROHIBIDO: Editar archivos Python (.py) en apps/api/ mientras rderico-api-dev está corriendo.
+⛔ PROHIBIDO: Editar archivos JS/JSX en la raíz del proyecto mientras rderico-pos-dev está corriendo.
+⛔ PROHIBIDO: Ejecutar git add/commit/checkout que modifique archivos en el directorio montado con containers activos.
+✅ OBLIGATORIO: Detener los containers ANTES de modificar código fuente.
+✅ OBLIGATORIO: Para migraciones SQL puras → detener solo la API, ejecutar SQL, reiniciar API.
+✅ OBLIGATORIO: Verificar que el API responde 200 OK después de cada reinicio.
+```
+
+**¿Por qué?** El ERP R de Rico corre en Docker con volúmenes montados (bind mounts):
+```yaml
+# docker-compose.yml
+pos:
+  volumes:
+    - .:/app              # ← TODO el proyecto montado en vivo
+api:
+  volumes:
+    - ./apps/api:/app     # ← Backend montado en vivo
+```
+
+Esto significa que **cualquier cambio en un archivo local se refleja INMEDIATAMENTE dentro del container**.
+Tanto Vite (frontend, hot-reload) como Uvicorn (backend, --reload) vigilan cambios en `/app` y se
+reinician automáticamente al detectarlos.
+
+### Incidente Real — 15 de Mayo 2026
+
+**Contexto:** Se intentó migrar campos monetarios de FLOAT a DECIMAL (Fase 1 del plan de estabilización
+basado en el análisis del POS de SISYTEC). Se modificaron 3 archivos de modelos Python directamente
+en la carpeta montada mientras los containers corrían.
+
+**Cadena de fallos:**
+
+```
+1. Se editaron models.py (pos, catalog, cash) en la carpeta local
+       ↓
+2. Uvicorn (API) detectó cambios → se reinició con modelos nuevos
+   Vite (POS) detectó cambios → crash con error "EIO: i/o error, stat '/app'"
+       ↓
+3. Frontend crasheó completamente (Vite FSWatcher bug en Docker/Windows)
+   → Todas las terminales perdieron la interfaz web
+       ↓
+4. Se intentó docker compose up --build para reconstruir
+   → python-multipart se perdió al recrear el container
+   → API no arrancaba: "RuntimeError: Form data requires python-multipart"
+       ↓
+5. Se instaló python-multipart manualmente + reinicio
+   → API arrancó pero las terminales mostraban "Sin conexión al servidor"
+       ↓
+6. Se revirtieron TODOS los cambios (git checkout + ALTER TABLE a FLOAT + restart)
+   → POS volvió a funcionar normalmente
+```
+
+**Tiempo de interrupción total: ~45 minutos durante horario de cierre.**
+
+### Procedimiento Correcto para Modificaciones
+
+**Para migraciones de base de datos (SQL puro, sin cambios de código):**
+```bash
+# 1. Detener SOLO la API (el frontend puede seguir corriendo, la DB sigue arriba)
+docker stop rderico-api-dev
+
+# 2. Ejecutar SQL directamente contra PostgreSQL
+docker exec rderico-db-dev psql -U user -d rderico -c "ALTER TABLE ...;"
+
+# 3. Reiniciar la API
+docker start rderico-api-dev
+
+# 4. Verificar
+# Esperar ~10 segundos y probar un endpoint
+curl http://192.168.1.117:5001/api/v1/pos/tickets/open
+```
+
+**Para cambios de código fuente (modelos, servicios, componentes):**
+```bash
+# 1. Detener TODOS los containers
+docker compose down
+
+# 2. Hacer los cambios de código (editar archivos)
+# ... editar models.py, service.py, etc.
+
+# 3. Levantar todo
+docker compose up -d
+
+# 4. Verificar que TODO arrancó
+docker logs rderico-api-dev --tail 5   # Debe decir "Application startup complete"
+docker logs rderico-pos-dev --tail 5   # Debe decir "VITE ready in Xms"
+```
+
+**Para operaciones git (commit, checkout, branch):**
+```bash
+# Los comandos git modifican archivos → activan hot-reload → pueden crashear containers
+# 1. Detener containers ANTES de git
+docker compose stop
+
+# 2. Hacer operaciones git
+git add . && git commit -m "..."
+git checkout otra-rama
+
+# 3. Levantar containers
+docker compose start
+```
+
+### Resultado Final de la Migración FLOAT → DECIMAL
+
+La migración se completó exitosamente usando el procedimiento correcto (SQL puro):
+
+```bash
+docker stop rderico-api-dev
+docker exec rderico-db-dev psql -U user -d rderico -c "
+  ALTER TABLE tickets ALTER COLUMN total TYPE NUMERIC(12,2);
+  ALTER TABLE ticket_items ALTER COLUMN unit_price TYPE NUMERIC(12,2);
+  ALTER TABLE ticket_items ALTER COLUMN subtotal TYPE NUMERIC(12,2);
+  ALTER TABLE products ALTER COLUMN price TYPE NUMERIC(12,2);
+  ALTER TABLE products ALTER COLUMN cost TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN opening_float TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN physical_cash TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN physical_credit TYPE NUMERIC(12,2);
+  ALTER TABLE cash_sessions ALTER COLUMN physical_debit TYPE NUMERIC(12,2);
+  ALTER TABLE cash_movements ALTER COLUMN amount TYPE NUMERIC(12,2);
+"
+docker start rderico-api-dev
+```
+
+**10 columnas migradas. Cero downtime perceptible. Los modelos SQLAlchemy con `Float` funcionan
+correctamente contra columnas `NUMERIC` en PostgreSQL — la conversión es automática y transparente.
+Los archivos de modelos se actualizarán en la próxima ventana de mantenimiento programada.**
+
+### Checklist Actualizado (agregar a Sección 7)
+
+- [ ] ¿Los containers Docker están DETENIDOS antes de modificar cualquier archivo de código?
+- [ ] ¿Las migraciones SQL se ejecutan con la API detenida para evitar deadlocks?
+- [ ] ¿Se verificó que la API responde 200 OK después de cada reinicio?
+- [ ] ¿Las operaciones git (add, commit, checkout) se hacen con containers detenidos?
+- [ ] ¿Todas las variables aritméticas que interactúan con columnas NUMERIC usan `Decimal`, no `float`?
+
+### Bug Crítico: TypeError float + Decimal (15 de Mayo 2026)
+
+**Contexto:** Tras migrar las columnas monetarias de `FLOAT` a `NUMERIC(12,2)` en PostgreSQL,
+el endpoint `POST /api/v1/pos/tickets` comenzó a devolver **500 Internal Server Error**.
+
+**Error exacto:**
+```
+TypeError: unsupported operand type(s) for +=: 'float' and 'decimal.Decimal'
+```
+
+**Ubicación:** `service.py`, línea 51 en `_get_items_and_total()`:
+```python
+# ❌ ANTES (ROTO):
+total = 0.0                      # ← float
+subtotal = product.price * qty   # ← Decimal (viene de columna NUMERIC)
+total += subtotal                # ← float + Decimal = TypeError 💥
+
+# ✅ DESPUÉS (CORREGIDO):
+from decimal import Decimal
+total = Decimal(0)               # ← Decimal
+subtotal = product.price * qty   # ← Decimal
+total += subtotal                # ← Decimal + Decimal = OK ✅
+```
+
+**¿Por qué pasó?** Cuando SQLAlchemy lee de una columna `NUMERIC`, retorna objetos `decimal.Decimal`
+de Python, no `float`. Python **no permite** mezclar `float + Decimal` en operaciones aritméticas
+(a diferencia de `float + int` que sí funciona). Esto causó que TODA operación de guardar tickets
+fallara con 500, lo cual el frontend interpretaba como "Sin conexión al servidor" porque
+`resilientFetch.js` clasifica cualquier error no-red como error del servidor y lo re-lanza,
+que a su vez hace que `handleTicketAction` falle y muestre el toast de error.
+
+**Regla derivada:** Cuando se migran columnas de FLOAT a NUMERIC en PostgreSQL, se DEBE:
+1. Buscar TODAS las variables Python que inicializan con `0.0` y que interactúan con esas columnas
+2. Cambiarlas a `Decimal(0)` o simplemente `0` (Python auto-promueve `int` a `Decimal`)
+3. Verificar el endpoint con un POST real, no solo con GET (los GET no hacen aritmética)
+
+**Comando para buscar posibles problemas futuros:**
+```bash
+grep -rn "= 0\.0" apps/api/modules/*/service.py
+```
+
+---
+---
+
+# 🔄 FASE 2: TRANSICIÓN A PERSISTENCIA INMEDIATA (v6.0)
+
+> **Fecha:** 16/Mayo/2026
+> **Versión:** 6.0 — Modelo SISYTEC
+
+## CONTEXTO Y MOTIVACIÓN
+
+Tras experimentar los incidentes documentados en las versiones 3.0 a 5.2 (pérdida
+de datos por closures obsoletos, race conditions, auto-save silencioso, wipe de
+carrito por F5, sobreescritura cruzada, conflictos de versión fantasma, sesiones
+fantasma, etc.), se revisó el modelo del sistema POS anterior de la empresa
+(**SISYTEC**) y se identificó una diferencia arquitectónica fundamental:
+
+| Aspecto | Modelo Anterior (v3.0–v5.2) | Modelo SISYTEC |
+|---------|---------------------------|----------------|
+| Persistencia | **Batch** — auto-save cada 15s enviaba el carrito COMPLETO | **Inmediata** — cada acción se persiste al instante |
+| Ventana de pérdida | Hasta 15 segundos de captura perdida | **Cero** — cada toque al carrito ya está en DB |
+| Complejidad | Alta — mutex, refs, closures, debounce, cola offline | Baja — POST atómico por acción |
+| Payload | Todo el carrito en cada save (N items) | Solo el item que cambió (1 item) |
+| Conflictos | Frecuentes — dos saves del mismo ticket colisionaban | Raros — operaciones granulares con FOR UPDATE |
+
+**Decisión:** Se optó por implementar el modelo SISYTEC de persistencia inmediata,
+manteniendo la arquitectura anterior como red de seguridad (auto-save reducido a 60s).
+
+> ⚠️ **NOTA IMPORTANTE:** Toda la documentación anterior (Reglas 1-18, incidentes,
+> diagramas de race conditions, flujos de auto-save) se preserva INTENCIONALMENTE.
+> Si por alguna razón se necesita revertir a la arquitectura batch, la experiencia
+> ganada con cada incidente sigue disponible como referencia.
+
+---
+
+## ARQUITECTURA v6.0 — PERSISTENCIA INMEDIATA
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│  TERMINAL    │──ADD───▶│  API (FastAPI)│──INSERT─▶│  PostgreSQL  │
+│  (React)     │──UPD───▶│  Endpoints   │──UPDATE─▶│  FOR UPDATE  │
+│              │──DEL───▶│  Atómicos    │──DELETE─▶│  NUMERIC(12,2)│
+└──────────────┘         └──────────────┘         └──────────────┘
+       │                        │                        │
+       ▼                        ▼                        ▼
+  UI Optimista           expire_all()              ticket_folio_seq
+  (estado local           DB Queries               (secuencia atómica)
+   reacciona              Directas (no             Bloqueo por fila
+   instantáneo)           selectinload)            version++
+```
+
+### Diferencia clave vs modelo anterior
+
+```
+❌ ANTES (v3.0–v5.2):
+  Capturista toca producto → cart.push(item) → espera 15s → envía TODO el carrito
+  [ventana de 15s donde los datos solo existen en memoria del navegador]
+
+✅ AHORA (v6.0):
+  Capturista toca producto → cart.push(item) → POST /tickets/items/add → DB
+  [dato persistido en <100ms, sin ventana de pérdida]
+```
+
+---
+
+## ENDPOINTS ATÓMICOS (v6.0)
+
+### `POST /api/v1/pos/tickets/items/add`
+
+**Schema:** `TicketItemAdd`
+```python
+class TicketItemAdd(BaseModel):
+    account_num: str
+    product_id: int
+    quantity: int = 1
+    session_id: int
+    terminal_id: Optional[str] = None
+    captured_by_id: Optional[int] = None
+    version: Optional[int] = None
+```
+
+**Comportamiento:**
+1. Valida que el producto existe y está activo
+2. Busca el ticket por `account_num` con `FOR UPDATE`
+3. Si no existe → crea ticket nuevo como `DRAFT` con folio del payload
+4. Si el producto ya existe en el ticket → incrementa cantidad
+5. Si es nuevo → inserta `TicketItem`
+6. Recalcula total desde DB (query directa, NO lazy-load)
+7. Incrementa `version += 1`
+8. `expire_all()` + `_get_full_ticket()` para respuesta limpia
+
+### `PUT /api/v1/pos/tickets/items/update`
+
+**Schema:** `TicketItemUpdate`
+```python
+class TicketItemUpdate(BaseModel):
+    account_num: str
+    product_id: int
+    new_quantity: int
+    version: Optional[int] = None
+```
+
+**Comportamiento:**
+1. Busca ticket con `FOR UPDATE`
+2. Valida versión (409 si no coincide)
+3. Busca item por query directa (NO `db_ticket.items`)
+4. Actualiza `quantity` y `subtotal`
+5. Recalcula total con `SUM(subtotal)` desde DB
+6. `version += 1`, commit, expire_all, respuesta limpia
+
+### `DELETE /api/v1/pos/tickets/items/remove`
+
+**Schema:** `TicketItemRemove`
+```python
+class TicketItemRemove(BaseModel):
+    account_num: str
+    product_id: int
+    version: Optional[int] = None
+```
+
+**Comportamiento:**
+1. Busca ticket con `FOR UPDATE`
+2. Valida versión
+3. Busca y elimina item por query directa
+4. Recalcula total de items restantes
+5. `version += 1`, commit, expire_all, respuesta limpia
+
+---
+
+## LECCIÓN APRENDIDA: MissingGreenlet en Async SQLAlchemy
+
+**Problema:** Los 3 endpoints atómicos fallaban con:
+```
+sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called;
+can't call await_only() here.
+```
+
+**Causa:** En SQLAlchemy async, acceder a relaciones cargadas por `selectinload`
+después de un `commit()` intenta hacer lazy-load, lo cual es imposible en contexto
+async. También, iterar `db_ticket.items` cuando el ticket es recién creado (sin
+items cargados) dispara el mismo error.
+
+**Solución (aplicada en los 3 métodos):**
+1. **NO usar `selectinload`** en los queries de los endpoints atómicos
+2. **NO iterar `db_ticket.items`** — usar queries directas:
+   ```python
+   # ❌ ANTES (MissingGreenlet):
+   for item in db_ticket.items:  # ← lazy-load en async = 💥
+       if item.product_id == payload.product_id: ...
+   
+   # ✅ DESPUÉS (query directa):
+   result = await db.execute(
+       select(models.TicketItem)
+       .where(TicketItem.ticket_id == db_ticket.id)
+       .where(TicketItem.product_id == payload.product_id)
+   )
+   target_item = result.scalars().first()
+   ```
+3. **`db.expire_all()`** después de cada `commit()` para limpiar cache de sesión
+4. **Guardar `ticket_id`** antes del commit (los atributos expiran post-commit)
+5. **`_get_full_ticket()`** hace un SELECT limpio con eager loading para la respuesta
+
+---
+
+## CAMBIOS EN FRONTEND (v6.0)
+
+### POSService.js — 3 métodos nuevos
+
+```javascript
+async addItemToTicket(data)        // POST /tickets/items/add
+async updateItemQuantity(data)     // PUT  /tickets/items/update
+async removeItemFromTicket(data)   // DELETE /tickets/items/remove
+```
+
+### useTicketActions.js — handleAddToCart reescrito
+
+```
+❌ ANTES:
+handleAddToCart(product)
+  → cartAddToCart(product)
+  → if (!currentAccountNum) → generateNewAccountNum()
+  → setTimeout(100ms) → handleTicketAction('DRAFT')  ← batch save completo
+
+✅ AHORA:
+handleAddToCart(product)
+  → cartAddToCart(product)                            ← UI instantánea
+  → if (!accountNum) → generateNewAccountNum()
+  → posService.addItemToTicket({                      ← atómico, 1 item
+      account_num, product_id, quantity,
+      session_id, terminal_id, captured_by_id, version
+    })
+  → ticketVersionRef.current = result.version         ← sync versión
+```
+
+### RetailVisionPOS.jsx — Wrappers de persistencia
+
+```javascript
+// Antes: SalesReceipt recibía updateQuantity y removeFromCart directos de useCart
+// Ahora: Recibe wrappers que persisten inmediatamente
+
+const handleUpdateQuantity = async (productId, newQuantity) => {
+    updateQuantity(productId, newQuantity);        // UI instantánea
+    await posService.updateItemQuantity({...});    // Persiste al servidor
+    ticketVersionRef.current = result.version;     // Sync versión
+};
+
+const handleRemoveFromCart = async (productId) => {
+    removeFromCart(productId);                     // UI instantánea
+    await posService.removeItemFromTicket({...});  // Persiste al servidor
+    ticketVersionRef.current = result.version;     // Sync versión
+};
+```
+
+### useAutoSave.js — Reducido a respaldo de emergencia
+
+```
+ANTES: setInterval(15000)   ← 15 segundos, línea de vida principal
+AHORA: setInterval(60000)   ← 60 segundos, respaldo de emergencia
+```
+
+El auto-save ya no es el mecanismo principal de persistencia. Solo existe como
+red de seguridad para el caso improbable de que una operación atómica falle
+y el item quede solo en estado local.
+
+---
+
+## ARCHIVOS MODIFICADOS (v6.0)
+
+| Archivo | Cambio |
+|---------|--------|
+| `apps/api/modules/pos/schemas.py` | +3 schemas: `TicketItemAdd`, `TicketItemUpdate`, `TicketItemRemove` |
+| `apps/api/modules/pos/service.py` | +3 métodos: `add_item_to_ticket`, `update_item_quantity`, `remove_item_from_ticket` |
+| `apps/api/modules/pos/router.py` | +3 endpoints: `/tickets/items/add`, `/update`, `/remove` |
+| `apps/pos/services/POSService.js` | +3 métodos: `addItemToTicket`, `updateItemQuantity`, `removeItemFromTicket` |
+| `apps/pos/hooks/useTicketActions.js` | `handleAddToCart` reescrito con persistencia inmediata |
+| `apps/pos/RetailVisionPOS.jsx` | +2 wrappers: `handleUpdateQuantity`, `handleRemoveFromCart` |
+| `apps/pos/hooks/useAutoSave.js` | Intervalo: 15s → 60s |
+
+---
+
+## REGLAS QUE SIGUEN VIGENTES CON v6.0
+
+| Regla | Vigente | Nota |
+|-------|---------|------|
+| 1 — Refs para callbacks | ✅ | Los wrappers aún leen de `accountNumRef`, `ticketVersionRef` |
+| 2 — Auto-save intervalo real | ✅ | Ahora es 60s pero misma lógica |
+| 3 — Protocolo anti-overwrite | ✅ | La recuperación del Pizarrón sigue igual |
+| 4 — Secuencia atómica | ✅ | Folios siguen usando `ticket_folio_seq` |
+| 5 — Serialización única | ✅ | `_get_full_ticket()` sigue siendo el camino único |
+| 6 — FOR UPDATE | ✅ | Los 3 endpoints atómicos usan FOR UPDATE |
+| 7 — captured_by_id | ✅ | Se envía en `addItemToTicket` |
+| 8 — Cero alert() | ✅ | Sin cambios |
+| 9 — Confirmación obligatoria | ✅ | El Pizarrón sigue requiriendo confirmación |
+| 10 — Bloqueo optimista | ✅ | `version` se envía y valida en cada operación atómica |
+| 11 — Visibilidad de guardado | ✅ | Badge sigue mostrando estado |
+| 12 — Mutex | ✅ | `handleTicketAction` sigue serializado |
+| 13 — Ocupación de terminal | ✅ | Sin cambios |
+| 14 — Sync cartRef | ✅ | Sin cambios para recuperación |
+| 15 — Búsqueda exacta | ✅ | Sin cambios |
+| 16 — DRAFT invisible | ✅ | Tickets atómicos nacen como DRAFT |
+| 17 — Resiliencia offline | ✅ | El auto-save de 60s sigue encolando offline |
+| 18 — REGLA 18 Docker | ✅ | Siempre detener containers antes de editar |
+
+---
+
+## CÓMO REVERTIR A LA ARQUITECTURA ANTERIOR (ROLLBACK)
+
+Si por alguna razón la persistencia inmediata causa problemas y se necesita
+volver al modelo batch de auto-save:
+
+1. **`useTicketActions.js`:** Restaurar `handleAddToCart` al modelo de
+   `setTimeout(100ms) → handleTicketAction('DRAFT')` (ver Sección 3.1)
+2. **`RetailVisionPOS.jsx`:** Pasar `updateQuantity` y `removeFromCart`
+   directos de `useCart` al `SalesReceipt` (sin wrappers)
+3. **`useAutoSave.js`:** Cambiar intervalo de 60000 a 15000
+4. **Backend:** Los endpoints atómicos pueden quedarse — no interfieren
+   con el flujo batch. Simplemente dejan de ser invocados.
+
+> ⚠️ Al revertir, se vuelve a la ventana de pérdida de 15 segundos.
+> Todas las reglas de la sección 2 (Refs, Mutex, isRecoveringRef, etc.)
+> vuelven a ser la primera línea de defensa.
+
+---
+
+## AJUSTES DEL SISTEMA ACTIVOS (v6.0)
+
+Tras la limpieza de configuración, quedan solo 6 ajustes relevantes:
+
+| Key | Valor | Categoría | Propósito |
+|-----|-------|-----------|-----------|
+| `pos_terminals_config` | JSON | pos | Define terminales disponibles (T2-T6, CAJA) |
+| `pos_terminal_lock_ttl_m` | 20 | security | TTL del lock de terminal (minutos) |
+| `pos_heartbeat_interval_ms` | 60000 | polling | Mantiene el lock vivo |
+| `pos_terminal_status_polling_ms` | 3000 | polling | Actualiza selector de terminales |
+| `pos_terminal_check_lock_interval_ms` | 15000 | polling | Detecta si te quitaron la terminal |
+| `pos_draft_ttl_days` | 1 | POS | GC limpia borradores >1 día |
+
+**Eliminados:** 5 ajustes de `ai_agent` que no se usan en producción.
+
+---
+
+> **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
+>
+> Versión 6.0 implementa persistencia inmediata inspirada en el modelo SISYTEC.
+> Las reglas 1-18 y toda la documentación de incidentes se preservan como
+> referencia histórica y guía de rollback.
+>
+> **Commit de referencia:** `27e5e02` en rama `backup_pre_pos_refactor`
+> **Fecha:** 16/Mayo/2026
 

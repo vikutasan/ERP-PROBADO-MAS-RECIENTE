@@ -804,14 +804,49 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                                     />
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">URL de Fotografía</label>
-                                    <input 
-                                        type="text"
-                                        placeholder="https://... .jpg"
-                                        className="w-full bg-black/40 border border-gray-800 p-4 rounded-2xl text-sm font-mono text-gray-400 outline-none focus:border-indigo-500 transition-all"
-                                        value={editingProduct.image_url || ''}
-                                        onChange={(e) => setEditingProduct({...editingProduct, image_url: e.target.value})}
-                                    />
+                                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">Fotografía del Producto</label>
+                                    <div className="flex gap-4">
+                                        <input 
+                                            type="text"
+                                            placeholder="URL o sube una imagen..."
+                                            className="flex-1 bg-black/40 border border-gray-800 p-4 rounded-2xl text-sm font-mono text-gray-400 outline-none focus:border-indigo-500 transition-all"
+                                            value={editingProduct.image_url || ''}
+                                            onChange={(e) => setEditingProduct({...editingProduct, image_url: e.target.value})}
+                                        />
+                                        <input 
+                                            type="file"
+                                            accept="image/*"
+                                            id="imageUploadInput"
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                                const file = e.target.files[0];
+                                                if (!file) return;
+                                                const formData = new FormData();
+                                                formData.append("file", file);
+                                                try {
+                                                    const res = await fetch(`${API_BASE}/upload-image`, {
+                                                        method: "POST",
+                                                        body: formData
+                                                    });
+                                                    if (res.ok) {
+                                                        const data = await res.json();
+                                                        setEditingProduct({...editingProduct, image_url: data.url});
+                                                    } else {
+                                                        alert("Error al subir la imagen");
+                                                    }
+                                                } catch (err) {
+                                                    console.error("Upload error:", err);
+                                                    alert("Error de red al subir la imagen");
+                                                }
+                                            }}
+                                        />
+                                        <button 
+                                            onClick={() => document.getElementById('imageUploadInput').click()}
+                                            className="bg-indigo-600/20 text-indigo-400 border border-indigo-500/50 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-2"
+                                        >
+                                            <span>📁</span> Subir
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 

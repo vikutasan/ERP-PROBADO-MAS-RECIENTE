@@ -303,27 +303,49 @@ export const useTicketActions = ({
         }
     };
 
-    // --- Agregar al carrito con ZERO-LOSS save inmediato ---
-    const handleAddToCart = (product) => {
-        cartAddToCart(product); // UI reacts instantly
-        if (!currentAccountNum) {
-            // Generar folio Y guardar inmediatamente al servidor
-            generateNewAccountNum().then(accountNum => {
-                if (accountNum) {
-                    setTimeout(() => {
-                        console.log('📡 ZERO-LOSS: Guardado inmediato del primer producto');
-                        handleTicketAction('DRAFT', null, false)
-                            .then(() => {
-                                setLastSaveStatus('saved');
-                                setLastSaveTime(new Date());
-                            })
-                            .catch(e => {
-                                console.error('⚠️ ZERO-LOSS: Fallo en guardado inmediato:', e);
-                                setLastSaveStatus('failed');
-                            });
-                    }, 100);
-                }
-            }).catch(e => console.error(e));
+    // --- FASE 2: Agregar al carrito con PERSISTENCIA INMEDIATA ---
+    const handleAddToCart = async (product) => {
+        cartAddToCart(product); // UI reacciona instantáneamente (optimistic update)
+
+        let targetAccount = accountNumRef.current;
+        if (!targetAccount) {
+            try {
+                targetAccount = await generateNewAccountNum();
+            } catch (e) {
+                console.error('⚠️ Error generando folio:', e);
+                setLastSaveStatus('failed');
+                return;
+            }
+        }
+
+        if (!targetAccount) return;
+
+        try {
+            const terminalId = selectedTerminal || 'T1';
+            let session = await posService.getActiveSession(terminalId);
+            if (!session) session = await posService.createSession(terminalId);
+
+            const result = await posService.addItemToTicket({
+                account_num: targetAccount,
+                product_id: product.id,
+                quantity: product.quantity || 1,
+                session_id: session.id,
+                terminal_id: terminalId,
+                captured_by_id: originalCapturerRef.current?.id || currentUser?.id,
+                version: ticketVersionRef.current
+            });
+
+            // Sincronizar versión del servidor
+            if (result?.version) {
+                ticketVersionRef.current = result.version;
+                setTicketVersion(result.version);
+            }
+            setLastSaveStatus('saved');
+            setLastSaveTime(new Date());
+        } catch (e) {
+            console.error('⚠️ Persistencia inmediata falló:', e);
+            setLastSaveStatus('failed');
+            // El item YA está en el carrito local — el auto-save de respaldo lo reintentará
         }
     };
 

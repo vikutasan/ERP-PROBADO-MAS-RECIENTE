@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, JSON, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, JSON, Text, Numeric
 from sqlalchemy.orm import relationship
 from core.database import Base
 
@@ -21,8 +21,8 @@ class Product(Base):
     sku = Column(String, unique=True, index=True, nullable=False)
     barcode = Column(String, unique=True, index=True, nullable=True)
     name = Column(String, index=True, nullable=False)
-    price = Column(Float, nullable=False)
-    cost = Column(Float, default=0.0)
+    price = Column(Numeric(12, 2), nullable=False)
+    cost = Column(Numeric(12, 2), default=0)
     stock = Column(Float, default=0.0)
     warehouse = Column(String, default="Bóveda Central")
     image_url = Column(String, nullable=True)
