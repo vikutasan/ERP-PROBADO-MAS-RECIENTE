@@ -1,20 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { posService } from '../services/POSService';
-import { resilientCreateTicket } from '../services/resilientFetch';
 import { generateTicketHTML } from '../utils/ticketGenerator';
 
 /**
  * Hook: useTicketActions
  * 
- * Maneja TODA la lógica de negocio de tickets del POS:
- * - handleTicketAction: crear/guardar/pagar tickets con mutex, collision handling, auto-healing
- * - handlePrintTicket: impresión via iframe oculto
- * - handleAddToCart: agregar producto + ZERO-LOSS save inmediato
- * - handleRecoverAccount: recuperación de cuentas del Pizarrón
- * - handleLoadDraft / handleDiscardDraft: gestión de borradores
- * - Polling de cuentas abiertas y borradores
+ * SIMPLIFICACIÓN v6.0 — Modelo SYSITEC
  * 
- * Extraído de RetailVisionPOS.jsx (v5.3 Modularización)
+ * UN SOLO CAMINO DE ESCRITURA:
+ * - handleAddToCart: persiste cada item atómicamente (Fase 2)
+ * - handleTicketAction: SOLO para acciones EXPLÍCITAS del usuario
+ *   (enviar al pizarrón = OPEN, cobrar = PAID)
+ * 
+ * SE ELIMINÓ:
+ * - Auto-save bulk (causaba race condition con Fase 2)
+ * - resilientCreateTicket / cola offline
+ * - FLUSH de seguridad en handleRecoverAccount
+ * - CollisionModal (auto-heal inline es suficiente)
+ * - handleLoadDraft / handleDiscardDraft (pizarrón de borradores eliminado)
  */
 export const useTicketActions = ({
     // Estado compartido
@@ -52,13 +55,10 @@ export const useTicketActions = ({
     setLastSaveTime,
     setShowCheckout,
     setIsSendingToPizarron,
-    setShowCollisionModal,
     setPaymentsHistory,
     setOrderType,
     setOrderData,
     setShowCorkboard,
-    setShowDraftCorkboard,
-    setTerminalDrafts,
     setAllOpenAccounts,
     // Estado de pagos
     paymentsHistory,
@@ -67,10 +67,6 @@ export const useTicketActions = ({
 
     // --- Impresión de Ticket ---
     const handlePrintTicket = useCallback((ticketData = null) => {
-        // PRIORIDAD DE DATOS:
-        // 1. Datos pasados por argumento (ticket oficial del servidor)
-        // 2. Datos guardados en el último ticket impreso (printTicketData)
-        // 3. Fallback a estado local (solo si no hay nada más)
         const activeTicket = ticketData || printTicketData || { 
             account_num: currentAccountNum,
             items: cart.map(i => ({ product: { name: i.name }, quantity: i.quantity, unit_price: i.price })),
@@ -81,8 +77,6 @@ export const useTicketActions = ({
             terminal_id: selectedTerminal,
             created_at: new Date().toISOString()
         };
-        
-        console.log("Printing ticket with data:", activeTicket);
         
         const html = generateTicketHTML(activeTicket);
 
@@ -109,9 +103,9 @@ export const useTicketActions = ({
         }, 500); 
     }, [printTicketData, currentAccountNum, cart, total, currentUser, selectedTerminal]);
 
-    // --- Acción principal de Tickets (mutex + collision handling + auto-healing) ---
+    // --- Acción principal de Tickets (SOLO para acciones EXPLÍCITAS: OPEN o PAID) ---
     const handleTicketAction = async (status, paymentData = null, finalizeUI = true) => {
-        // v4.1: Adquirir Lock Mutex para evitar self-collisions (ej. auto-save + pagar al mismo tiempo)
+        // Adquirir Lock Mutex para evitar self-collisions
         const previousPromise = actionMutexRef.current;
         let releaseMutex;
         actionMutexRef.current = new Promise(resolve => releaseMutex = resolve);
@@ -119,7 +113,7 @@ export const useTicketActions = ({
         await previousPromise;
 
         try {
-            // REGLA 1: Leer SIEMPRE de refs DESPUÉS de adquirir el lock (la versión pudo cambiar)
+            // Leer SIEMPRE de refs DESPUÉS de adquirir el lock
             const liveCart = cartRef.current;
             const liveAccountNum = accountNumRef.current;
             const liveCapturer = originalCapturerRef.current;
@@ -137,7 +131,7 @@ export const useTicketActions = ({
                 return;
             }
 
-            // v4.0: Loading visual para envío al Pizarrón
+            // Loading visual para envío al Pizarrón
             if (finalizeUI && status === 'OPEN') setIsSendingToPizarron(true);
 
             try {
@@ -161,8 +155,6 @@ export const useTicketActions = ({
                     captured_by_id: liveCapturer?.id || currentUser?.id || null,
                     cashed_by_id: status === 'PAID' ? (currentUser?.id || null) : null,
                     order_type: orderType,
-                    // v4.3: SIEMPRE enviar version. El mutex serializa las llamadas y
-                    // el sync directo de ticketVersionRef elimina stale-closures.
                     version: liveVersion
                 };
 
@@ -173,36 +165,21 @@ export const useTicketActions = ({
 
                 let savedTicket = null;
                 try {
-                    // v5.1 OFFLINE RESILIENCY: Envolver con wrapper resiliente
-                    savedTicket = await resilientCreateTicket(
-                        (p) => posService.createTicket(p),
-                        payload
-                    );
-                    
-                    // v5.1: Si fue encolado offline, no tenemos respuesta del servidor
-                    if (savedTicket?.queued) {
-                        console.log(`📥 Auto-save encolado offline: ${savedTicket.localId}`);
-                        setLastSaveStatus('queued');
-                        return;
-                    }
+                    savedTicket = await posService.createTicket(payload);
                 } catch (err) {
                     const errorMessage = err.message || "";
+
                     if (errorMessage.includes("ya ha sido pagado")) {
-                        const oldFolio = targetAccountNum;
-                        console.warn(`⚠️ Colisión de folio detectada: ${oldFolio} ya pagado. Autogenerando nuevo...`);
-                        const newAccountNum = await generateNewAccountNum();
-                        targetAccountNum = newAccountNum;
-                        payload.account_num = newAccountNum;
-                        payload.version = null; // Ticket nuevo, sin versión
-                        savedTicket = await posService.createTicket(payload);
-                        // v4.8: ALERTA PROMINENTE al cajero para evitar confusión de folios
-                        setToastMessage(`⚠️ ATENCIÓN: El folio ${oldFolio} ya no estaba disponible. Se reasignó a ${newAccountNum}. Verifique antes de cobrar.`);
-                        setTimeout(() => setToastMessage(null), 12000);
+                        // Folio ya pagado — informar al cajero claramente
+                        setToastMessage(`⚠️ El folio ${targetAccountNum} ya fue cobrado. Recupere la cuenta del Pizarrón o inicie una nueva.`);
+                        setTimeout(() => setToastMessage(null), 8000);
+                        return;
+
                     } else if (errorMessage.includes("Conflicto de versión")) {
-                        // v4.7: AUTO-HEALING UI
+                        // AUTO-HEAL: Descargar versión fresca del servidor
                         if (targetAccountNum) {
                             try {
-                                console.log(`🔄 Auto-Healing: Descargando versión fresca de ${targetAccountNum}...`);
+                                console.log(`🔄 Auto-Heal: Descargando versión fresca de ${targetAccountNum}...`);
                                 const liveTicket = await posService.getTicketByAccountNum(targetAccountNum);
                                 if (liveTicket && liveTicket.items) {
                                     isRecoveringRef.current = true;
@@ -218,12 +195,12 @@ export const useTicketActions = ({
                                             nature: i.product.nature || originalProd.nature || 'PRODUCTO'
                                         };
                                     });
-                                    cartRef.current = recovered;  // ⚡ SYNC inmediato
+                                    cartRef.current = recovered;
                                     setCart(recovered);
                                     ticketVersionRef.current = liveTicket.version;
                                     setTicketVersion(liveTicket.version);
                                     
-                                    setToastMessage("⚠️ ¡Atención! El vendedor modificó esta cuenta. Totales actualizados.");
+                                    setToastMessage("⚠️ ¡Atención! Otro vendedor modificó esta cuenta. Totales actualizados.");
                                     setTimeout(() => setToastMessage(null), 5000);
                                     setShowCheckout(false);
                                     setIsSendingToPizarron(false);
@@ -231,34 +208,32 @@ export const useTicketActions = ({
                                     requestAnimationFrame(() => {
                                         isRecoveringRef.current = false;
                                     });
-                                    return; // Abortar este guardado fallido pacíficamente
+                                    return; // Abortar — el usuario puede reintentar con datos frescos
                                 }
                             } catch (e) {
                                 console.error("Error auto-recovering ticket", e);
                             }
                         }
-
-                        // Si el auto-heal falla por desconexión, caemos al modal original como fallback
-                        setShowCollisionModal(true);
+                        // Si auto-heal falla, mostrar error claro
                         throw err;
+
                     } else {
                         throw err;
                     }
                 }
                 
-                // v4.2: Actualizar versión SINCRÓNICAMENTE en la ref
+                // Actualizar versión SINCRÓNICAMENTE en la ref
                 if (savedTicket?.version) {
-                    ticketVersionRef.current = savedTicket.version; // SYNC: anti-stale
-                    setTicketVersion(savedTicket.version);          // ASYNC: para UI
+                    ticketVersionRef.current = savedTicket.version;
+                    setTicketVersion(savedTicket.version);
                 }
                 
                 setPrintTicketData(savedTicket);
                 savedTicketRef.current = savedTicket;
                 
-                // v4.0 ZERO-LOSS: El carrito solo se limpia DESPUÉS de confirmar el guardado
+                // El carrito solo se limpia DESPUÉS de confirmar el guardado
                 if (finalizeUI) {
                     if (status === 'PAID') {
-                        console.log("Auto-printing PAID ticket. Response from server:", savedTicket);
                         handlePrintTicket(savedTicket);
                     }
                     if (savedTicket) {
@@ -303,7 +278,7 @@ export const useTicketActions = ({
         }
     };
 
-    // --- FASE 2: Agregar al carrito con PERSISTENCIA INMEDIATA ---
+    // --- Agregar al carrito con PERSISTENCIA INMEDIATA (Fase 2 — Estilo SYSITEC) ---
     const handleAddToCart = async (product) => {
         cartAddToCart(product); // UI reacciona instantáneamente (optimistic update)
 
@@ -320,52 +295,55 @@ export const useTicketActions = ({
 
         if (!targetAccount) return;
 
-        try {
-            const terminalId = selectedTerminal || 'T1';
-            let session = await posService.getActiveSession(terminalId);
-            if (!session) session = await posService.createSession(terminalId);
+        // Reintento automático simple (max 3 intentos, backoff 1s)
+        const MAX_RETRIES = 3;
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const terminalId = selectedTerminal || 'T1';
+                let session = await posService.getActiveSession(terminalId);
+                if (!session) session = await posService.createSession(terminalId);
 
-            const result = await posService.addItemToTicket({
-                account_num: targetAccount,
-                product_id: product.id,
-                quantity: product.quantity || 1,
-                session_id: session.id,
-                terminal_id: terminalId,
-                captured_by_id: originalCapturerRef.current?.id || currentUser?.id,
-                version: ticketVersionRef.current
-            });
+                const result = await posService.addItemToTicket({
+                    account_num: targetAccount,
+                    product_id: product.id,
+                    quantity: product.quantity || 1,
+                    session_id: session.id,
+                    terminal_id: terminalId,
+                    captured_by_id: originalCapturerRef.current?.id || currentUser?.id,
+                    version: ticketVersionRef.current
+                });
 
-            // Sincronizar versión del servidor
-            if (result?.version) {
-                ticketVersionRef.current = result.version;
-                setTicketVersion(result.version);
+                // Sincronizar versión del servidor
+                if (result?.version) {
+                    ticketVersionRef.current = result.version;
+                    setTicketVersion(result.version);
+                }
+                setLastSaveStatus('saved');
+                setLastSaveTime(new Date());
+                return; // Éxito — salir del loop
+            } catch (e) {
+                console.warn(`⚠️ Persistencia inmediata falló (intento ${attempt}/${MAX_RETRIES}):`, e);
+                if (attempt < MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 1000 * attempt)); // Backoff: 1s, 2s, 3s
+                } else {
+                    setLastSaveStatus('failed');
+                    setToastMessage('⚠️ No se pudo guardar el último producto. Verifique la conexión.');
+                    setTimeout(() => setToastMessage(null), 5000);
+                }
             }
-            setLastSaveStatus('saved');
-            setLastSaveTime(new Date());
-        } catch (e) {
-            console.error('⚠️ Persistencia inmediata falló:', e);
-            setLastSaveStatus('failed');
-            // El item YA está en el carrito local — el auto-save de respaldo lo reintentará
         }
     };
 
-    // --- Recuperación de Cuenta del Pizarrón ---
+    // --- Recuperación de Cuenta del Pizarrón (SIMPLIFICADA — sin FLUSH) ---
     const handleRecoverAccount = async (account) => {
-        // ⚡ v4.5 FLUSH DE SEGURIDAD
-        if (accountNumRef.current && cartRef.current.length > 0) {
-            try {
-                console.log(`🔒 FLUSH: Guardando cuenta activa ${accountNumRef.current} (${cartRef.current.length} items) antes de cambiar...`);
-                await handleTicketAction('DRAFT', null, false);
-                console.log(`✅ FLUSH exitoso.`);
-            } catch (e) {
-                console.error(`⚠️ FLUSH falló para ${accountNumRef.current}:`, e);
-            }
-        }
+        // v6.0: FLUSH ELIMINADO. Con Fase 2, cada operación ya está en el servidor.
+        // Si el carrito local tiene items, ya están persistidos en la DB como DRAFT.
+        // No necesitamos guardar nada extra — la DB YA es la fuente de verdad.
 
-        // v3.0 FIX — REGLA 3: Bloquear auto-save ANTES de cualquier mutación
+        // Bloquear auto-save (por compatibilidad con refs)
         isRecoveringRef.current = true;
 
-        // ⚡ FIX: Obtener siempre la versión más fresca directamente
+        // Obtener siempre la versión más fresca directamente del servidor
         let freshItems = account.rawItems;
         let freshVersion = account.version;
         let freshCapturer = account.capturedById ? { id: account.capturedById, name: account.capturedByName } : null;
@@ -400,18 +378,17 @@ export const useTicketActions = ({
                 nature: i.product.nature || originalProd.nature || 'PRODUCTO'
             };
         });
-        cartRef.current = recovered;  // ⚡ SYNC inmediato
+        cartRef.current = recovered;
         setCart(recovered);
         accountNumRef.current = account.accountNum;
         setCurrentAccountNum(account.accountNum);
         
-        console.log("Recovering account. Original capturer:", freshCapturer);
         originalCapturerRef.current = freshCapturer || currentUser;
         setOriginalCapturer(freshCapturer || currentUser);
         ticketVersionRef.current = freshVersion || null;
         setTicketVersion(freshVersion || null);
         
-        // --- Restaurar Order Data si la cuenta es un PEDIDO ---
+        // Restaurar Order Data si la cuenta es un PEDIDO
         if (account.orderType === 'PEDIDO') {
             setOrderType('PEDIDO');
             setOrderData({
@@ -430,55 +407,11 @@ export const useTicketActions = ({
         }
 
         setShowCorkboard(false);
-        setShowDraftCorkboard(false);
 
-        // v3.0: Desbloquear auto-save DESPUÉS de que React procese todos los setState
+        // Desbloquear refs después de que React procese todos los setState
         requestAnimationFrame(() => {
             isRecoveringRef.current = false;
         });
-    };
-
-    // --- Handlers para Pizarrón Alterno de Borradores ---
-    const handleLoadDraft = (draft) => {
-        const account = {
-            accountNum: draft.account_num,
-            rawItems: draft.items,
-            version: draft.version,
-            capturedById: draft.captured_by_id,
-            capturedByName: draft.captured_by_name || draft.captured_by?.name,
-            orderType: draft.order_type,
-            deliveryType: draft.delivery_type,
-            clientName: draft.customer_name,
-            customerPhone: draft.customer_phone,
-            committedAt: draft.committed_at,
-            packagingType: draft.packaging_type,
-            deliveryAddress: draft.delivery_address,
-            orderNotes: draft.order_notes
-        };
-        handleRecoverAccount(account);
-    };
-
-    const handleDiscardDraft = async (draft) => {
-        try {
-            const terminalId = selectedTerminal || 'T1';
-            let session = await posService.getActiveSession(terminalId);
-            if (!session) session = await posService.createSession(terminalId);
-            await posService.createTicket({
-                account_num: draft.account_num,
-                session_id: session.id,
-                items: draft.items.map(i => ({ product_id: i.product.id, quantity: i.quantity })),
-                status: 'CANCELLED',
-                captured_by_id: draft.captured_by_id,
-                version: draft.version
-            });
-            setToastMessage('🗑️ Borrador descartado.');
-            setTimeout(() => setToastMessage(null), 3000);
-            
-            // Actualizar lista para UI fluida
-            setTerminalDrafts(prev => prev.filter(d => d.account_num !== draft.account_num));
-        } catch (e) {
-            console.error("Error cancelando borrador:", e);
-        }
     };
 
     return {
@@ -486,8 +419,6 @@ export const useTicketActions = ({
         handlePrintTicket,
         handleAddToCart,
         handleRecoverAccount,
-        handleLoadDraft,
-        handleDiscardDraft,
         printTicketData,
     };
 };

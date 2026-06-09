@@ -101,31 +101,16 @@ class POSService:
                         detail=f"El folio {ticket.account_num} es un borrador de la terminal {safe_guard_db}. "
                                f"Debe ser enviado al pizarrón antes de cobrarse desde {safe_guard_req}."
                     )
-            # Obtener el terminal_id de la petición entrante para verificaciones
-            req_terminal_id = None
-            if ticket.session_id:
-                session = await db.get(models.TerminalSession, ticket.session_id)
-                req_terminal_id = session.terminal_id if session else None
-
-            # BLOQUEO OPTIMISTA v4.0: Si el cliente envía una versión, validar que coincida
+            # BLOQUEO OPTIMISTA v6.0: Si el cliente envía una versión, validar que coincida.
+            # Sin bypass — cualquier conflicto de versión es legítimo y el frontend lo maneja
+            # con auto-heal (descarga versión fresca del servidor).
             if ticket.version is not None and ticket.version != db_ticket.version:
-                # BYPASS v4.4: Falsos positivos por timeout de red ("Hora Pico")
-                # Si la petición viene de la MISMA terminal que ya es dueña del ticket, 
-                # es un reintento idempotente tras un fallo de red. Se perdona el conflicto.
-                safe_req_tid = req_terminal_id.strip().upper() if req_terminal_id else ""
-                safe_db_tid = db_ticket.terminal_id.strip().upper() if db_ticket.terminal_id else ""
-                if safe_req_tid and safe_req_tid == safe_db_tid:
-                    import logging
-                    logging.getLogger("pos.optimistic_lock").info(
-                        f"Bypass de version para {ticket.account_num} en {req_terminal_id}. Retry de red perdonado."
-                    )
-                else:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Conflicto de versión en folio {ticket.account_num}. "
-                               f"Versión del cliente: {ticket.version}, versión actual: {db_ticket.version}. "
-                               f"Otro usuario modificó esta cuenta. Recupere la cuenta del Pizarrón e intente de nuevo."
-                    )
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Conflicto de versión en folio {ticket.account_num}. "
+                           f"Versión del cliente: {ticket.version}, versión actual: {db_ticket.version}. "
+                           f"Otro usuario modificó esta cuenta. Recupere la cuenta del Pizarrón e intente de nuevo."
+                )
             return await self._update_ticket_fields(db, db_ticket, ticket, total)
         
         return await self._initialize_new_ticket(db, ticket, total)
@@ -352,9 +337,13 @@ class POSService:
         if db_ticket.status == "PAID":
             raise HTTPException(status_code=400, detail=f"El folio {payload.account_num} ya fue pagado")
 
-        # 3. Validar versión (bypass si es misma terminal — REGLA v4.4)
+        # v6.0: Validar versión — sin bypass, cualquier conflicto es legítimo
         if payload.version is not None and payload.version != db_ticket.version:
-            self._check_version_bypass(db_ticket, payload.terminal_id, payload.version)
+            raise HTTPException(
+                status_code=409,
+                detail=f"Conflicto de versión en folio {db_ticket.account_num}. "
+                       f"Versión del cliente: {payload.version}, versión actual: {db_ticket.version}."
+            )
 
         # 4. Buscar item existente o crear nuevo
         existing_item = None
@@ -489,24 +478,11 @@ class POSService:
         db.expire_all()
         return await self._get_full_ticket(db, ticket_id)
 
-    def _check_version_bypass(self, db_ticket, terminal_id, client_version):
-        """v4.4: Bypass de versión si la petición viene de la misma terminal."""
-        safe_req = (terminal_id or "").strip().upper()
-        safe_db = (db_ticket.terminal_id or "").strip().upper()
-        if safe_req and safe_req == safe_db:
-            import logging
-            logging.getLogger("pos.optimistic_lock").info(
-                f"Bypass de version para {db_ticket.account_num} en {terminal_id}. Retry de red perdonado."
-            )
-        else:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Conflicto de versión en folio {db_ticket.account_num}. "
-                       f"Versión del cliente: {client_version}, versión actual: {db_ticket.version}."
-            )
+
 
     async def get_open_tickets(self, db: AsyncSession):
-        """Obtiene todos los tickets en estado OPEN."""
+        """Obtiene tickets en estado OPEN con items.
+        v6.0: DRAFT = privado (no aparece). Solo OPEN (acción explícita del cajero)."""
         result = await db.execute(
             select(models.Ticket)
             .options(
@@ -640,8 +616,7 @@ class POSService:
         POSService._last_gc_time = now
 
         try:
-            # --- PARTE 1: Tickets vacios (sin items) > 24h ---
-            cutoff_empty = now - timedelta(hours=24)
+            cutoff_empty = now - timedelta(hours=1)  # v6.0: Reducido de 24h a 1h
             stale_empty = await db.execute(
                 select(models.Ticket)
                 .options(selectinload(models.Ticket.items))

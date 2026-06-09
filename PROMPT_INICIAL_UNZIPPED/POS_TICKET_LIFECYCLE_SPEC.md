@@ -1644,12 +1644,326 @@ Tras la limpieza de configuración, quedan solo 6 ajustes relevantes:
 
 ---
 
+
+---
+---
+
+# 🛠️ v6.1 — SIMPLIFICACIÓN: ELIMINACIÓN DEL CONFLICTO ARQUITECTÓNICO
+
+> **Fecha:** 09/Junio/2026
+> **Versión:** 6.1 — Camino Único de Escritura
+> **Terminales afectadas:** T2, T4
+
+## ⛔ INCIDENTE QUE ORIGINÓ LA v6.1 (RACE CONDITION FASE 1 vs FASE 2)
+
+**Fecha:** Sábado 08/Junio/2026, hora pico (~13:00-14:30)
+**Síntoma:** Terminal 2 dejó de poder enviar cuentas al Pizarrón durante hora pico. 
+Los cajeros agregaban productos pero al dar "Enviar al Pizarrón" obtenían error 409.
+Se requirió reinicio de la máquina de T2 para resolverse temporalmente.
+
+**Evidencia forense en la base de datos:**
+
+```
+ account_num | terminal | total | version | status | items_count
+─────────────┼──────────┼───────┼─────────┼────────┼────────────
+ V31363      | T2       |  0.00 |      16 | OPEN   |           0
+ V31365      | T2       |  0.00 |      11 | OPEN   |           0
+ V31367      | T2       |  0.00 |      11 | OPEN   |           0
+ V31370      | T4       |  0.00 |      11 | OPEN   |           0
+ V31371      | T4       |  0.00 |      16 | OPEN   |           0
+ V31372      | T4       |  0.00 |      16 | OPEN   |           0
+ V31373      | T2       |  0.00 |      12 | OPEN   |           0
+ V31385      | T2       |  0.00 |      10 | OPEN   |           0
+ V31386      | T4       |  0.00 |      24 | OPEN   |           0
+ V31389      | T2       |  0.00 |      12 | OPEN   |           0
+```
+
+> ⚠️ **Lo alarmante:** Un ticket con 0 items y $0.00 JAMÁS debería tener versión 10-24.
+> Cada incremento de versión es una operación de escritura en la DB. Los items 
+> **existieron y fueron borrados** por el ciclo de conflicto.
+
+**Causa raíz (Race Condition entre dos sistemas de escritura):**
+
+La versión 6.0 introdujo la persistencia inmediata (Fase 2: `addItemToTicket`, 
+`updateItemQuantity`, `removeItemFromTicket`) pero MANTUVO el auto-save bulk de 
+Fase 1 como "red de seguridad" (reducido a 60s). Estos dos sistemas escribían a la 
+misma tabla concurrentemente sin serialización:
+
+```
+FASE 2 (Persistencia Inmediata)          FASE 1 (Auto-Save Bulk)
+================================          ======================
+
+handleAddToCart()                         useAutoSave (cada 60s)
+     │                                         │
+     ▼                                         ▼
+addItemToTicket() ◄──NO MUTEX──┐         handleTicketAction('OPEN')
+     │                         │              │
+     ▼                         │              ▼
+DB: INSERT item               │         Lee cartRef.current
+DB: version++                  │         ⚠️ (puede NO incluir
+     │                         │            el item de Fase 2
+     │                         │            porque useEffect aún
+     │                         │            no sincronizó cartRef)
+     │                         │              │
+     │                         │              ▼
+     │                         │         createTicket() →
+     │                         │         _sync_ticket_items()
+     │                         │         ⚠️ BORRA items que no
+     │                         │            están en cartRef
+     │                         │              │
+     └─────────────────────────┴──────────────▼
+                                       DATOS PERDIDOS
+```
+
+**5 bugs interconectados que amplificaban el problema:**
+
+1. **Race condition Fase 1 vs Fase 2:** `addItemToTicket` no usaba el mutex. 
+   El auto-save podía correr en paralelo, leyendo un `cartRef` desactualizado 
+   (React aún no ejecutó `useEffect` para sincronizar) y llamando 
+   `_sync_ticket_items()` que BORRABA los items que Fase 2 acababa de insertar.
+
+2. **Auto-save enviaba status 'OPEN' en vez de 'DRAFT':** Cada auto-save cambiaba 
+   el ticket de DRAFT a OPEN, haciéndolo visible en el Pizarrón prematuramente 
+   y rompiendo la protección de `resilientFetch.js` (que solo encolaba DRAFT offline).
+
+3. **Bypass de versión v4.4 enmascaraba corrupción:** El bypass perdonaba conflictos 
+   de versión de la misma terminal, permitiendo que el auto-save sobreescribiera 
+   items silenciosamente sin generar error 409.
+
+4. **GC demasiado lento:** El Garbage Collector esperaba 24h para limpiar tickets 
+   vacíos. Los zombies se acumulaban durante todo el día de operación.
+
+5. **CashSession zombie de 25 días:** La CashSession #135 (abierta desde el 14/Mayo 
+   por el usuario Alfa) aparecía como "SESIÓN EXPIRADA" pero nunca se cerraba 
+   automáticamente, bloqueando la visualización de CAJA.
+
+---
+
+## SOLUCIÓN: ELIMINACIÓN DEL AUTO-SAVE BULK (CAMINO ÚNICO)
+
+**Filosofía:** Si la Fase 2 ya guarda cada item en el servidor al instante, 
+el auto-save bulk de Fase 1 es **redundante y peligroso**. Eliminarlo no pierde 
+datos — los datos ya están en el servidor.
+
+### Archivos Eliminados (6)
+
+| Archivo | Razón |
+|---------|-------|
+| `hooks/useAutoSave.js` | **Causa raíz directa** — leía `cartRef` desactualizado y sobreescribía items |
+| `services/resilientFetch.js` | Cola offline que nunca se activaba (auto-save enviaba OPEN, no DRAFT) |
+| `services/cartPersistence.js` | Cola localStorage para offline — complejidad sin uso real |
+| `hooks/useOfflineSync.js` | Flush de cola offline — dependía de los archivos anteriores |
+| `components/CollisionModal.jsx` | Reemplazado por auto-heal inline (descarga versión fresca) |
+| `components/DraftsCorkboard.jsx` | Pizarrón alterno eliminado — DRAFT = privado |
+
+### Archivos Modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `RetailVisionPOS.jsx` | Removidos imports, estados, hooks y renders de los 6 archivos eliminados. Agregado modal de confirmación de salida |
+| `hooks/useTicketActions.js` | Reescrito: sin `resilientCreateTicket`, sin FLUSH en recovery, sin `handleLoadDraft`/`handleDiscardDraft`. Agregado reintento 3x con backoff en `handleAddToCart` |
+| `api/modules/pos/service.py` | Eliminado bypass v4.4 de versión, eliminado `_check_version_bypass()`, GC reducido de 24h a 1h |
+| `OpenAccountsCorkboard.jsx` | Removido botón "Borradores sin enviar" y prop `onOpenDrafts` |
+
+### Limpieza de Base de Datos
+
+```sql
+-- 10 tickets zombie OPEN ($0.00, 0 items) → CANCELLED
+UPDATE tickets SET status = 'CANCELLED' WHERE status = 'OPEN' AND total = 0;
+
+-- 2 DRAFTs vacíos > 1h → CANCELLED
+UPDATE tickets SET status = 'CANCELLED' 
+WHERE status = 'DRAFT' AND total = 0 AND created_at < NOW() - INTERVAL '1 hour';
+
+-- CashSession #135 zombie de 25 días → CLOSED
+UPDATE cash_sessions SET status = 'CLOSED', closed_at = NOW() WHERE id = 135;
+```
+
+---
+
+## ARQUITECTURA RESULTANTE v6.1
+
+```
+ANTES (v6.0 — 2 caminos de escritura que colisionan)
+═════════════════════════════════════════════════════
+
+  addItem ──────┐     auto-save (60s) ──────────────┐
+  updateItem ───┤     (handleTicketAction 'OPEN')    │
+  removeItem ───┤          │                         │
+      │         │          ▼                         │
+      ▼         │    Lee cartRef (puede              │
+  DB: op        │    estar desactualizado)            │
+  atómica       │          │                         │
+      │         │          ▼                         │
+      ▼         │    createTicket()                  │
+  version++     │    _sync_ticket_items()             │
+                │    ⚠️ BORRA items de DB             │
+                └────────── 💥 CONFLICTO ────────────┘
+
+
+DESPUÉS (v6.1 — 1 solo camino de escritura)
+═══════════════════════════════════════════
+
+  addItem ──────────► DB: INSERT/UPDATE + version++
+  updateItem ───────► DB: UPDATE + version++
+  removeItem ───────► DB: DELETE + version++
+  
+  "Enviar al Pizarrón" ──► DB: UPDATE status = 'OPEN'  (explícito)
+  "Cobrar"            ──► DB: UPDATE status = 'PAID'  (explícito)
+  
+  ✅ SIN AUTO-SAVE. SIN COLA OFFLINE. SIN RACE CONDITIONS.
+  El servidor SIEMPRE tiene los datos correctos.
+```
+
+---
+
+## REGLA 19 — CAMINO ÚNICO DE ESCRITURA (v6.1)
+
+```
+⛔ PROHIBIDO: Dos sistemas escribiendo a la tabla tickets concurrentemente sin serialización.
+⛔ PROHIBIDO: Auto-save bulk que reemplace TODOS los items con _sync_ticket_items().
+⛔ PROHIBIDO: Bypass de versión que perdone conflictos de la misma terminal.
+✅ OBLIGATORIO: Solo los endpoints atómicos (add/update/remove) modifican items.
+✅ OBLIGATORIO: handleTicketAction() solo se usa para cambios de STATUS (OPEN, PAID), NO para persistir items.
+✅ OBLIGATORIO: Conflictos de versión 409 siempre son legítimos — auto-heal descarga versión fresca.
+```
+
+**¿Por qué?** El incidente del 08/Junio demostró que mantener el auto-save como 
+"red de seguridad" era contraproducente. La Fase 2 ya persiste cada operación al 
+instante — no hay nada que el auto-save pueda "rescatar" que no esté ya en la DB. 
+En cambio, sí puede CORROMPER datos al enviar un `cartRef` desactualizado.
+
+**Reintento simple en `handleAddToCart`:**
+```javascript
+// Si addItemToTicket falla, reintentar 3 veces con backoff (1s, 2s, 3s)
+const MAX_RETRIES = 3;
+for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+        const result = await posService.addItemToTicket({...});
+        ticketVersionRef.current = result.version;
+        return; // Éxito
+    } catch (e) {
+        if (attempt < MAX_RETRIES) {
+            await new Promise(r => setTimeout(r, 1000 * attempt));
+        } else {
+            setToastMessage('⚠️ No se pudo guardar el último producto.');
+        }
+    }
+}
+```
+
+---
+
+## REGLA 20 — MODAL DE CONFIRMACIÓN AL SALIR CON CUENTA SIN ENVIAR (v6.1)
+
+```
+⛔ PROHIBIDO: Permitir que un colaborador cambie de terminal o SALGA DEL SISTEMA con items en el carrito sin advertencia.
+✅ OBLIGATORIO: Si cartRef.current.length > 0 && accountNumRef.current → mostrar modal de confirmación.
+✅ OBLIGATORIO: El modal ofrece 3 opciones claras: Enviar primero, Salir sin enviar, Cancelar.
+✅ OBLIGATORIO: Interceptar salidas globales (cambio de módulo en el dashboard) mediante el hook `window.requestPOSExit`.
+```
+
+**¿Por qué?** Con la eliminación del auto-save, un ticket DRAFT con items solo 
+existe en la DB como borrador invisible. Si el colaborador se va sin enviar al 
+Pizarrón, la cuenta no aparece en ningún lado y el GC la cancelará en 1 hora. 
+El modal previene esta pérdida silenciosa.
+
+**Interceptación Global:**
+Debido a que los menús laterales (como en `ExperimentCenterUI`) desmontan el componente del POS abruptamente, el POS expone un hook global `window.requestPOSExit(actionCallback)` que envuelve la lógica del modal. El contenedor padre debe llamar a este hook antes de ejecutar cualquier navegación destructiva.
+
+> [!WARNING]
+> **React Rules of Hooks:** El `useEffect` que define `window.requestPOSExit` debe estar declarado **ANTES** de cualquier early return (como `if (!selectedTerminal) return ...;`). Si se declara condicionalmente, provocará un crash en React (Error del Sistema) al montar/desmontar el componente.
+
+**Flujo:**
+```
+Colaborador intenta salir con items sin enviar
+        │
+        ▼
+┌─────────────────────────────────────────┐
+│  ⚠️  Cuenta sin enviar                   │
+│                                          │
+│  La cuenta V31445 con 5 productos       │
+│  ($85.00) no fue enviada al Pizarrón.   │
+│                                          │
+│  📌 Enviar al Pizarrón y salir          │ → handleTicketAction('OPEN') → doExit()
+│  🚪 Salir sin enviar — perder cuenta    │ → doExit() directo (DRAFT queda para GC)
+│  Cancelar — quedarme                    │ → cerrar modal
+└─────────────────────────────────────────┘
+```
+
+---
+
+## REGLA 21 — PIZARRÓN EXCLUSIVO PARA CUENTAS OPEN (v6.1)
+
+```
+⛔ PROHIBIDO: Mostrar tickets con status='DRAFT' en el Pizarrón unificado.
+✅ OBLIGATORIO: El Pizarrón (endpoint get_open_tickets) debe filtrar EXCLUSIVAMENTE por status='OPEN' y total > 0.
+✅ OBLIGATORIO: DRAFT = privado (cuenta en captura). OPEN = público (cuenta enviada explícitamente).
+```
+
+**¿Por qué?** Si las cuentas DRAFT aparecen en el Pizarrón, cualquier cajero podría ver y jalar una cuenta que un colaborador en otra terminal todavía está armando o modificando. Esto causa colisiones y confusión. La cuenta solo debe aparecer en el Pizarrón cuando el colaborador *explícitamente* decide que ya terminó y le da click a "Enviar al Pizarrón" (lo cual cambia el status a OPEN).
+
+---
+
+## REGLAS DEPRECADAS EN v6.1
+
+| Regla | Estado | Razón |
+|-------|--------|-------|
+| **REGLA 2** — Auto-save intervalo real | 🔴 **DEPRECADA** | Auto-save eliminado. No hay timer. |
+| **REGLA 10** — CollisionModal en TODO 409 | 🟡 **MODIFICADA** | Auto-heal inline reemplaza el modal. El 409 descarga versión fresca automáticamente. |
+| **REGLA 11** — Badge de auto-save | 🟡 **SIMPLIFICADA** | Sin auto-save, el badge solo refleja estado de operaciones atómicas. |
+| **REGLA 17** — Resiliencia offline (cola) | 🔴 **DEPRECADA** | Cola offline eliminada. Las operaciones atómicas manejan sus propios reintentos (3x con backoff). |
+
+> ⚠️ Las reglas deprecadas se mantienen en el documento como referencia histórica.
+> Si se revierte a la arquitectura batch, vuelven a ser activas.
+
+---
+
+## REGLAS QUE SIGUEN VIGENTES CON v6.1
+
+| Regla | Vigente | Nota |
+|-------|---------|------|
+| 1 — Refs para callbacks | ✅ | Los wrappers leen de `accountNumRef`, `ticketVersionRef` |
+| 3 — Protocolo anti-overwrite | ✅ | Recuperación del Pizarrón sigue igual (sin FLUSH) |
+| 4 — Secuencia atómica | ✅ | Folios siguen usando `ticket_folio_seq` |
+| 5 — Serialización única | ✅ | `_get_full_ticket()` sigue siendo el camino único |
+| 6 — FOR UPDATE | ✅ | Los 3 endpoints atómicos usan FOR UPDATE |
+| 7 — captured_by_id | ✅ | Se envía en `addItemToTicket` |
+| 8 — Cero alert() | ✅ | Sin cambios |
+| 9 — Confirmación obligatoria | ✅ | Pizarrón sigue requiriendo confirmación |
+| 12 — Mutex | ✅ | `handleTicketAction` sigue serializado (solo para OPEN/PAID) |
+| 13 — Ocupación de terminal | ✅ | Sin cambios |
+| 14 — Sync cartRef | ✅ | Sin cambios para recuperación |
+| 15 — Búsqueda exacta | ✅ | Sin cambios |
+| 16 — DRAFT invisible | ✅ | Tickets atómicos nacen como DRAFT. DRAFT = privado. |
+| 18 — Docker volumes | ✅ | Siempre detener containers antes de editar |
+| **19 — Camino único** | ✅ | **NUEVA v6.1** |
+| **20 — Modal de salida** | ✅ | **NUEVA v6.1** |
+
+---
+
+## CHECKLIST ACTUALIZADO v6.1
+ 
+ - [ ] ¿`handleTicketAction` se usa SOLO para cambios de STATUS (OPEN, PAID), NO para persistir items? (REGLA 19)
+ - [ ] ¿Los items se persisten EXCLUSIVAMENTE vía endpoints atómicos (`addItemToTicket`, `updateItemQuantity`, `removeItemFromTicket`)? (REGLA 19)
+ - [ ] ¿NO existe auto-save ni timer periódico que envíe el carrito completo al servidor? (REGLA 19)
+ - [ ] ¿Los conflictos de versión 409 se manejan con auto-heal (descarga versión fresca), NO con CollisionModal? (REGLA 19)
+ - [ ] ¿`handleAddToCart` tiene reintento automático (3 intentos, backoff 1s/2s/3s) para resiliencia de red? (REGLA 19)
+ - [ ] ¿El Pizarrón muestra SOLO tickets OPEN con total > 0? (DRAFT = privado) (REGLA 16 + 21)
+ - [ ] ¿Al intentar cambiar de terminal o cerrar sesión, se muestra modal de confirmación interceptando salidas globales (`window.requestPOSExit`)? (REGLA 20)
+ - [ ] ¿El modal ofrece "Enviar al Pizarrón y salir", "Salir sin enviar", y "Cancelar"? (REGLA 20)
+ - [ ] ¿El GC cancela tickets vacíos (OPEN/DRAFT, total=0) después de 1 hora? (v6.1)
+ - [ ] ¿NO existe bypass de versión para operaciones de la misma terminal? (v6.1)
+
+---
+
 > **Este documento es la FUENTE ÚNICA DE VERDAD para el flujo de tickets.**
 >
-> Versión 6.0 implementa persistencia inmediata inspirada en el modelo SISYTEC.
+> Versión 6.1 elimina el conflicto entre auto-save bulk y persistencia inmediata,
+> dejando un solo camino de escritura sin race conditions.
 > Las reglas 1-18 y toda la documentación de incidentes se preservan como
 > referencia histórica y guía de rollback.
 >
-> **Commit de referencia:** `27e5e02` en rama `backup_pre_pos_refactor`
-> **Fecha:** 16/Mayo/2026
+> **Última actualización:** 09/Junio/2026
+> **Versión:** 6.1 — Camino Único de Escritura
 

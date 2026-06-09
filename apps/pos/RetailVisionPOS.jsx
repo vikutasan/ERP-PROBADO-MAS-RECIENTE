@@ -6,9 +6,7 @@ import { useVision } from './hooks/useVision';
 import { useTerminalLocking } from './hooks/useTerminalLocking';
 import { useBeforeUnload } from './hooks/useBeforeUnload';
 import { useBarcodeScanner } from './hooks/useBarcodeScanner';
-import { useAutoSave } from './hooks/useAutoSave';
 import { useNetworkHealth } from './hooks/useNetworkHealth';
-import { useOfflineSync } from './hooks/useOfflineSync';
 import { usePOSSession } from './hooks/usePOSSession';
 import { useTicketActions } from './hooks/useTicketActions';
 import { CONFIG } from './config';
@@ -21,9 +19,7 @@ import { CheckoutScreen } from './components/CheckoutScreen';
 import { GestorDeCaja } from './components/GestorDeCaja';
 import { TerminalSelector } from './components/TerminalSelector';
 import { ProgramacionPedidoModal } from './components/ProgramacionPedidoModal';
-import { CollisionModal } from './components/CollisionModal';
-import { DraftsCorkboard } from './components/DraftsCorkboard';
-import { ForceLogoutModal, OfflineBanner, ToastNotification } from './components/POSOverlays';
+import { ForceLogoutModal, ToastNotification } from './components/POSOverlays';
 import { POSHeader } from './components/POSHeader';
 import { cashService } from './services/cashService';
 
@@ -41,15 +37,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
     const [paymentsHistory, setPaymentsHistory] = useState([]);
     const [originalCapturer, setOriginalCapturer] = useState(null);
     const [toastMessage, setToastMessage] = useState(null);
-    // v4.0 ZERO-LOSS: Estado de guardado y loading
+    // Estado de guardado y loading
     const [lastSaveStatus, setLastSaveStatus] = useState('idle');
     const [lastSaveTime, setLastSaveTime] = useState(null);
     const [isSendingToPizarron, setIsSendingToPizarron] = useState(false);
     const [ticketVersion, setTicketVersion] = useState(null);
-    const [showCollisionModal, setShowCollisionModal] = useState(false);
-    // v5.2 DRAFT: Pizarrón Alterno de Borradores
-    const [showDraftCorkboard, setShowDraftCorkboard] = useState(false);
-    const [terminalDrafts, setTerminalDrafts] = useState([]);
+    const [showExitModal, setShowExitModal] = useState(false);
+    const [pendingExitAction, setPendingExitAction] = useState(null);
     const savedTicketRef = React.useRef(null);
     const cartRef = React.useRef([]);
     const accountNumRef = React.useRef('');
@@ -121,7 +115,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
     }, [selectedTerminal, currentAccountNum, orderType, orderData, originalCapturer]);
 
     // --- Hook de Tickets: toda la lógica de negocio ---
-    const { handleTicketAction, handlePrintTicket, handleAddToCart, handleRecoverAccount, handleLoadDraft, handleDiscardDraft } = useTicketActions({
+    const { handleTicketAction, handlePrintTicket, handleAddToCart, handleRecoverAccount } = useTicketActions({
         selectedTerminal,
         currentUser,
         currentAccountNum,
@@ -151,13 +145,10 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         setLastSaveTime,
         setShowCheckout,
         setIsSendingToPizarron,
-        setShowCollisionModal,
         setPaymentsHistory,
         setOrderType,
         setOrderData,
         setShowCorkboard,
-        setShowDraftCorkboard,
-        setTerminalDrafts,
         setAllOpenAccounts,
         paymentsHistory,
     });
@@ -183,45 +174,9 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         }
     }, [selectedTerminal, currentAccountNum, generateNewAccountNum]);
 
-    useAutoSave({
-        currentAccountNum, 
-        cart, 
-        showCheckout, 
-        showCollisionModal,
-        refs: { isGeneratingFolioRef, isRecoveringRef, accountNumRef, cartRef },
-        setLastSaveStatus, 
-        setLastSaveTime, 
-        onSave: () => handleTicketAction('DRAFT', null, false)
-    });
-
     useBeforeUnload(cartRef, accountNumRef, CONFIG.API_BASE_URL);
 
-    const { pendingCount: offlinePending, isSyncing: isOfflineSyncing } = useOfflineSync({
-        netStatus,
-        createTicketFn: (payload) => posService.createTicket(payload),
-        ticketVersionRef,
-        setTicketVersion,
-        accountNumRef
-    });
-
     useBarcodeScanner(PRODUCTS, handleAddToCart);
-
-    // --- Polling de Borradores ---
-    useEffect(() => {
-        if (!showDraftCorkboard) return;
-        const fetchDrafts = async () => {
-            try {
-                const targetTerminal = selectedTerminal === 'CAJA' ? 'ALL' : selectedTerminal;
-                const drafts = await posService.getTerminalDrafts(targetTerminal);
-                setTerminalDrafts(drafts || []);
-            } catch (e) {
-                console.error("Error fetching drafts", e);
-            }
-        };
-        fetchDrafts();
-        const interval = setInterval(fetchDrafts, 5000);
-        return () => clearInterval(interval);
-    }, [showDraftCorkboard, selectedTerminal]);
 
     // --- Polling de Cuentas Abiertas ---
     useEffect(() => {
@@ -259,6 +214,21 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
 
     const visibleAccounts = allOpenAccounts;
 
+    // Hook global para que ExperimentCenterUI pueda preguntar antes de desmontar
+    useEffect(() => {
+        window.requestPOSExit = (actionCallback) => {
+            if (cartRef.current.length > 0 && accountNumRef.current) {
+                setPendingExitAction(() => actionCallback);
+                setShowExitModal(true);
+                return true; // Interceptado, mostrando modal
+            }
+            return false; // Puede salir directo
+        };
+        return () => {
+            delete window.requestPOSExit;
+        };
+    }, []);
+
     // --- Renderizado ---
     if (!selectedTerminal) {
         return (
@@ -272,9 +242,23 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
         );
     }
 
-    const handleTerminalSwitch = async () => {
-        const canSwitch = !assignedTerminal || currentUser?.role === 'ADMIN' || currentUser?.permissions?.access_any_terminal === 'full';
-        if (!canSwitch) return;
+    // --- Lógica de salida con protección contra olvido ---
+    const canSwitchTerminal = !assignedTerminal || currentUser?.role === 'ADMIN' || currentUser?.permissions?.access_any_terminal === 'full';
+
+    const handleTerminalSwitch = () => {
+        if (!canSwitchTerminal) return;
+        // Si tiene items en el carrito, mostrar modal de confirmación
+        if (cartRef.current.length > 0 && accountNumRef.current) {
+            setPendingExitAction(() => doTerminalExit);
+            setShowExitModal(true);
+            return;
+        }
+        // Sin items — salir directo
+        doTerminalExit();
+    };
+
+    const doTerminalExit = async () => {
+        setShowExitModal(false);
         try {
             await posService.unlockTerminal(selectedTerminal, currentUser?.id);
         } catch(e) { console.error("Could not unlock terminal", e); }
@@ -286,6 +270,30 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
             setOriginalCapturer(null);
         } catch(e) {}
         setSelectedTerminal(null);
+    };
+
+    const handleSendThenExit = async () => {
+        setShowExitModal(false);
+        try {
+            await handleTicketAction('OPEN');
+            // Si se envió exitosamente, ejecutar la acción pendiente (logout, cambiar tab, o doTerminalExit)
+            if (pendingExitAction) {
+                pendingExitAction();
+                setPendingExitAction(null);
+            }
+        } catch (e) {
+            console.error('Error enviando al pizarrón antes de salir:', e);
+            setToastMessage('❌ No se pudo enviar al Pizarrón. Intente de nuevo.');
+            setTimeout(() => setToastMessage(null), 4000);
+        }
+    };
+
+    const handleExitWithoutSaving = () => {
+        setShowExitModal(false);
+        if (pendingExitAction) {
+            pendingExitAction();
+            setPendingExitAction(null);
+        }
     };
 
     // --- FASE 2: Wrappers con persistencia inmediata ---
@@ -417,7 +425,6 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                     openAccounts={visibleAccounts}
                     onSelectAccount={handleRecoverAccount}
                     onClose={() => setShowCorkboard(false)}
-                    onOpenDrafts={() => setShowDraftCorkboard(true)}
                 />
             )}
 
@@ -453,24 +460,56 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
             )}
 
             <ForceLogoutModal visible={forceLogoutModal} onForceLogout={onForceLogout} />
-            <OfflineBanner pendingCount={offlinePending} isSyncing={isOfflineSyncing} />
             <ToastNotification message={toastMessage} />
 
-            {showCollisionModal && (
-                <CollisionModal onClose={() => setShowCollisionModal(false)} />
-            )}
+            {/* Modal de Confirmación de Salida */}
+            {showExitModal && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowExitModal(false)} />
+                    <div className="relative bg-gradient-to-b from-zinc-800 to-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-white/10">
+                        {/* Icono de advertencia */}
+                        <div className="text-center mb-6">
+                            <span className="text-6xl">⚠️</span>
+                        </div>
+                        
+                        <h3 className="text-xl font-black text-white text-center mb-2 uppercase tracking-wider">
+                            Cuenta sin enviar
+                        </h3>
+                        <p className="text-zinc-400 text-center text-sm mb-2">
+                            La cuenta <span className="font-bold text-amber-400">{currentAccountNum}</span> con{' '}
+                            <span className="font-bold text-white">{cart.length} producto{cart.length !== 1 ? 's' : ''}</span>{' '}
+                            (${total.toFixed(2)}) no fue enviada al Pizarrón.
+                        </p>
+                        <p className="text-zinc-500 text-center text-xs mb-8">
+                            Si sale sin enviar, esta cuenta se perderá.
+                        </p>
 
-            {showDraftCorkboard && (
-                <DraftsCorkboard
-                    drafts={terminalDrafts}
-                    onLoadDraft={handleLoadDraft}
-                    onDiscardDraft={handleDiscardDraft}
-                    onClose={() => setShowDraftCorkboard(false)}
-                    onBackToMain={() => {
-                        setShowDraftCorkboard(false);
-                        setShowCorkboard(true);
-                    }}
-                />
+                        {/* Botones */}
+                        <div className="space-y-3">
+                            <button
+                                onClick={handleSendThenExit}
+                                className="w-full h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-wider text-sm flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-lg"
+                            >
+                                📌 Enviar al Pizarrón y salir
+                            </button>
+                            <button
+                                onClick={handleExitWithoutSaving}
+                                className="w-full h-12 rounded-2xl bg-red-600/20 hover:bg-red-600/40 text-red-400 hover:text-red-300 font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all border border-red-600/30"
+                            >
+                                🚪 Salir sin enviar — perder cuenta
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowExitModal(false);
+                                    setPendingExitAction(null);
+                                }}
+                                className="w-full h-10 rounded-xl text-zinc-500 hover:text-zinc-300 font-medium text-xs uppercase tracking-widest transition-all"
+                            >
+                                Cancelar — quedarme
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

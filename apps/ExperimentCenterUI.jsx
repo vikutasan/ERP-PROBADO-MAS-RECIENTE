@@ -144,6 +144,16 @@ export const ExperimentCenterUI = () => {
         ]
     };
 
+    // Helper para interceptar navegación si el POS tiene cuentas sin guardar
+    const attemptNavigation = (action) => {
+        if (activeModule === 'pos_retail' && window.requestPOSExit) {
+            const needsModal = window.requestPOSExit(action);
+            if (!needsModal) action();
+        } else {
+            action();
+        }
+    };
+
     return (
         <div className="bg-[#050505] h-screen text-white font-sans flex overflow-hidden">
 
@@ -172,7 +182,7 @@ export const ExperimentCenterUI = () => {
 
                 <nav className="flex-1 space-y-2 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
                     <button
-                        onClick={() => setActiveModule('overview')}
+                        onClick={() => attemptNavigation(() => setActiveModule('overview'))}
                         className={`w-full text-left p-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all overflow-hidden ${activeModule === 'overview' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20 shadow-2xl shadow-orange-500/10' : 'text-gray-500 hover:text-white'}`}
                     >
                         {isSidebarCollapsed ? '🏠' : '🏠 Vista General'}
@@ -183,7 +193,7 @@ export const ExperimentCenterUI = () => {
                     {visibleModules.map(mod => (
                         <button
                             key={mod.id}
-                            onClick={() => setActiveModule(mod.id)}
+                            onClick={() => attemptNavigation(() => setActiveModule(mod.id))}
                             title={mod.name}
                             className={`w-full text-left p-4 rounded-2xl flex items-center gap-4 transition-all group overflow-hidden ${activeModule === mod.id ? `${mod.color} text-white shadow-2xl shadow-current` : 'hover:bg-gray-900 text-gray-400'}`}
                         >
@@ -211,7 +221,7 @@ export const ExperimentCenterUI = () => {
 
                 <div className="mt-4 px-4 pb-4">
                     <button
-                        onClick={() => setIsAuthenticated(false)}
+                        onClick={() => attemptNavigation(() => setIsAuthenticated(false))}
                         className={`w-full p-4 font-black uppercase tracking-widest transition-all rounded-2xl flex items-center justify-center gap-2 border 
                             ${isSidebarCollapsed 
                                 ? 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white text-lg' 

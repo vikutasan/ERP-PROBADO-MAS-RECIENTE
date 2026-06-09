@@ -33,6 +33,8 @@ build/
 .next/
 out/
 next-env.d.ts
+tmp/
+*.log
 
 # OS specific
 Thumbs.db
