@@ -3,14 +3,14 @@
 > **⚠️ LECTURA OBLIGATORIA.** Cualquier IA o desarrollador que necesite modificar o auditar CUALQUIER aspecto del Punto de Venta (POS) de R de Rico **DEBE leer este documento completo primero.** 
 >
 > **Última actualización:** 2026-06-09
-> **Versión de arquitectura POS:** v6.0 (Modelo SYSITEC — Persistencia Atómica)
+> **Versión de arquitectura POS:** v6.0 (Modelo SaaS — Persistencia Atómica)
 > **Archivos gobernados:** `apps/pos/`, `apps/api/modules/pos/`, `apps/api/modules/cash/`
 
 ---
 
 ## ÍNDICE
 
-1. [Arquitectura Actual (v6.0 - Modelo SYSITEC)](#1-arquitectura-actual-v60---modelo-sysitec)
+1. [Arquitectura Actual (v6.0 - Modelo SaaS)](#1-arquitectura-actual-v60---modelo-saas)
 2. [Evolución Histórica: Cómo y Por Qué Llegamos Aquí](#2-evolución-histórica-cómo-y-por-qué-llegamos-aquí)
 3. [El Cementerio de Bugs (Lecciones Aprendidas)](#3-el-cementerio-de-bugs-lecciones-aprendidas)
 4. [Las Reglas de Oro Supervivientes](#4-las-reglas-de-oro-supervivientes)
@@ -18,13 +18,13 @@
 
 ---
 
-## 1. ARQUITECTURA ACTUAL (v6.0 - MODELO SYSITEC)
+## 1. ARQUITECTURA ACTUAL (v6.0 - MODELO SaaS)
 
 ### El Gran Cambio de Paradigma
 
 Hasta la versión 4.8, el POS intentaba guardar todo el carrito completo cada 15 segundos (Bulk Auto-Save). Esto causaba problemas infinitos de concurrencia y sobreescrituras.
 
-En la **v6.0 (Modelo SYSITEC)**, el funcionamiento del POS se simplificó radicalmente imitando a los ERPs SaaS estables: **Persistencia Inmediata y Atómica.**
+En la **v6.0 (Modelo SaaS)**, el funcionamiento del POS se simplificó radicalmente imitando a los ERPs SaaS estables: **Persistencia Inmediata y Atómica.**
 
 ### ¿Cómo funciona la v6.0?
 
@@ -62,8 +62,8 @@ Para evitar que futuras IAs intenten reimplementar arquitecturas pasadas que fra
   - Modales constantes de "Conflicto de Versión" (HTTP 409) que bloqueaban la pantalla del cajero.
   - Sincronización agresiva de `useRef` para evitar que los timers leyeran *closures* viejos.
 
-### Fase 3: La Simplificación SYSITEC (v6.0 - Actualidad)
-- **Mayo 2026:** Nos dimos cuenta de que la v4.8 era demasiado frágil y compleja. Al analizar cómo funcionaban ERPs comerciales como SYSITEC, descubrimos que **no hacían auto-saves de todo el carrito**. Guardaban ítem por ítem en tiempo real.
+### Fase 3: La Simplificación SaaS (v6.0 - Actualidad)
+- **Mayo 2026:** Nos dimos cuenta de que la v4.8 era demasiado frágil y compleja. Al analizar cómo funcionaban otros ERPs comerciales tipo SaaS, descubrimos que **no hacían auto-saves de todo el carrito**. Guardaban ítem por ítem en tiempo real.
 - Se reescribió `useTicketActions.js`. Se borró el timer de auto-save. Se crearon los endpoints `addItem`, `updateItem`, `removeItem`.
 - **El resultado:** El POS se volvió 100x más estable. Los modales 409 desaparecieron porque la base de datos centraliza la verdad átomo por átomo. La complejidad de la v4.8 se desechó por un diseño inmensamente superior.
 
