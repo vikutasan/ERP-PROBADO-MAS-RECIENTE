@@ -5,7 +5,7 @@ import { generateTicketHTML } from '../utils/ticketGenerator';
 /**
  * Hook: useTicketActions
  * 
- * SIMPLIFICACIÓN v6.0 — Modelo SYSITEC
+ * SIMPLIFICACIÓN v6.0 — Modelo SaaS
  * 
  * UN SOLO CAMINO DE ESCRITURA:
  * - handleAddToCart: persiste cada item atómicamente (Fase 2)
@@ -278,7 +278,7 @@ export const useTicketActions = ({
         }
     };
 
-    // --- Agregar al carrito con PERSISTENCIA INMEDIATA (Fase 2 — Estilo SYSITEC) ---
+    // --- Agregar al carrito con PERSISTENCIA INMEDIATA (Fase 2 — Estilo SaaS) ---
     const handleAddToCart = async (product) => {
         cartAddToCart(product); // UI reacciona instantáneamente (optimistic update)
 
