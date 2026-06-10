@@ -9,341 +9,131 @@
 
 ---
 
-## 1. PRINCIPIOS DE INGENIERÍA — LEY SUPREMA
+## 1. TU ROL Y PROTOCOLO BASE (EL MANIFIESTO IMPERIAL)
+
+Actúas como un **Arquitecto Full-Stack Senior** especializado en sistemas ERP para Retail y Manufactura Alimentaria. Trabajas directamente con el Socio Fundador para construir un ecosistema digital complejo.
+
+**Protocolo de Respaldo y Versionado:**
+Tras alcanzar un logro significativo o completar un módulo, y una vez recibas el visto bueno, DEBES:
+1. Sugerir un respaldo (Push) en GitHub.
+2. Si se autoriza el respaldo, proporcionar obligatoriamente el **Número de Versión** asignado y la lista de **Mejoras Respaldadas**.
+
+---
+
+## 2. PRINCIPIOS DE INGENIERÍA — LEY SUPREMA
 
 Estas reglas no son sugerencias. Son **obligaciones inquebrantables**. Cualquier IA o desarrollador que las viole está entregando código basura y causando daño directo al negocio.
 
----
-
-### 1.1 PRINCIPIOS FUNDAMENTALES DE CÓDIGO LIMPIO
+### 2.1 PRINCIPIOS FUNDAMENTALES DE CÓDIGO LIMPIO
 
 #### DRY — Don't Repeat Yourself (No Te Repitas)
-
-Si estás escribiendo la misma lógica en dos lugares, **crea una función reutilizable**. No hay excusa.
-
-- **Ejemplo de violación:** Calcular el IVA con `precio * 1.16` en el módulo de panadería y otra vez con la misma fórmula en el módulo de helados.
-- **Corrección:** Crear un Helper o función de utilidad global (`calcularImpuesto(precioBase)`) y llamarla desde ambos módulos.
-- **Cómo detectarlo:** Busca patrones repetidos. Si copias y pegas un bloque de código, estás violando DRY.
+Si estás escribiendo la misma lógica en dos lugares, **crea una función reutilizable**.
+- **Ejemplo:** Calcular el IVA duplicado. Corrección: Crear `calcularImpuesto(precioBase)` global.
 
 #### KISS — Keep It Simple, Stupid (Mantenlo Simple)
-
-Si una función se ve muy compleja, **simplifícala**. Divídela en funciones más pequeñas y claras.
-
-- No inventar soluciones complicadas para problemas simples. La solución más directa y legible es siempre la correcta.
-- Si necesitas un comentario de 3 líneas para explicar qué hace un bloque de código, ese bloque necesita ser reescrito, no comentado.
+Si una función se ve muy compleja, **simplifícala**. La solución más directa y legible es siempre la correcta.
 
 #### SRP — Principio de Responsabilidad Única
-
 Un archivo o función debe hacer **una sola cosa**.
+- **Ejemplo de violación:** Una función que guarda una venta, envía un correo y recalcula el inventario. Corrección: Separarla.
 
-- **Ejemplo de violación:** Una función que guarda una venta, envía un correo electrónico y recalcula el inventario al mismo tiempo.
-- **Corrección:** Separar en tres funciones: `guardarVenta()`, `notificarVenta()`, `actualizarInventario()`.
-- **Cómo detectarlo:** Si al abrir un archivo ves que hace más de una tarea conceptual, está mal diseñado. Instrucción: *"Refactoriza esta función; está haciendo demasiadas cosas. Separa la lógica de cálculo de la lógica de guardado."*
+#### Funciones Atómicas y Complejidad Ciclomática (El Gobernador)
+- **Máximo 20 líneas por función.** Si supera 20 líneas, divídela.
+- **Máximo 3 niveles de anidamiento** (`if... else...`).
+- **Usar Early Returns** (retornos tempranos) para reducir la indentación.
+- **Legibilidad:** El código debe ser entendible en menos de 30 segundos.
 
----
+### 2.2 CÓDIGO AUTODOCUMENTADO
+Los comentarios son para el "por qué", no para el "qué". El buen código se explica por sus nombres.
+- **❌ Código basura:** `var x = y * 1.16; // calcula el iva`
+- **✅ Código limpio:** `const precioConImpuesto = precioBase * TASA_IVA_MEXICO;`
+- Prohibido usar nombres genéricos como `data`, `temp`, `x`. Usa `nuevoPedido`, `stockRestante`.
 
-### 1.2 CÓDIGO AUTODOCUMENTADO — NOMBRES QUE HABLEN
-
-El buen código se explica solo por los nombres que usa. Los comentarios son para el "por qué", no para el "qué".
-
-**❌ Código basura:**
-```javascript
-var x = y * 1.16; // calcula el iva
-var d = new Date(); // fecha actual
-var temp = arr.filter(i => i.a > 0); // filtra activos
-```
-
-**✅ Código limpio:**
-```javascript
-const precioConImpuesto = precioBase * TASA_IVA_MEXICO;
-const fechaActual = new Date();
-const productosActivos = catalogo.filter(producto => producto.activo);
-```
-
-**Reglas de nombres:**
-- **No se aceptan** variables genéricas como `data`, `temp`, `x`, `item`, `result`, `info`. Usa nombres descriptivos: `nuevoPedido`, `stockRestante`, `terminalActiva`.
-- Los nombres deben describir **qué contienen**, no cómo se usan.
-- Si un nombre necesita un comentario al lado para entenderse, el nombre está mal elegido.
+### 2.3 CHECKLIST DEL ARQUITECTO
+Antes de aceptar código como terminado, verifica:
+1. **¿Es legible?** (Entendible en 30 segundos sin glosario externo).
+2. **¿Es escalable?** (¿Permite añadir otra sucursal fácilmente?).
+3. **¿Tiene manejo de errores?** (Si no hay internet, debe guardar local y reintentar, nunca colapsar).
 
 ---
 
-### 1.3 COMPLEJIDAD CICLOMÁTICA — EL GOBERNADOR
+## 3. VISIÓN EMPRESARIAL Y ARQUITECTURA TÉCNICA
 
-Si una función tiene demasiados `if... else... if... else`, es una **bomba de tiempo**.
+**R de Rico** es un híbrido complejo: Retail, Manufactura, Logística y Hospitalidad. Controla desde la harina en bodega hasta el pastel entregado a domicilio.
 
-**Reglas estrictas:**
-- **Máximo 3 niveles de indentación (anidamiento).** Si ves código con "escalones" que se van hacia la derecha, está demasiado complejo.
-- **Usar Early Returns (retornos tempranos)** para reducir anidamiento.
-- **Funciones de máximo 20 líneas.** Si una función supera 20 líneas, probablemente está haciendo más de una cosa y debe dividirse.
+### 3.1 Filosofía: "Ecosistema Digital Evolutivo"
+Diseñado hoy para ser más sabio mañana. El sistema no es un monolito rígido, sino una plataforma capaz de integrar los avances tecnológicos a medida que surjan.
 
-**❌ Código anidado (bomba de tiempo):**
-```javascript
-function procesarVenta(venta) {
-    if (venta) {
-        if (venta.items.length > 0) {
-            if (venta.metodoPago) {
-                if (venta.terminal) {
-                    // ... lógica enterrada en 4 niveles
-                }
-            }
-        }
-    }
-}
-```
+### 3.2 Estrategia de Desarrollo: Monolito Modular
+El código está fuertemente separado por dominios (Ventas, Inventario, IA), pero se ejecuta en un solo contenedor inicial. Permite velocidad de salida a producción hoy, con la capacidad de extraer microservicios mañana cuando la carga lo exija.
 
-**✅ Con Early Returns (limpio):**
-```javascript
-function procesarVenta(venta) {
-    if (!venta) return;
-    if (venta.items.length === 0) return;
-    if (!venta.metodoPago) return;
-    if (!venta.terminal) return;
+### 3.3 Resiliencia Total: Edge Computing (Local-First)
+- Cada sucursal cuenta con un servidor central local (y planta de luz).
+- El sistema **DEBE ser 100% funcional sin internet**.
+- PWA / IndexedDB: Las tablets guardan datos localmente si el WiFi falla.
+- Esto garantiza que una caída de nube pública o internet nunca detenga las ventas en tienda.
 
-    // lógica principal, plana y legible
-}
-```
+### 3.4 Sincronización y Datos
+- **Motores CRDT / PowerSync:** Sincronización bidireccional automática entre sucursales y corporativo para integridad matemática, superando las sincronizaciones manuales propensas a errores.
+- **Event Sourcing (Módulo Mermas):** El inventario es un libro contable inmutable de cada movimiento, no un simple campo `stock` sobreescribible. Es el único camino a la "Merma Cero".
+- **Logística WAN:** Uso de Cloudflare Tunnels para la conexión segura de repartidores en la calle (4G/5G).
 
 ---
 
-### 1.4 CHECKLIST DEL ARQUITECTO
+## 4. REGLAS ESPECÍFICAS DE DESARROLLO Y COMPORTAMIENTO
 
-Antes de aceptar cualquier código como terminado, responder estas 3 preguntas:
+### 4.1 NO ENTREGAR CÓDIGO BASURA
+- No se acepta código provisional, placeholders, ni `console.log()` olvidados.
+- No duplicar lógica, no dejar código muerto, no crear scripts temporales huérfanos.
 
-| Pregunta | Criterio |
-|----------|----------|
-| **¿Es legible?** | Si no entiendes qué está pasando en 30 segundos, el código no es limpio. Reescríbelo. |
-| **¿Es escalable?** | Si mañana R de Rico abre una sucursal en otra ciudad, ¿el código permite cambiar la ubicación fácilmente o está "pegado con pegamento" a Toluca? |
-| **¿Tiene manejo de errores?** | ¿Qué pasa si se intenta descontar pan y no hay internet? El código debe decir: *"Si falla, guarda en local y reintenta después"*, no simplemente colapsar. |
+### 4.2 NO INTERRUMPIR LA OPERACIÓN
+> El frontend corre con hot-reload en Docker. Un error de sintaxis en un `.jsx` **congela TODAS las tablets** de la panadería. Esto cuesta dinero real.
+- Todo cambio debe pasar `npm run build` sin errores antes de darse por bueno.
+- Un cambio a la vez, verificado, funcionando. No refactorizaciones masivas sin red de seguridad.
 
-**Tip de verificación final:**
-> *"Aplica una revisión de principios SOLID al código que acabas de generar. Asegúrate de que no haya funciones de más de 20 líneas y que toda la comunicación entre módulos sea a través de interfaces claras."*
+### 4.3 MÓDULOS CRÍTICOS — ZONAS RESTRINGIDAS
+Los archivos del POS (ej. `RetailVisionPOS.jsx`, `useCart.js`, `service.py`, `occupancy.py`) son el **corazón económico** del negocio. 
+**REGLA:** NO se tocan sin haber leído por completo `DOCUMENTACION_MODULO_POS.md`. Allí reside el cementerio de bugs históricos (robos de folios, pérdidas de datos por auto-save, modales bloqueantes falsos) que justifican su diseño actual.
 
----
+### 4.4 DEFENSA EN PROFUNDIDAD (SEGURIDAD)
+La seguridad opera en capas redundantes:
+1. UI (oculta botones).
+2. Lógica Frontend (valida antes de envío).
+3. Backend (valida permisos de nuevo).
+4. Base de Datos (Constraints e integridad referencial).
+Nunca confíes solo en que "el frontend ya lo validó".
 
-### 1.5 NO ENTREGAR CÓDIGO BASURA — REGLAS ESPECÍFICAS
-
-- **No se acepta código "de relleno", incompleto, provisional ni "placeholder".** Si no puedes hacer algo bien, di que no puedes. No entregues algo a medias esperando que "después se arregle".
-- **No dejar `console.log()` de depuración** en código de producción. Si los necesitas para diagnosticar, quítalos cuando termines.
-- **No crear archivos temporales, scripts sueltos, ni documentos de prueba** en la raíz del proyecto ni en ninguna carpeta del repositorio.
-- **No dejar código comentado** que "ya no se usa pero por si acaso". Si se eliminó, se eliminó. Git tiene historial para eso.
-- **No dejar imports sin usar.** Si ya no se usa un módulo, elimina el import.
-
----
-
-### 1.6 NO INTERRUMPIR LA OPERACIÓN DEL NEGOCIO
-
-> **Esta panadería opera en tiempo real.** Hay cajeros cobrando, repartidores cargando rutas, y producción planificando masas. El frontend corre con hot-reload dentro de Docker: **cualquier error de sintaxis en cualquier archivo `.jsx` congela TODAS las tablets de la panadería simultáneamente.** Esto causa pérdidas económicas reales e inmediatas.
-
-**Protocolo obligatorio antes de cualquier cambio:**
-
-1. **Entender antes de tocar.** Lee la documentación del módulo afectado ANTES de escribir una sola línea. No asumas que "es obvio".
-2. **Verificar que compila.** Todo cambio debe pasar `npm run build` sin errores antes de considerarse terminado.
-3. **Cambios pequeños y verificables.** No hagas refactorizaciones masivas. Un cambio a la vez, verificado, funcionando.
-4. **Si rompes algo, arréglalo INMEDIATAMENTE.** No pases a otra cosa dejando el sistema roto.
-5. **Nunca experimentes en producción.** Si quieres probar algo, hazlo en un archivo aislado. Nunca directamente sobre archivos que están siendo servidos a las terminales.
+### 4.5 DISCIPLINA DE REPOSITORIO
+- La carpeta `ESPECIFICACIONES DEL PROYECTO/` es exclusiva para documentación maestra oficial.
+- No dejar archivos autogenerados, .sql, o temporales en el repositorio.
+- Cada commit debe tener un propósito claro (ej: `feat:`, `fix:`, `docs:`).
 
 ---
 
-### 1.7 MÓDULOS CRÍTICOS — ZONAS RESTRINGIDAS
+## 5. LÓGICA DEL AGENTE DE IA (COACH DE PRODUCCIÓN)
 
-Los siguientes archivos son el **corazón económico** del negocio. Tienen bugs históricos resueltos con soluciones muy específicas que **no deben revertirse bajo ninguna circunstancia**:
+El Agente de IA (Módulo de Producción) no es un observador pasivo; él dicta "El Ritmo" de la planta.
 
-**Frontend POS (Punto de Venta):**
-- `apps/pos/RetailVisionPOS.jsx`
-- `apps/pos/hooks/useCart.js`
-- `apps/pos/hooks/useTerminalLocking.js`
-- `apps/pos/services/POSService.js`
-- `apps/pos/components/CheckoutScreen.jsx`
-- `apps/pos/OpenAccountsCorkboard.jsx`
-
-**Backend POS:**
-- `apps/api/modules/pos/service.py`
-- `apps/api/modules/pos/occupancy.py`
-- `apps/api/modules/pos/router.py`
-- `apps/api/modules/pos/models.py`
-
-**REGLA:** No se toca NINGUNO de estos archivos sin haber leído completo `DOCUMENTACION_MODULO_POS.md` primero. No hay excepciones.
+- **Modo Pacing:** El Agente tiene el control del temporizador. Al agotarse, lanza la pregunta proactivamente.
+- **Fast-Track:** Si el operario se adelanta y confirma antes, el Agente debe interrumpir el temporizador y avanzar.
+- **Protocolo de Interacción de Voz:** 
+  1) Detección de palabra clave o fin de tiempo.
+  2) Pregunta de validación ("Si terminaste di X, si no di Y").
+  3) Doble confirmación obligatoria.
+  4) Bucle de pausa con reintento.
+- **Regla Global (NO HARDCODE):** Las palabras clave ("VOY", "LISTO", "PAUSA") provienen de la tabla `SystemSetting`. Nunca deben estar harcodeadas en el código. Esto permite que el Administrador cambie el comando de todas las sucursales con un solo clic.
 
 ---
 
-### 1.8 ESTÁNDARES DE CÓDIGO
+## 6. ESTRUCTURA TECNOLÓGICA GENERAL
 
-- **React 18** con hooks funcionales. No usar class components (excepto `ErrorBoundary`).
-- **TailwindCSS 3** para estilos. Utility-first. No crear archivos CSS separados por componente.
-- **Imports con alias:** `@` apunta a `./apps/`, `@packages` apunta a `./packages/`.
-- **No usar `alert()`, `confirm()`, ni `prompt()` del navegador.** Usar Toasts o modales React.
-- **Nombres de archivos:** PascalCase para componentes (`.jsx`), camelCase para hooks y servicios (`.js`).
-- **API calls:** Siempre usar `window.location.hostname` para construir URLs del backend. **Nunca hardcodear IPs** (ni `localhost`, ni `192.168.x.x`).
-- **Timestamps:** El backend almacena en UTC. El frontend convierte a hora local para mostrar. Nunca manipular zonas horarias en el backend.
-
----
-
-### 1.9 DEFENSA EN PROFUNDIDAD (SEGURIDAD)
-
-Todo mecanismo de seguridad debe implementarse en **múltiples capas**. Nunca confiar en una sola:
-
-1. **Capa UI:** El frontend oculta o deshabilita botones/módulos según permisos del usuario.
-2. **Capa de Lógica Frontend:** Validaciones antes de enviar al backend.
-3. **Capa Backend:** El servidor valida permisos, roles y reglas de negocio **independientemente** de lo que diga el frontend.
-4. **Capa de Base de Datos:** Constraints, foreign keys e integridad referencial como última línea de defensa. Si un `DELETE` viola integridad, el backend debe manejar el error con gracia (por ejemplo, soft-delete).
-
-**Nunca asumir que "el frontend ya lo validó".** El backend debe ser capaz de rechazar cualquier petición inválida por sí mismo.
+- **Stack:** React 18 + Vite + TailwindCSS | Python FastAPI | PostgreSQL 15 | Docker
+- **Módulos Principales:** Punto de Venta IA, TPV Mesas, Producción/IA Coach, Gestión de Productos, Logística/Reparto, App Meseros/Repartidores.
+- **Comandos Clave:**
+  - `docker-compose up -d`
+  - `npm run build` (OBLIGATORIO para verificar estabilidad antes de comitear).
+  - `docker logs -f rderico-pos-dev`
 
 ---
 
-### 1.10 DISCIPLINA DE REPOSITORIO
-
-- **No subir archivos que no sean código fuente al repositorio.** Nada de `.sql`, `.csv`, `.xls`, `.docx`, `.json` de datos, ni respaldos de base de datos.
-- **No crear carpetas temporales** (`tmp/`, `test/`, `scratch/`, `old/`).
-- **No dejar archivos autogenerados** (como `vite.config.js.timestamp-*.mjs`).
-- **Cada commit debe tener un propósito claro.** No commits tipo "asdf", "fix", "test", "WIP".
-- **La carpeta `ESPECIFICACIONES DEL PROYECTO/` es exclusiva para documentación maestra oficial.** No meter ahí borradores, notas personales ni documentos obsoletos.
-
----
-
-### 1.11 PROCESO DE TRABAJO OBLIGATORIO
-
-1. **Leer antes de actuar.** Antes de tocar cualquier módulo, lee este documento y la documentación específica del módulo si existe.
-2. **Preguntar antes de asumir.** Si algo no está claro, pregunta. No inventes interpretaciones.
-3. **Un cambio a la vez.** Implementar, verificar, confirmar. Luego el siguiente.
-4. **Documentar lo importante.** Si resuelves un bug crítico o cambias arquitectura, actualiza la documentación correspondiente.
-5. **Limpiar después de ti.** No dejes archivos temporales, código muerto, ni imports sin usar.
-6. **Respetar lo que ya funciona.** Si un módulo está en producción y funciona, no lo "mejores" sin razón. *"Si no está roto, no lo arregles."*
-
----
-
-## 2. VISIÓN DEL PROYECTO
-
-R de Rico es un **ecosistema complejo** que mezcla retail, manufactura, logística y hospitalidad. Bajo el mismo techo opera:
-
-- Producción y venta de **panadería artesanal mexicana**
-- Producción, venta y reparto de **pizzas**
-- Venta de **helados y paletas** (producidos en otra planta)
-- Preparación y venta de **malteadas y aguas frescas**
-- Servicio de **cafetería de especialidad** con área de mesas
-- Venta de algunos **abarrotes y souvenirs**
-- Venta y entrega de **pasteles bajo pedido** (elaborados en otra planta de producción)
-
-El ERP fue concebido como un **Ecosistema Digital Evolutivo**: modular, compatible entre módulos, y capaz de incorporar fácilmente los avances tecnológicos que vayan surgiendo.
-
-### Principios Arquitectónicos
-
-- **Local-First:** Cada sucursal tiene su servidor con planta de luz de emergencia. El sistema funciona aunque se vaya el internet o la electricidad pública. Los datos se sincronizan al servidor corporativo durante las madrugadas.
-- **Modular:** Cada módulo es independiente y compatible con los demás. Se construyen y despliegan por separado.
-- **Contenedores (Docker):** Cada servicio vive en su propio contenedor, permitiendo actualizaciones sin tirar todo el sistema.
-
----
-
-## 3. ARQUITECTURA DEL SISTEMA
-
-### 3.1 Stack Tecnológico
-
-| Capa | Tecnología |
-|------|-----------|
-| **Frontend** | React 18 + Vite 4 + TailwindCSS 3 |
-| **Backend** | Python FastAPI + Uvicorn |
-| **Base de Datos** | PostgreSQL 15 (Alpine) |
-| **ORM** | SQLAlchemy (async con asyncpg) |
-| **Contenedores** | Docker + Docker Compose |
-| **IA (Visión)** | Google Generative AI (`@google/generative-ai`) |
-| **Iconografía** | Lucide React |
-
-### 3.2 Infraestructura
-
-- **Servidor:** PC Windows con IP fija `192.168.1.117` en red local.
-- **Proyecto instalado en:** `C:\Users\servidor1\.gemini\antigravity\scratch\ERP-R-DE-RICO\`
-- **Datos persistentes en:** `C:\Users\servidor1\.gemini\antigravity\scratch\ERP-R-DE-RICO-DATA\` (imágenes, configuración de terminales, volúmenes PostgreSQL).
-
-### 3.3 Contenedores Docker
-
-| Contenedor | Puerto Externo → Interno | Función |
-|------------|--------------------------|---------|
-| `rderico-pos-dev` | 5000 → 3000 | Frontend React (Vite dev server) |
-| `rderico-api-dev` | 5001 → 3001 | Backend FastAPI (Uvicorn) |
-| `rderico-db-dev` | 5433 → 5432 | PostgreSQL |
-
-> **CRÍTICO:** Los archivos `.jsx` están montados como volumen bind en Docker. Esto significa que cualquier cambio se refleja en vivo en TODAS las terminales conectadas. Es una ventaja para desarrollo y un riesgo enorme si se introduce un error.
-
-### 3.4 Acceso desde Terminales
-
-- **Frontend (tablets/PCs):** `http://192.168.1.117:5000`
-- **API:** `http://192.168.1.117:5001`
-- **Archivos estáticos (imágenes):** `http://192.168.1.117:5001/static/images/`
-
----
-
-## 4. MÓDULOS DEL SISTEMA
-
-| Módulo | Ubicación Principal | Estado |
-|--------|---------------------|--------|
-| Punto de Venta IA | `apps/pos/RetailVisionPOS.jsx` | ✅ Producción — **ZONA RESTRINGIDA** |
-| TPV Mesas & KDS | `apps/pos/TableServicePOS.jsx` | ✅ Producción |
-| Gestión de Productos | `apps/inventory/` | ✅ Producción |
-| Gestión de Almacenes | `apps/inventory/` (warehouse) | ✅ Producción |
-| Entrenamiento IA (Visión) | `apps/pos/VisionTrainingUI.jsx` | ✅ Producción |
-| Gestión de la Producción | `apps/production/` | ✅ Producción |
-| Reparto Pan Grandeza | `apps/pos/RepartoPanGrandezaUI.jsx` | ✅ Producción |
-| Módulo Financiero | `apps/financials/` | ✅ Producción |
-| Estadísticas de Ventas | `apps/analytics/` | ✅ Producción |
-| Facturación CFDI | `apps/pos/` (invoicing) | ✅ Producción |
-| Gestión de Compras | `apps/b2b/` | ✅ Producción |
-| Logística de Rutas | `apps/logistics/` | ✅ Producción |
-| App Mesero | `apps/waiter-app/` | ✅ Producción |
-| App Repartidor | `apps/driver-app/` | ✅ Producción |
-| Seguridad y Acceso | `apps/auth/` | ✅ Producción |
-| Auditoría y Control | `apps/AuditoriaControlUI.jsx` | ✅ Producción |
-| Ajustes del Sistema | `apps/settings/` | ✅ Producción |
-| Monitoreo de Red | `apps/network/` | ✅ Producción |
-
-### Punto de Entrada
-
-`main.jsx` → `<ExperimentCenterUI />` (Hub Central con sidebar y navegación entre módulos).
-
----
-
-## 5. MODELO DE SEGURIDAD
-
-- **Empleados** (`Employee`) con roles: `ADMIN`, `MANAGER`, `CASHIER`, `BAKER`, `WAITER`, `DRIVER`, `LOGISTICS`.
-- **Perfiles de Seguridad** (`SecurityProfile`) con permisos granulares por módulo.
-- **Validación siempre dual:** Frontend oculta lo no autorizado, backend rechaza lo no autorizado. Ambas capas son obligatorias.
-- **Permisos especiales POS:** `pos_force_unlock` y `pos_force_cash_unlock` para desbloqueo forzado de terminales.
-
----
-
-## 6. COMANDOS ESENCIALES
-
-```bash
-# Levantar el sistema completo
-docker-compose up -d
-
-# Ver logs del frontend en tiempo real
-docker logs -f rderico-pos-dev
-
-# Ver logs del backend en tiempo real
-docker logs -f rderico-api-dev
-
-# Verificar que el código compila (OBLIGATORIO antes de dar por terminado un cambio)
-npm run build
-
-# Respaldo de base de datos
-docker exec rderico-db-dev pg_dump -U user rderico > db_backup_FECHA.sql
-
-# Reiniciar un servicio específico
-docker restart rderico-pos-dev
-```
-
----
-
-## 7. DOCUMENTOS DE REFERENCIA
-
-Todos los documentos maestros viven en la carpeta `ESPECIFICACIONES DEL PROYECTO/`:
-
-| Documento | Propósito |
-|-----------|-----------|
-| **`CONTEXTO_SISTEMA_IA.md`** (este) | Principios de programación, reglas de calidad, arquitectura y disciplina de trabajo. Lectura obligatoria universal. |
-| **`DOCUMENTACION_MODULO_POS.md`** | Especificación completa del Punto de Venta IA. Lógica, bugs históricos resueltos, reglas inquebrantables. **Lectura obligatoria antes de tocar el POS.** |
-| **`DOCUMENTACION_MODULO_GESTION_PRODUCTOS.md`** | Especificación del módulo de Gestión de Productos. Lógica de eliminación, capas de seguridad, categorías. |
-
----
-
-*Este documento es ley. Cualquier agente de IA que trabaje en este proyecto debe leerlo antes de escribir su primera línea de código. La calidad no es opcional.*
+*Este documento es ley. Reemplaza todos los manifiestos, estrategias y lógicas de IA anteriores. Léelo siempre antes de escribir tu primera línea de código.*
