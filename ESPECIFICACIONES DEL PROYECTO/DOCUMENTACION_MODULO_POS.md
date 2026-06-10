@@ -8,6 +8,15 @@
 
 ---
 
+> ⛔ **PROHIBICIONES ABSOLUTAS** (si solo lees 5 líneas de este documento, que sean estas):
+> 1. **NO** reintroducir auto-save, timers ni `setInterval` para guardar el carrito. La persistencia es atómica por ítem.
+> 2. **NO** hacer `clearCart()` sin confirmación HTTP 200 del servidor.
+> 3. **NO** leer variables de estado (`cart`, `currentAccountNum`) dentro de callbacks asíncronos — usar siempre `useRef` (`cartRef.current`).
+> 4. **NO** almacenar candados de terminal en RAM de Python — solo en PostgreSQL (tabla `terminal_locks`).
+> 5. **NO** generar folios en el frontend — solo el backend los genera vía secuencia atómica de PostgreSQL.
+
+---
+
 ## ÍNDICE
 
 1. [Arquitectura Actual (v6.0 - Modelo SaaS)](#1-arquitectura-actual-v60---modelo-saas)
