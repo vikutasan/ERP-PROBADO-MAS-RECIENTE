@@ -1,266 +1,223 @@
-# 🏗️ ERP R DE RICO — CONTEXTO GLOBAL DEL SISTEMA PARA IAs
+# ERP R DE RICO — CONTEXTO DEL SISTEMA Y REGLAS DE PROGRAMACIÓN PARA IAs
 
-> **LECTURA OBLIGATORIA.** Este documento es la fuente de verdad para cualquier IA, desarrollador o auditor que trabaje en este proyecto. Contiene la arquitectura, las reglas de desarrollo, las directrices de calidad y la configuración de infraestructura del sistema ERP de la empresa **R de Rico** (panadería artesanal/industrial con sede en Toluca, México).
+> **LECTURA OBLIGATORIA.** Este documento es la autoridad máxima para cualquier agente de IA, desarrollador o auditor que trabaje en este proyecto. Define las reglas de calidad, disciplina de programación y arquitectura del sistema ERP de la empresa **R de Rico** (panadería artesanal/industrial con sede en Toluca, México).
 >
-> **Última actualización:** 2026-06-09
-> **Versión del sistema:** 1.2.1
-> **Repositorio:** https://github.com/vikutasan/ERP-R-DE-RICO-CON-POS-SIMPLIFICADO
+> Si algún otro documento, prompt o instrucción contradice lo aquí especificado, **este documento prevalece**.
+>
+> **Última actualización:** 2026-06-10
+> **Repositorio principal:** https://github.com/vikutasan/ERP-R-DE-RICO-CON-POS-SIMPLIFICADO
 
 ---
 
-## 1. ¿QUÉ ES ESTE PROYECTO?
+## 1. REGLAS DE PROGRAMACIÓN — LEY SUPREMA
 
-Un **sistema ERP integral** diseñado para una panadería que opera con múltiples puntos de venta (tablets), producción industrial, repartos mayoristas, logística de rutas y facturación. Fue construido iterativamente usando desarrollo asistido por IA (Antigravity / Claude / Gemini), lo cual le dio velocidad pero también exigió disciplina estricta para mantener la estabilidad.
-
-### Módulos Activos
-
-| Módulo | Archivo Principal | Estado |
-|--------|------------------|--------|
-| **Punto de Venta IA** | `apps/pos/RetailVisionPOS.jsx` | ✅ PRODUCCIÓN — **NO TOCAR** (ver `DOCUMENTACION_MODULO_POS.md`) |
-| **TPV Mesas & KDS** | `apps/pos/TableServicePOS.jsx` | ✅ Producción |
-| **Gestión de Productos** | `apps/inventory/` | ✅ Producción |
-| **Gestión de Almacenes** | `apps/inventory/` (warehouse) | ✅ Producción |
-| **Entrenamiento IA (Visión)** | `apps/pos/VisionTrainingUI.jsx` | ✅ Producción |
-| **Gestión de la Producción** | `apps/production/` | ✅ Producción |
-| **Gestión de Pickup** | `apps/production/` (pickup) | ✅ Producción |
-| **Reparto Pan Grandeza** | `apps/pos/RepartoPanGrandezaUI.jsx` | ✅ Producción |
-| **Módulo Financiero** | `apps/financials/` | ✅ Producción |
-| **Estadísticas de Ventas** | `apps/analytics/` | ✅ Producción |
-| **Facturación CFDI** | `apps/pos/` (invoicing) | ✅ Producción |
-| **Gestión de Compras** | `apps/b2b/` | ✅ Producción |
-| **Logística de Rutas** | `apps/logistics/` | ✅ Producción |
-| **App Mesero** | `apps/waiter-app/` | ✅ Producción |
-| **App Repartidor** | `apps/driver-app/` | ✅ Producción |
-| **Seguridad y Acceso** | `apps/auth/` | ✅ Producción |
-| **Auditoría y Control** | `apps/AuditoriaControlUI.jsx` | ✅ Producción |
-| **Ajustes del Sistema** | `apps/settings/` | ✅ Producción |
-| **Monitoreo de Red** | `apps/network/` | ✅ Producción |
+Estas reglas no son sugerencias. Son **obligaciones inquebrantables**. Cualquier IA o desarrollador que las viole está causando daño directo al negocio.
 
 ---
 
-## 2. ARQUITECTURA E INFRAESTRUCTURA
+### 1.1 NO ENTREGAR CÓDIGO BASURA
 
-### Stack Tecnológico Real (Actual)
-
-| Capa | Tecnología | Versión |
-|------|-----------|---------|
-| **Frontend** | React + Vite + TailwindCSS | React 18.2, Vite 4.4, Tailwind 3.3 |
-| **Backend** | Python FastAPI + Uvicorn | Dentro de Docker |
-| **Base de Datos** | PostgreSQL 15 (Alpine) | En Docker |
-| **ORM** | SQLAlchemy (async con asyncpg) | — |
-| **Contenedores** | Docker + Docker Compose | — |
-| **IA** | Google Generative AI (@google/generative-ai) | ^0.24.1 |
-| **Iconografía** | Lucide React | ^0.263.1 |
-
-### Servidor Físico
-
-- **Máquina:** PC Windows actuando como **servidor central**.
-- **IP de red local:** `192.168.1.117`
-- **Ruta de instalación del proyecto:** `C:\Users\servidor1\.gemini\antigravity\scratch\ERP-R-DE-RICO\`
-- **Ruta de datos persistentes:** `C:\Users\servidor1\.gemini\antigravity\scratch\ERP-R-DE-RICO-DATA\` (imágenes, catálogos, configuración de terminales, volúmenes de PostgreSQL).
-
-### Contenedores Docker (docker-compose.yml)
-
-| Contenedor | Imagen | Puerto Externo → Interno | Propósito |
-|------------|--------|--------------------------|-----------|
-| `rderico-pos-dev` | `erp-r-de-rico-pos` | **5000 → 3000** | Frontend React (Vite dev server) |
-| `rderico-api-dev` | `erp-r-de-rico-api` | **5001 → 3001** | Backend FastAPI (Uvicorn) |
-| `rderico-db-dev` | `postgres:15-alpine` | **5433 → 5432** | PostgreSQL |
-
-> **IMPORTANTE:** El frontend corre con hot-reload dentro de Docker. Los archivos `.jsx` se montan como volumen bind (`- .:/app`), lo que significa que **cualquier cambio en el código fuente se refleja inmediatamente en TODAS las terminales conectadas**. Esto es una ventaja para desarrollo rápido, pero también un riesgo: **un error de sintaxis en cualquier archivo `.jsx` congela TODAS las tablets de la panadería en tiempo real.**
-
-### Acceso desde Terminales
-
-- Las tablets y PCs de punto de venta acceden al sistema vía navegador web: `http://192.168.1.117:5000`
-- La API se consume desde: `http://192.168.1.117:5001`
-- **Archivos estáticos** (imágenes de productos, logos): `http://192.168.1.117:5001/static/images/`
-
-### Respaldo
-
-- **Repositorio Git:** https://github.com/vikutasan/ERP-R-DE-RICO-CON-POS-SIMPLIFICADO
-- **Backups de BD:** Carpeta `database_backups/` y archivos `db_backup_*.sql` en la raíz.
+- **No se acepta código "de relleno", incompleto, provisional ni "placeholder".** Si no puedes hacer algo bien, di que no puedes. No entregues algo a medias esperando que "después se arregle".
+- **No dejar `console.log()` de depuración** en código de producción. Si los necesitas para diagnosticar, quítalos cuando termines.
+- **No crear archivos temporales, scripts sueltos, ni documentos de prueba** en la raíz del proyecto ni en ninguna carpeta del repositorio. Si necesitas un archivo temporal, úsalo en tu entorno de trabajo y nunca lo subas al repo.
+- **No dejar código comentado** que "ya no se usa pero por si acaso". Si se eliminó, se eliminó. Git tiene historial para eso.
+- **No duplicar lógica.** Si algo ya existe, encuéntralo y reutilízalo. No crees una segunda versión "porque es más rápido".
+- **No inventar soluciones complicadas para problemas simples.** La solución más clara y directa es siempre la correcta.
 
 ---
 
-## 3. ESTRUCTURA DEL PROYECTO (MONOREPO)
+### 1.2 NO INTERRUMPIR LA OPERACIÓN DEL NEGOCIO
 
-```
-ERP-R-DE-RICO/
-├── main.jsx                    # Entry point de React
-├── index.html                  # Shell HTML
-├── index.css                   # Estilos globales
-├── vite.config.js              # Configuración de Vite
-├── docker-compose.yml          # Orquestación de servicios
-├── Dockerfile.dev              # Imagen del frontend
-├── .env                        # Variables de entorno
-├── package.json                # Dependencias (v1.2.1)
-│
-├── apps/
-│   ├── ExperimentCenterUI.jsx  # HUB PRINCIPAL — Dashboard con sidebar y módulos
-│   ├── AuditoriaControlUI.jsx  # Módulo de auditoría
-│   ├── api/                    # Backend FastAPI (Python)
-│   │   └── modules/
-│   │       ├── pos/            # Lógica de POS (service.py, router.py, models.py, occupancy.py)
-│   │       ├── cash/           # Sesiones de caja
-│   │       ├── inventory/      # Inventario
-│   │       └── ...
-│   ├── pos/                    # Frontend del POS
-│   │   ├── RetailVisionPOS.jsx # ⚠️ MÓDULO CRÍTICO — Punto de Venta IA
-│   │   ├── hooks/              # useCart.js, useTerminalLocking.js (hooks críticos)
-│   │   ├── services/           # POSService.js (HTTP client)
-│   │   ├── components/         # CheckoutScreen.jsx, etc.
-│   │   ├── OpenAccountsCorkboard.jsx  # Pizarrón de cuentas abiertas
-│   │   ├── VisionScanner.jsx   # Escáner de visión IA
-│   │   ├── TableServicePOS.jsx # POS de mesas
-│   │   ├── RepartoPanGrandezaUI.jsx   # Landing del módulo Grandeza
-│   │   ├── GrandezaParamsUI.jsx       # Parámetros de Grandeza
-│   │   ├── GrandezaDailyUI.jsx        # Gestión diaria de Grandeza
-│   │   └── GrandezaDriverUI.jsx       # App del repartidor de Grandeza
-│   ├── analytics/              # Estadísticas
-│   ├── auth/                   # Login y perfiles de seguridad
-│   ├── b2b/                    # Compras B2B
-│   ├── driver-app/             # App del repartidor general
-│   ├── financials/             # Módulo financiero
-│   ├── inventory/              # Gestión de productos y almacenes
-│   ├── kds/                    # Kitchen Display System
-│   ├── logistics/              # Logística de rutas
-│   ├── network/                # Monitoreo de red
-│   ├── production/             # Producción y pickup
-│   ├── settings/               # Ajustes del sistema
-│   ├── voice-agent/            # Agente de voz IA
-│   └── waiter-app/             # App del mesero
-│
-├── packages/                   # Paquetes compartidos
-├── public/                     # Assets estáticos (logo, favicon)
-├── dist/                       # Build de producción (generado por `vite build`)
-├── docs/                       # Documentación técnica
-└── database_backups/           # Respaldos de BD
-```
+> **Esta panadería opera en tiempo real.** Hay cajeros cobrando, repartidores cargando rutas, y producción planificando masas. El frontend corre con hot-reload dentro de Docker: **cualquier error de sintaxis en cualquier archivo `.jsx` congela TODAS las tablets de la panadería simultáneamente.** Esto causa pérdidas económicas reales e inmediatas.
+
+**Protocolo obligatorio antes de cualquier cambio:**
+
+1. **Entender antes de tocar.** Lee la documentación del módulo afectado ANTES de escribir una sola línea. No asumas que "es obvio".
+2. **Verificar que compila.** Todo cambio debe pasar `npm run build` sin errores antes de considerarse terminado.
+3. **Cambios pequeños y verificables.** No hagas refactorizaciones masivas. Un cambio a la vez, verificado, funcionando.
+4. **Si rompes algo, arréglalo INMEDIATAMENTE.** No pases a otra cosa dejando el sistema roto.
+5. **Nunca experimentes en producción.** Si quieres probar algo, hazlo en un archivo aislado. Nunca directamente sobre archivos que están siendo servidos a las terminales.
+
+---
+
+### 1.3 MÓDULOS CRÍTICOS — ZONAS RESTRINGIDAS
+
+Los siguientes archivos son el **corazón económico** del negocio. Tienen bugs históricos resueltos con soluciones muy específicas que **no deben revertirse bajo ninguna circunstancia**:
+
+**Frontend POS (Punto de Venta):**
+- `apps/pos/RetailVisionPOS.jsx`
+- `apps/pos/hooks/useCart.js`
+- `apps/pos/hooks/useTerminalLocking.js`
+- `apps/pos/services/POSService.js`
+- `apps/pos/components/CheckoutScreen.jsx`
+- `apps/pos/OpenAccountsCorkboard.jsx`
+
+**Backend POS:**
+- `apps/api/modules/pos/service.py`
+- `apps/api/modules/pos/occupancy.py`
+- `apps/api/modules/pos/router.py`
+- `apps/api/modules/pos/models.py`
+
+**REGLA:** No se toca NINGUNO de estos archivos sin haber leído completo `DOCUMENTACION_MODULO_POS.md` primero. No hay excepciones.
+
+---
+
+### 1.4 ESTÁNDARES DE CÓDIGO
+
+- **React 18** con hooks funcionales. No usar class components (excepto `ErrorBoundary`).
+- **TailwindCSS 3** para estilos. Utility-first. No crear archivos CSS separados por componente.
+- **Imports con alias:** `@` apunta a `./apps/`, `@packages` apunta a `./packages/`.
+- **No usar `alert()`, `confirm()`, ni `prompt()` del navegador.** Usar Toasts o modales React.
+- **Nombres de archivos:** PascalCase para componentes (`.jsx`), camelCase para hooks y servicios (`.js`).
+- **API calls:** Siempre usar `window.location.hostname` para construir URLs del backend. **Nunca hardcodear IPs** (ni `localhost`, ni `192.168.x.x`).
+- **Timestamps:** El backend almacena en UTC. El frontend convierte a hora local para mostrar. Nunca manipular zonas horarias en el backend.
+
+---
+
+### 1.5 DISCIPLINA DE REPOSITORIO
+
+- **No subir archivos que no sean código fuente al repositorio.** Nada de `.sql`, `.csv`, `.xls`, `.docx`, `.json` de datos, ni respaldos de base de datos.
+- **No crear carpetas temporales** (`tmp/`, `test/`, `scratch/`, `old/`).
+- **No dejar archivos autogenerados** (como `vite.config.js.timestamp-*.mjs`).
+- **Cada commit debe tener un propósito claro.** No commits tipo "asdf", "fix", "test", "WIP".
+- **La carpeta `ESPECIFICACIONES DEL PROYECTO/` es exclusiva para documentación maestra oficial.** No meter ahí borradores, notas personales ni documentos obsoletos.
+
+---
+
+### 1.6 DEFENSA EN PROFUNDIDAD (SEGURIDAD)
+
+Todo mecanismo de seguridad debe implementarse en **múltiples capas**. Nunca confiar en una sola:
+
+1. **Capa UI:** El frontend oculta o deshabilita botones/módulos según permisos del usuario.
+2. **Capa de Lógica Frontend:** Validaciones antes de enviar al backend.
+3. **Capa Backend:** El servidor valida permisos, roles y reglas de negocio **independientemente** de lo que diga el frontend.
+4. **Capa de Base de Datos:** Constraints, foreign keys e integridad referencial como última línea de defensa. Si un `DELETE` viola integridad, el backend debe manejar el error con gracia (por ejemplo, soft-delete).
+
+**Nunca asumir que "el frontend ya lo validó".** El backend debe ser capaz de rechazar cualquier petición inválida por sí mismo.
+
+---
+
+### 1.7 PROCESO DE TRABAJO OBLIGATORIO
+
+1. **Leer antes de actuar.** Antes de tocar cualquier módulo, lee este documento y la documentación específica del módulo si existe.
+2. **Preguntar antes de asumir.** Si algo no está claro, pregunta. No inventes interpretaciones.
+3. **Un cambio a la vez.** Implementar, verificar, confirmar. Luego el siguiente.
+4. **Documentar lo importante.** Si resuelves un bug crítico o cambias arquitectura, actualiza la documentación correspondiente.
+5. **Limpiar después de ti.** No dejes archivos temporales, código muerto, ni imports sin usar.
+6. **Respetar lo que ya funciona.** Si un módulo está en producción y funciona, no lo "mejores" sin razón. "Si no está roto, no lo arregles."
+
+---
+
+## 2. ARQUITECTURA DEL SISTEMA
+
+### 2.1 Stack Tecnológico
+
+| Capa | Tecnología |
+|------|-----------|
+| **Frontend** | React 18 + Vite 4 + TailwindCSS 3 |
+| **Backend** | Python FastAPI + Uvicorn |
+| **Base de Datos** | PostgreSQL 15 (Alpine) |
+| **ORM** | SQLAlchemy (async con asyncpg) |
+| **Contenedores** | Docker + Docker Compose |
+| **IA (Visión)** | Google Generative AI (`@google/generative-ai`) |
+| **Iconografía** | Lucide React |
+
+### 2.2 Infraestructura
+
+- **Servidor:** PC Windows con IP fija `192.168.1.117` en red local.
+- **Proyecto instalado en:** `C:\Users\servidor1\.gemini\antigravity\scratch\ERP-R-DE-RICO\`
+- **Datos persistentes en:** `C:\Users\servidor1\.gemini\antigravity\scratch\ERP-R-DE-RICO-DATA\` (imágenes, configuración de terminales, volúmenes PostgreSQL).
+
+### 2.3 Contenedores Docker
+
+| Contenedor | Puerto Externo → Interno | Función |
+|------------|--------------------------|---------|
+| `rderico-pos-dev` | 5000 → 3000 | Frontend React (Vite dev server) |
+| `rderico-api-dev` | 5001 → 3001 | Backend FastAPI (Uvicorn) |
+| `rderico-db-dev` | 5433 → 5432 | PostgreSQL |
+
+> **CRÍTICO:** Los archivos `.jsx` están montados como volumen bind en Docker. Esto significa que cualquier cambio se refleja en vivo en TODAS las terminales conectadas. Es una ventaja para desarrollo y un riesgo enorme si se introduce un error.
+
+### 2.4 Acceso desde Terminales
+
+- **Frontend (tablets/PCs):** `http://192.168.1.117:5000`
+- **API:** `http://192.168.1.117:5001`
+- **Archivos estáticos (imágenes):** `http://192.168.1.117:5001/static/images/`
+
+---
+
+## 3. MÓDULOS DEL SISTEMA
+
+| Módulo | Ubicación Principal | Estado |
+|--------|---------------------|--------|
+| Punto de Venta IA | `apps/pos/RetailVisionPOS.jsx` | ✅ Producción — **ZONA RESTRINGIDA** |
+| TPV Mesas & KDS | `apps/pos/TableServicePOS.jsx` | ✅ Producción |
+| Gestión de Productos | `apps/inventory/` | ✅ Producción |
+| Gestión de Almacenes | `apps/inventory/` (warehouse) | ✅ Producción |
+| Entrenamiento IA (Visión) | `apps/pos/VisionTrainingUI.jsx` | ✅ Producción |
+| Gestión de la Producción | `apps/production/` | ✅ Producción |
+| Reparto Pan Grandeza | `apps/pos/RepartoPanGrandezaUI.jsx` | ✅ Producción |
+| Módulo Financiero | `apps/financials/` | ✅ Producción |
+| Estadísticas de Ventas | `apps/analytics/` | ✅ Producción |
+| Facturación CFDI | `apps/pos/` (invoicing) | ✅ Producción |
+| Gestión de Compras | `apps/b2b/` | ✅ Producción |
+| Logística de Rutas | `apps/logistics/` | ✅ Producción |
+| App Mesero | `apps/waiter-app/` | ✅ Producción |
+| App Repartidor | `apps/driver-app/` | ✅ Producción |
+| Seguridad y Acceso | `apps/auth/` | ✅ Producción |
+| Auditoría y Control | `apps/AuditoriaControlUI.jsx` | ✅ Producción |
+| Ajustes del Sistema | `apps/settings/` | ✅ Producción |
+| Monitoreo de Red | `apps/network/` | ✅ Producción |
 
 ### Punto de Entrada
 
-`main.jsx` → renderiza `<ExperimentCenterUI />` dentro de un `ErrorBoundary`. Este componente es el **Hub Central** que muestra la sidebar con todos los módulos y gestiona la navegación entre ellos.
+`main.jsx` → `<ExperimentCenterUI />` (Hub Central con sidebar y navegación entre módulos).
 
 ---
 
-## 4. REGLAS DE DESARROLLO — DIRECTRICES PARA IAs
-
-### 🔴 REGLA SUPREMA: NO INTERRUMPIR LA OPERACIÓN
-
-> **Esta panadería opera en tiempo real.** Hay cajeros usando el POS, repartidores cargando rutas, y producción planificando masas. Cualquier cambio que rompa la compilación de Vite congela TODAS las pantallas de TODAS las terminales simultáneamente. **Esto causa pérdidas económicas reales.**
-
-**Protocolo obligatorio antes de cualquier cambio:**
-1. Asegúrate de que el cambio compila (`npm run build` sin errores).
-2. Si tocas un archivo `.jsx`, verifica la sintaxis JSX (etiquetas cerradas, llaves balanceadas).
-3. **Nunca** hagas cambios experimentales directamente en archivos de producción sin plan.
-4. Si cometes un error, corrígelo **inmediatamente** y verifica con `npm run build`.
-
-### 🔴 MÓDULO POS: ZONA RESTRINGIDA
-
-El módulo "Punto de Venta IA" (`RetailVisionPOS.jsx` y sus hooks/services asociados) es el corazón del negocio. **Está documentado exhaustivamente en `DOCUMENTACION_MODULO_POS.md`.** Reglas:
-
-- **NO modificar** `RetailVisionPOS.jsx`, `useCart.js`, `useTerminalLocking.js`, `POSService.js`, `CheckoutScreen.jsx`, ni `OpenAccountsCorkboard.jsx` sin leer primero `DOCUMENTACION_MODULO_POS.md` completo.
-- **NO modificar** `apps/api/modules/pos/service.py`, `occupancy.py`, `router.py`, ni `models.py` sin leer primero `DOCUMENTACION_MODULO_POS.md`.
-- Cada uno de estos archivos tiene bugs históricos resueltos con soluciones específicas que **no deben revertirse**.
-
-### 🟡 ESTÁNDARES DE CALIDAD VISUAL
-
-El sistema emplea una estética **premium y oscura**. No se aceptan diseños genéricos ni minimalistas:
-
-- **Paleta base:** Negro profundo (`#050505`, `#0a0a0a`), acentos en naranja (`orange-500/600`) para R de Rico, dorado/ámbar (`amber-400/500`) para Grandeza.
-- **Tipografía:** `font-black`, `uppercase`, `tracking-tighter` o `tracking-widest` según contexto.
-- **Bordes:** Redondeados agresivamente (`rounded-2xl`, `rounded-[24px]`, `rounded-[30px]`).
-- **Efectos:** Glassmorphism (`backdrop-blur`), sombras profundas (`shadow-2xl`), gradientes sutiles.
-- **Animaciones:** Transiciones suaves (`transition-all`), hovers interactivos.
-- **Módulo Grandeza:** Tiene su propia estética con fondo de textura de madera (`backgroundColor: '#3a2e1e'` + imagen de madera) y logo propio.
-
-### 🟡 ESTÁNDARES DE CÓDIGO
-
-- **React 18** con hooks. No usar class components (excepto `ErrorBoundary`).
-- **TailwindCSS 3** para estilos. Utility-first. No crear archivos CSS separados por componente.
-- **Imports con alias:** `@` apunta a `./apps/`, `@packages` apunta a `./packages/`.
-- **No usar `alert()`, `confirm()`, ni `prompt()`** — usar Toasts o modales React.
-- **Nombres de archivos:** PascalCase para componentes (`RetailVisionPOS.jsx`), camelCase para hooks (`useCart.js`), camelCase para servicios (`POSService.js`).
-- **API calls:** Usar la IP dinámica `window.location.hostname` para URLs del backend, nunca hardcodear IPs.
-
-### 🟡 PROCESO DE TRABAJO RECOMENDADO
-
-1. **Antes de tocar código:** Entender el módulo afectado. Leer este documento y, si aplica, `DOCUMENTACION_MODULO_POS.md`.
-2. **Hacer cambios incrementales:** Cambios pequeños y verificables. No refactorizaciones masivas.
-3. **Verificar compilación:** `npm run build` después de cada cambio significativo.
-4. **No crear archivos basura:** No dejar scripts temporales, archivos de test sueltos, ni documentos de prompts en la raíz.
-5. **Documentar cambios significativos:** Si se resuelve un bug importante o se cambia arquitectura, actualizar el documento maestro correspondiente.
-
----
-
-## 5. MÓDULO DE SEGURIDAD Y ACCESO
-
-El sistema usa un esquema de autenticación propio con:
+## 4. MODELO DE SEGURIDAD
 
 - **Empleados** (`Employee`) con roles: `ADMIN`, `MANAGER`, `CASHIER`, `BAKER`, `WAITER`, `DRIVER`, `LOGISTICS`.
 - **Perfiles de Seguridad** (`SecurityProfile`) con permisos granulares por módulo.
-- **Validación dual:** El frontend oculta módulos no autorizados, pero el backend **también valida permisos** en cada endpoint crítico.
-- **Permisos especiales del POS:** `pos_force_unlock` y `pos_force_cash_unlock` para desbloqueo forzado de terminales.
+- **Validación siempre dual:** Frontend oculta lo no autorizado, backend rechaza lo no autorizado. Ambas capas son obligatorias.
+- **Permisos especiales POS:** `pos_force_unlock` y `pos_force_cash_unlock` para desbloqueo forzado de terminales.
 
 ---
 
-## 6. MÓDULO REPARTO PAN GRANDEZA
-
-Es un sub-sistema dentro del ERP diseñado para la distribución mayorista del producto "Pan Grandeza". Tiene su propia estética visual (madera, logo propio, colores ámbar/dorado) y se compone de:
-
-- **Landing:** `RepartoPanGrandezaUI.jsx` — Página principal con 3 sub-módulos.
-- **Parámetros Generales:** `GrandezaParamsUI.jsx` — Catálogo de productos, clientes y rutas.
-- **Gestión Diaria:** `GrandezaDailyUI.jsx` — Jornadas diarias, carga de pedidos, cierre.
-- **Herramienta del Repartidor:** `GrandezaDriverUI.jsx` — App móvil para el chofer.
-
-Todos usan encabezado compacto negro con el logo real de Grandeza, consistente con la landing.
-
----
-
-## 7. AGENTE DE IA (COACH DE PRODUCCIÓN)
-
-El módulo de producción incluye un agente de voz IA que guía a los operarios:
-
-- **Parámetros globales** almacenados en `SystemSetting` (palabras clave: "VOY", "LISTO", "PAUSA").
-- **Nunca hardcodear** estas palabras en el código; siempre leerlas del backend.
-- **Protocolo de voz:** Detección → Validación → Doble confirmación → Bucle de pausa.
-
----
-
-## 8. COMANDOS ESENCIALES
+## 5. COMANDOS ESENCIALES
 
 ```bash
-# Levantar todos los servicios
+# Levantar el sistema completo
 docker-compose up -d
 
-# Ver logs del frontend
+# Ver logs del frontend en tiempo real
 docker logs -f rderico-pos-dev
 
-# Ver logs del API
+# Ver logs del backend en tiempo real
 docker logs -f rderico-api-dev
 
-# Compilar para verificar errores
+# Verificar que el código compila (OBLIGATORIO antes de dar por terminado un cambio)
 npm run build
 
-# Desarrollo local (fuera de Docker)
-npm run dev
-
 # Respaldo de base de datos
-docker exec rderico-db-dev pg_dump -U user rderico > db_backup_$(date +%F).sql
+docker exec rderico-db-dev pg_dump -U user rderico > db_backup_FECHA.sql
 
-# Reiniciar un contenedor específico
+# Reiniciar un servicio específico
 docker restart rderico-pos-dev
 ```
 
 ---
 
-## 9. DOCUMENTOS DE REFERENCIA
+## 6. DOCUMENTOS DE REFERENCIA
+
+Todos los documentos maestros viven en la carpeta `ESPECIFICACIONES DEL PROYECTO/`:
 
 | Documento | Propósito |
 |-----------|-----------|
-| **`CONTEXTO_SISTEMA_IA.md`** (este archivo) | Prompt global para cualquier IA. Arquitectura, reglas, infraestructura. |
-| **`DOCUMENTACION_MODULO_POS.md`** | Biblia del Punto de Venta IA. Lógica, bugs resueltos, reglas inquebrantables. **LECTURA OBLIGATORIA** antes de tocar el POS. |
+| **`CONTEXTO_SISTEMA_IA.md`** (este) | Reglas de programación, arquitectura, disciplina de trabajo. Lectura obligatoria universal. |
+| **`DOCUMENTACION_MODULO_POS.md`** | Especificación completa del Punto de Venta IA. Lógica, bugs históricos resueltos, reglas inquebrantables. **Lectura obligatoria antes de tocar el POS.** |
+| **`DOCUMENTACION_MODULO_GESTION_PRODUCTOS.md`** | Especificación del módulo de Gestión de Productos. Lógica de eliminación, capas de seguridad, categorías. |
 
 ---
 
-*Este documento es la fuente de verdad definitiva para el proyecto ERP R de Rico. Si algún otro documento o prompt contradice lo aquí especificado, este documento prevalece.*
+*Este documento es ley. Cualquier agente de IA que trabaje en este proyecto debe leerlo antes de escribir su primera línea de código. La calidad no es opcional.*
