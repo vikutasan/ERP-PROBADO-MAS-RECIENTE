@@ -1,8 +1,8 @@
 # 🛡️ DOCUMENTACIÓN MAESTRA: MÓDULO PUNTO DE VENTA IA — R de Rico ERP
 
-> **⚠️ LECTURA OBLIGATORIA.** Cualquier IA o desarrollador que necesite modificar o auditar CUALQUIER aspecto del Punto de Venta (POS) de R de Rico **DEBE leer este documento completo primero.** 
+> **⚠️ LECTURA OBLIGATORIA.** Cualquier IA o desarrollador que necesite modificar o auditar CUALQUIER aspecto del Punto de Venta (POS) de R de Rico **DEBE leer este documento completo primero.**
 >
-> **Última actualización:** 2026-06-09
+> **Última actualización:** 2026-06-10
 > **Versión de arquitectura POS:** v6.0 (Modelo SaaS — Persistencia Atómica)
 > **Archivos gobernados:** `apps/pos/`, `apps/api/modules/pos/`, `apps/api/modules/cash/`
 
@@ -13,8 +13,10 @@
 1. [Arquitectura Actual (v6.0 - Modelo SaaS)](#1-arquitectura-actual-v60---modelo-saas)
 2. [Evolución Histórica: Cómo y Por Qué Llegamos Aquí](#2-evolución-histórica-cómo-y-por-qué-llegamos-aquí)
 3. [El Cementerio de Bugs (Lecciones Aprendidas)](#3-el-cementerio-de-bugs-lecciones-aprendidas)
-4. [Las Reglas de Oro Supervivientes](#4-las-reglas-de-oro-supervivientes)
+4. [Las Reglas de Oro Supervivientes (v6.0)](#4-las-reglas-de-oro-supervivientes-v60)
 5. [Lógica de Terminales y Ocupación](#5-lógica-de-terminales-y-ocupación)
+6. [Archivos Críticos — Mapa de Zona Restringida](#6-archivos-críticos--mapa-de-zona-restringida)
+7. [Historial de Reglas Pre-v6.0 (Archivo Histórico)](#7-historial-de-reglas-pre-v60-archivo-histórico)
 
 ---
 
@@ -50,7 +52,7 @@ En la **v6.0 (Modelo SaaS)**, el funcionamiento del POS se simplificó radicalme
 Para evitar que futuras IAs intenten reimplementar arquitecturas pasadas que fracasaron, aquí se documenta el orden cronológico de nuestra evolución:
 
 ### Fase 1: El POS Básico y el Caos (v1.0 - v3.0)
-- **Febrero/Marzo 2026:** Se construyó el POS básico. Usaba un botón de "Guardar" que enviaba el estado del carrito al backend. 
+- **Febrero/Marzo 2026:** Se construyó el POS básico. Usaba un botón de "Guardar" que enviaba el estado del carrito al backend.
 - **El problema:** Los cajeros cerraban la pestaña o perdían la conexión antes de guardar. Se perdieron cuentas.
 
 ### Fase 2: La Era de la Complejidad Defensiva (v4.0 - v4.8)
@@ -73,21 +75,60 @@ Para evitar que futuras IAs intenten reimplementar arquitecturas pasadas que fra
 
 Estos son los incidentes que nos llevaron a simplificar todo. **No cometer los mismos errores:**
 
+### Incidentes Financieros
+
 | Error Histórico (Pre-v6) | Consecuencia | Cómo la v6.0 lo previene |
-|-------------------------|--------------|--------------------------|
+|-------------------------|--------------|--------------------------| 
 | **Ticket #906 ($124 → $2):** El auto-save leyó variables viejas de un `closure` y sobreescribió un carrito de 8 ítems con 1 ítem. | Pérdida económica severa. | Al no existir auto-save masivo, no hay timers asíncronos que puedan tener closures viejos. Todo es síncrono al clic. |
 | **Ticket #125 ($205):** El botón de Pizarrón limpiaba la pantalla antes de que el servidor confirmara el guardado. La red falló. | Cuenta desaparecida. | `clearCart()` solo ocurre si el servidor responde con HTTP 200 (Regla de Oro). |
 | **Hora Pico de Falsos Positivos:** El auto-save lanzaba modales bloqueantes de conflicto porque el Wi-Fi tardaba más de 15s en responder. | Cajeros paralizados. | El envío atómico es rápido y si falla, hace 3 reintentos silenciosos con "backoff" (ver `handleAddToCart`). |
-| **Terminal Fantasma (Usuario OMEGA):** Sesiones de caja sin TTL bloqueaban terminales indefinidamente. | Pantalla de inicio bloqueada 2 días. | `/terminals/status` ahora depura usuarios duplicados y el heartbeat limpia candados huérfanos. |
+
+### Incidente Ticket #906 — Línea de Tiempo Forense
+
+Este es el bug más grave que sufrimos. Se documenta en detalle para que jamás se repita:
+
+```
+T=0s    Víctor abre V11906 (8 items, total $124)
+        Auto-save del render N captura: cart=[8 items], account='V11906'
+
+T=10s   Víctor COBRA V11906 → clearCart() → cart = []
+        Víctor escanea BOLSA ($2) → nuevo carrito con 1 item
+        Nuevo folio: V11907
+
+T=15s   ⛔ AUTO-SAVE DISPARA con datos del render N (CLOSURE VIEJO):
+        → Envía: { account_num: 'V11906', items: [BOLSA] }
+        → Servidor: _sync_ticket_items() BORRA los 7 items extra
+        → V11906 ahora solo tiene 1x BOLSA ($2) 💀
+
+T=30s   Víctor cobra V11906 desde pizarrón
+        → Ticket impreso con $2.00 en vez de $124.00
+```
+
+**La v6.0 elimina este escenario de raíz:** No existe ningún timer que pueda disparar con datos viejos.
+
+### Incidente Terminal Fantasma OMEGA (23/Abril/2026)
+
+**Terminal afectada:** CAJA + T4/T6 (usuario OMEGA, ID: 20).
+**Síntoma:** OMEGA aparecía como ocupante de 2 terminales simultáneamente durante 2+ días.
+
+**Causa raíz (3 bugs interconectados):**
+1. **CashSession sin TTL:** OMEGA abrió una sesión de caja que nunca se cerró. El endpoint `/terminals/status` mostraba la terminal CAJA como bloqueada permanentemente.
+2. **Doble ocupación:** `lock_terminal()` limpiaba locks previos del usuario pero no sabía de CashSessions. La CashSession huérfana en CAJA generaba una entrada duplicada.
+3. **Heartbeat sin purga:** El heartbeat solo renovaba el timestamp sin limpiar locks duplicados del mismo usuario.
+
+**Solución implementada (vigente hoy):**
+1. `heartbeat()` ahora ejecuta purga de locks expirados + limpieza de duplicados del mismo usuario en cada ciclo.
+2. `/terminals/status` detecta cuando un usuario tiene lock en otra terminal y marca la CashSession huérfana como `"CAJA ABIERTA"` con flag `operator_absent: true`.
+3. CashSessions abiertas >24 horas se marcan como `"SESIÓN EXPIRADA"` con flag `stale_session: true`.
 
 ---
 
-## 4. LAS REGLAS DE ORO SUPERVIVIENTES
+## 4. LAS REGLAS DE ORO SUPERVIVIENTES (v6.0)
 
-A pesar de la simplificación, ciertas reglas de ingeniería siguen siendo obligatorias:
+A pesar de la simplificación, estas reglas de ingeniería siguen siendo **obligatorias** en la v6.0:
 
 ### ⚡ REGLA 1: Referencias Mutables (`useRef`) vs Closures
-Aunque ya no hay timer, React sigue siendo asíncrono. **Nunca** leas el carrito desde una variable de estado dentro de la lógica de finalización.
+Aunque ya no hay timer de auto-save, React sigue siendo asíncrono. **Nunca** leas el carrito desde una variable de estado dentro de la lógica de finalización.
 - ✅ OBLIGATORIO: Usar `cartRef.current`, `accountNumRef.current`, `ticketVersionRef.current`.
 - ⛔ PROHIBIDO: Usar `cart`, `currentAccountNum` dentro de `handleTicketAction`.
 
@@ -96,10 +137,10 @@ El cobro y el envío al pizarrón (`handleTicketAction`) todavía usan `actionMu
 Esto evita que un cajero desespere, dé doble clic en "Cobrar", y se generen dos registros de pago para la misma cuenta.
 
 ### ⚡ REGLA 3: Zero-Loss en Acciones Finales
-Cuando se cobra o se manda al pizarrón explícitamente, la UI **nunca** debe hacer `clearCart()` hasta que la petición HTTP finalice con éxito. 
+Cuando se cobra o se manda al pizarrón explícitamente, la UI **nunca** debe hacer `clearCart()` hasta que la petición HTTP finalice con éxito.
 
 ### ⚡ REGLA 4: El Candado Anti-Wipe (v4.6)
-Si el cajero pierde internet y presiona F5, React se reinicia con `cart = []`. 
+Si el cajero pierde internet y presiona F5, React se reinicia con `cart = []`.
 Para evitar que eso borre el carrito almacenado en `localStorage`, `useCart.js` tiene un candado estricto: `cartState.key === storageKey`. El localStorage jamás se sobreescribe hasta que el estado se haya hidratado primero.
 
 ### ⚡ REGLA 5: Visibilidad en el Pizarrón (DRAFT vs OPEN)
@@ -115,26 +156,142 @@ Por seguridad en la API, un ticket en estado `DRAFT` tiene un "dueño" (la termi
 ### ⚡ REGLA 8: Garbage Collector (Limpieza de Zombis)
 Para evitar que la base de datos se llene de basura por pestañas cerradas bruscamente, el backend ejecuta un *Garbage Collector* silencioso cada vez que se reserva un folio (con un acelerador máximo de 1 vez por minuto). Este proceso:
 1. Elimina físicamente los tickets vacíos (sin productos) que tengan más de 1 hora de antigüedad.
-2. Cambia a estado `CANCELLED` los tickets `DRAFT` con productos que tengan más de 24 horas de abandono (evitando que queden como cuentas por cobrar fantasma, pero manteniendo el registro para auditoría).
+2. Cambia a estado `CANCELLED` los tickets `DRAFT` con productos que tengan más de 24 horas de abandono (configurable vía `pos_draft_ttl_days` en `SystemSetting`). Esto evita cuentas fantasma pero mantiene el registro para auditoría.
+
+### ⚡ REGLA 9: Sync Obligatorio de `cartRef` en Recuperación (v4.5)
+Cuando se recupera una cuenta del Pizarrón o se ejecuta un auto-heal por conflicto 409, `cartRef.current` debe sincronizarse **ANTES** de llamar a `setCart()`.
+- ⛔ PROHIBIDO: `setCart(recovered)` sin sincronizar `cartRef` primero.
+- ✅ OBLIGATORIO: `cartRef.current = recovered` seguido de `setCart(recovered)`.
+
+**¿Por qué?** `setCart()` es asíncrono en React. Si otra operación lee `cartRef.current` entre el `setCart` y el siguiente render, leería datos obsoletos.
+
+### ⚡ REGLA 10: Búsqueda Exacta por `account_num` (v4.5)
+Para recuperar un ticket por su folio (recovery o auto-heal), se usa el endpoint `/tickets/by-account/{account_num}` con búsqueda exacta (`==`).
+- ⛔ PROHIBIDO: Buscar tickets con `ilike('%V1300%')` para recovery. Esto coincide con V1300, V13000, V13001 y devuelve el ticket equivocado.
+- ✅ OBLIGATORIO: Usar el endpoint de búsqueda exacta que retorna el ticket correcto o HTTP 404.
+
+### ⚡ REGLA 11: Reciclaje de Tickets — Máximo 5 Minutos (v4.8)
+Cuando una terminal reserva un folio, el sistema intenta reciclar un ticket vacío existente antes de generar uno nuevo. Sin embargo, solo se reciclan tickets creados hace **menos de 5 minutos**.
+- ⛔ PROHIBIDO: Reciclar tickets vacíos sin límite de antigüedad (un ticket viejo pudo haber sido pagado y liberado en otro ciclo).
+- ✅ OBLIGATORIO: Filtro `created_at >= (now - 5min)` en `_find_empty_ticket()`.
 
 ---
 
 ## 5. LÓGICA DE TERMINALES Y OCUPACIÓN
 
-### Ocupación Amigable (v4.4+)
-- **Candados Persistentes:** Siguen viviendo en PostgreSQL (`terminal_locks`), NUNCA en la RAM de Python (para sobrevivir reinicios de Docker).
-- **Adiós a la Expulsión Automática:** En el pasado, si la red fallaba, el sistema expulsaba al cajero al perder el candado. **Ya no.** Ahora (`useTerminalLocking.js`) solo muestra una advertencia visual si se pierde el candado.
-- **Fuerza Bruta (Force Unlock):** Para robar una terminal bloqueada, el usuario requiere el permiso `pos_force_unlock`. 
-  - ⚠️ **Excepción CAJAS:** Si la terminal tiene una **Sesión de Caja activa**, se exige un permiso superior (`pos_force_cash_unlock`). Al forzar el desbloqueo, ocurre una **Traspuesta de Titularidad**: la sesión de caja (y la responsabilidad del dinero en ella) se transfiere automáticamente al usuario que forzó el desbloqueo.
-- **Heartbeat:** Cada 20 segundos la terminal avisa que sigue viva. Si una terminal muere (ej. se apaga la tablet), a los 20 minutos el candado caduca y se libera solo.
+### 5.1 Estados Posibles de una Terminal
 
-### Sesiones de Caja vs Candados de Terminal
+| Estado | Lock (DB) | CashSession | Descripción |
+|--------|-----------|-------------|-------------|
+| **Disponible** | ❌ No | ❌ No | Cualquier empleado puede entrar |
+| **Ocupada (Sin Caja)** | ✅ Sí | ❌ No | Solo el dueño del lock la usa |
+| **Ocupada (Con Caja)** | ✅ Sí | ✅ Abierta | Puede cobrar e imprimir tickets |
+| **Caja Abierta sin Operador** | ❌ No | ✅ Abierta | El cajero se fue pero la CashSession sigue abierta |
+
+### 5.2 Interacción del Usuario con Terminales
+- **Logueado sin terminal:** Ve las desocupadas disponibles y las ocupadas con candado rojo.
+- **Con terminal ocupada:** Si está usando T1, no puede usar otra sin soltar T1.
+- **Sale de la terminal (cierra pestaña o unlock) pero con Caja Abierta:** La terminal se libera de su candado, pero como tiene `CashSession` activa, muestra "CAJA ABIERTA" sin operador.
+- **Saca Corte de Caja:** La terminal pierde el estatus de "Caja", vuelve a ser terminal regular.
+- **Es Administrador:** Tiene el botón de **FORZAR DESBLOQUEO** en terminales bloqueadas.
+
+### 5.3 Heartbeat, TTL y Configuración
+
+Todos los valores son **configurables desde `system_settings`** (tabla `SystemSetting`):
+
+| Parámetro | Clave en `system_settings` | Default |
+|-----------|---------------------------|---------|
+| TTL de Lock | `pos_terminal_lock_ttl_m` | 15 min |
+| TTL de Drafts para GC | `pos_draft_ttl_days` | 1 día |
+
+**Regla de seguridad:** El `TTL` del lock siempre debe ser al menos **10 veces mayor** que el intervalo de heartbeat del frontend.
+
+### 5.4 Desbloqueo Forzado, Permisos y Auditoría
+
+#### Permisos requeridos (validados en BACKEND, no solo en frontend)
+
+| Permiso en `SecurityProfile.permissions` | Permite |
+|------------------------------------------|---------|
+| `pos_force_unlock` = `"full"` o `true` | Desbloquear terminales regulares (sin caja) |
+| `pos_force_cash_unlock` = `"full"` o `true` | Desbloquear terminales que tienen CashSession activa |
+| `role` = `"ADMIN"` | Ambos permisos automáticamente |
+
+> **REGLA ABSOLUTA:** El backend (`router.py → force_terminal_unlock`) valida los permisos consultando `Employee.profile.permissions` antes de ejecutar el desbloqueo. Si el usuario no tiene permisos, responde con HTTP 403. **NUNCA** confiar solo en que el frontend oculta el botón.
+
+#### Traspuesta de Titularidad de Caja
+
+Cuando se ejecuta Force Unlock en una terminal con `CashSession` activa:
+1. El backend **elimina** el lock de `terminal_locks`.
+2. El backend **cambia** el `employee_id` y `employee_name` de la `CashSession` activa al del usuario que ejecutó el desbloqueo.
+3. Ambas operaciones ocurren en un **solo `db.commit()`** (transacción atómica). Si algo falla, ninguna se aplica.
+4. **El cajero original pierde definitivamente la titularidad de esa sesión de caja.**
+
+#### Auditoría de Force Unlock
+
+Cada ejecución de `force_unlock` genera un log con: Terminal afectada, quién ejecutó el desbloqueo, a quién le fue quitado, si se transfirió la CashSession y timestamp. **Prohibido** eliminar o reducir este log.
+
+### 5.5 Candados Persistentes (Regla Inamovible)
+- Los candados de terminal viven **siempre** en la tabla `terminal_locks` de PostgreSQL.
+- **NUNCA** almacenar candados en la RAM de Python (se pierden con cada reinicio de Docker).
+- El frontend (`useTerminalLocking.js`) **NUNCA** expulsa automáticamente al cajero si pierde el lock — solo muestra una advertencia visual.
+- El frontend **NUNCA** re-adquiere un lock perdido automáticamente.
+
+### 5.6 Sesiones de Caja vs Candados de Terminal
 - `terminal_locks`: Bloquea físicamente la pantalla (T1, T2, CAJA).
 - `cash_sessions`: Permite que un empleado registre ingresos/egresos monetarios en una terminal habilitada para cobrar.
 
 ---
 
+## 6. ARCHIVOS CRÍTICOS — MAPA DE ZONA RESTRINGIDA
+
+| Archivo | Propósito | Peligro |
+|---------|-----------|---------|
+| `apps/api/modules/pos/occupancy.py` | Candados persistentes en PostgreSQL | ⚠️ NUNCA volver a usar RAM |
+| `apps/api/modules/pos/router.py` | Endpoints de lock/unlock/heartbeat/status/force_unlock | ⚠️ force_unlock tiene permisos + auditoría |
+| `apps/api/modules/pos/models.py` | Modelo `TerminalLock` + `Ticket` (version, UNIQUE constraints) | ⚠️ No modificar constraints |
+| `apps/api/modules/pos/service.py` | Lógica de negocio: persistencia atómica, GC, folios, reciclaje | ⚠️ El corazón del POS |
+| `apps/pos/hooks/useTicketActions.js` | Hook maestro v6.0: addToCart atómico, ticketAction, recovery | ⚠️ No reintroducir auto-save |
+| `apps/pos/hooks/useCart.js` | Estado + localStorage del carrito (v4.6: Anti-Wipe) | ⚠️ NUNCA guardar a localStorage sin validar `cartState.key === storageKey` |
+| `apps/pos/hooks/useTerminalLocking.js` | Polling + heartbeat del frontend | ⚠️ NUNCA re-adquirir lock automáticamente |
+| `apps/pos/RetailVisionPOS.jsx` | Componente principal: captura, carrito, cobro | ⚠️ Leer este documento completo antes de tocar |
+| `apps/api/modules/cash/models.py` | Modelo `CashSession` | ⚠️ La traspuesta modifica employee_id |
+| `apps/api/modules/cash/router.py` | Cierre de caja (corte) | ⚠️ No confundir con force_unlock |
+
+### Checklist para Revisión de Código
+
+Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, verificar:
+
+- [ ] ¿Los candados se persisten en PostgreSQL (tabla `terminal_locks`)?
+- [ ] ¿El frontend NUNCA expulsa automáticamente basándose en fallos de polling?
+- [ ] ¿El frontend NUNCA re-adquiere un lock perdido automáticamente?
+- [ ] ¿Los folios de ticket se generan SOLO en el backend, sin fallbacks aleatorios?
+- [ ] ¿El force_unlock valida permisos en el BACKEND (no solo frontend)?
+- [ ] ¿El force_unlock transfiere la CashSession al nuevo operador?
+- [ ] ¿El force_unlock y la traspuesta están en UN SOLO commit atómico?
+- [ ] ¿El force_unlock registra auditoría?
+- [ ] ¿El heartbeat renueva el lock en la base de datos?
+- [ ] ¿Las cuentas del pizarrón solo desaparecen por cobro o cancelación explícita?
+- [ ] ¿El `useEffect` de localStorage del carrito está protegido con el candado `cartState.key`?
+- [ ] ¿`cartRef.current` se sincroniza ANTES de `setCart()` en toda recuperación?
+
+---
+
+## 7. HISTORIAL DE REGLAS PRE-v6.0 (ARCHIVO HISTÓRICO)
+
+> **⚠️ ATENCIÓN: Las reglas listadas en esta sección están OBSOLETAS.** Existieron durante la era del auto-save masivo (v4.0-v4.8) y fueron **eliminadas intencionalmente** al migrar a la arquitectura de persistencia atómica (v6.0). **NO deben reimplementarse.** Se documentan aquí únicamente como registro histórico para evitar que futuras IAs o desarrolladores las "redescubran" y las reintroduzcan.
+
+| Regla Eliminada | Qué hacía | Por qué fue eliminada en v6.0 |
+|-----------------|-----------|-------------------------------|
+| **Auto-Save Bulk (Timer 15s)** | Un `setInterval` de 15 segundos enviaba el carrito completo al servidor. | Causa raíz de las race conditions, closures viejos y sobreescrituras que generaron el incidente del Ticket #906 y los falsos positivos de hora pico. La persistencia atómica por ítem elimina la necesidad de un timer. |
+| **Regla de Debounce del Auto-Save** | Controlaba las dependencias del `useEffect` del timer para evitar disparos prematuros. | Ya no existe timer de auto-save que controlar. |
+| **Flush de Seguridad en Recovery** | Al recuperar una cuenta del Pizarrón, primero se guardaba el carrito actual como medida de seguridad. | Con persistencia atómica, cada operación ya está en el servidor en el momento en que ocurre. No hay nada pendiente que "flushear". |
+| **CollisionModal (UI Bloqueante para 409)** | Un modal que bloqueaba la pantalla del cajero cuando se detectaba un conflicto de versión HTTP 409. | Los conflictos 409 ahora se resuelven silenciosamente con auto-heal inline: el sistema descarga la versión fresca del servidor y actualiza la UI sin interrumpir al cajero. |
+| **Actualización Síncrona de `version` en Auto-Save** | Tras cada ciclo de auto-save, se actualizaba `ticketVersionRef` sincrónicamente para evitar que el siguiente ciclo enviara una versión obsoleta. | Ya no hay ciclos de auto-save. La versión se sincroniza directamente en `handleAddToCart` y `handleTicketAction` al recibir la respuesta del servidor. |
+| **Reasignación Automática de Folio** | Si un folio ya había sido pagado, el sistema automáticamente generaba un nuevo folio y transfería los items. | Eliminado por ser confuso para los cajeros. Ahora el sistema simplemente informa al usuario: "El folio X ya fue cobrado. Recupere la cuenta del Pizarrón o inicie una nueva." El cajero decide qué hacer. |
+
+---
+
 > **Esta es la FUENTE ÚNICA DE VERDAD de la v6.0.**
-> El POS de R de Rico es un monumento a la evolución: construimos sistemas complejos para sobrevivir, aprendimos que la complejidad causaba errores, y los sustituimos por simplicidad atómica robusta. 
-> 
+> El POS de R de Rico es un monumento a la evolución: construimos sistemas complejos para sobrevivir, aprendimos que la complejidad causaba errores, y los sustituimos por simplicidad atómica robusta.
+>
 > *Tu trabajo como IA no es reintroducir la complejidad antigua, sino proteger y expandir esta simplicidad.*
