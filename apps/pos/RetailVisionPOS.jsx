@@ -55,7 +55,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
 
     // --- Estado de Ocupación de Terminales (Custom Hook) ---
     const { terminalStatuses, setTerminalStatuses, forceLogoutModal, setForceLogoutModal } = useTerminalLocking(selectedTerminal, currentUser);
-    const { status: netStatus, latency: netLatency } = useNetworkHealth(15000);
+    const { status: netStatus, latency: netLatency } = useNetworkHealth(15000, selectedTerminal, currentUser);
 
     // --- Estado del Gestor de Caja ---
     const [isCashEnabled, setIsCashEnabled] = useState(false);

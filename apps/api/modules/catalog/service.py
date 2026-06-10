@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 from . import models, schemas
 from modules.production import service as prod_service
 from modules.production import schemas as prod_schemas
@@ -59,7 +60,7 @@ class CatalogService:
         return True
 
     async def get_products(self, db: AsyncSession, category_id: int = None):
-        query = select(models.Product).options(
+        query = select(models.Product).where(models.Product.active == True).options(
             selectinload(models.Product.category), 
             selectinload(models.Product.technical_sheet)
         ).order_by(models.Product.position.asc(), models.Product.name.asc())
@@ -121,9 +122,17 @@ class CatalogService:
         db_product = result.scalar_one_or_none()
         if not db_product:
             return False
-        await db.delete(db_product)
-        await db.commit()
-        return True
+            
+        try:
+            await db.delete(db_product)
+            await db.commit()
+            return True
+        except IntegrityError:
+            await db.rollback()
+            # Soft delete to preserve historical integrity (e.g. sales tickets, inventory transactions)
+            db_product.active = False
+            await db.commit()
+            return True
 
     async def clear_catalog(self, db: AsyncSession):
         """Función deshabilitada por seguridad."""

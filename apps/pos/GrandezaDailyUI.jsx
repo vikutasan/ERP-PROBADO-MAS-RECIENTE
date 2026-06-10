@@ -223,23 +223,29 @@ export const GrandezaDailyUI = ({ onBack }) => {
     };
 
     return (
-        <div className="h-full flex flex-col bg-gradient-to-br from-[#0a0a0a] via-[#111] to-[#0a0a0a] text-white overflow-hidden">
+        <div className="h-full flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+            {/* Fondo de madera */}
+            <div className="absolute inset-0 z-0 pointer-events-none" style={{
+                backgroundImage: 'url("/assets/wood_bg.jpg")',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+            }} />
+
             {/* Header */}
-            <div className="p-8 pb-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-green-700 rounded-3xl flex items-center justify-center text-3xl shadow-2xl shadow-emerald-500/20">
-                            📅
-                        </div>
-                        <div>
-                            <h1 className="text-3xl font-black uppercase tracking-tighter text-white leading-none">
-                                Gestión Diaria
-                            </h1>
-                            <p className="text-sm font-bold uppercase tracking-widest mt-1 text-emerald-400">
-                                Reparto Pan Grandeza
-                            </p>
-                        </div>
+            <div className="relative z-20 pt-6 px-8 pb-6 bg-black border-b border-white/10 shadow-2xl flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                    <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-500/20 border-2 border-emerald-500/30 flex items-center justify-center shrink-0">
+                        <img src={`http://${window.location.hostname}:5001/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                     </div>
+                    <div>
+                        <h1 className="text-4xl font-black uppercase tracking-tighter text-white leading-none">
+                            Gestión <span className="text-emerald-400">Diaria</span>
+                        </h1>
+                        <p className="text-sm font-bold uppercase tracking-widest mt-1 text-gray-400">
+                            Reparto Pan Grandeza
+                        </p>
+                    </div>
+                </div>
 
                     <div className="flex items-center gap-4">
                         {/* Selector de Fecha */}
@@ -269,10 +275,9 @@ export const GrandezaDailyUI = ({ onBack }) => {
                         </button>
                     </div>
                 </div>
-            </div>
 
             {/* Contenido Principal */}
-            <div className="flex-1 overflow-y-auto p-8 pt-4 space-y-6 custom-scrollbar">
+            <div className="relative z-10 flex-1 overflow-y-auto p-8 pt-4 space-y-6 custom-scrollbar">
                 {loading ? (
                     <div className="flex-1 flex items-center justify-center h-64">
                         <div className="text-center space-y-4">
@@ -308,14 +313,14 @@ export const GrandezaDailyUI = ({ onBack }) => {
                     /* ─── Jornada existe ─── */
                     <div className="max-w-4xl mx-auto space-y-6">
                         {/* Banner de Estado */}
-                        <div className="flex items-center justify-between bg-white/[0.02] border border-white/10 rounded-[24px] p-6">
+                        <div className="flex items-center justify-between bg-black border border-white/10 rounded-[24px] p-6 shadow-xl">
                             <div className="flex items-center gap-4">
-                                <div className="text-3xl">
-                                    {journey.status === 'PREPARANDO' ? '🔧' : journey.status === 'EN_RUTA' ? '🚗' : '✅'}
+                                <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg border border-emerald-500/30 flex items-center justify-center shrink-0">
+                                    <img src={`http://${window.location.hostname}:5001/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                                 </div>
                                 <div>
-                                    <h2 className="text-xl font-black uppercase tracking-tighter">
-                                        {dayName} — {viewDate}
+                                    <h2 className="text-xl font-black uppercase tracking-tighter text-white">
+                                        {dayName} — <span className="text-emerald-400">{viewDate}</span>
                                     </h2>
                                     <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">
                                         Jornada #{journey.id}
@@ -550,11 +555,13 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
     return (
         <div className="space-y-4">
             {/* Estado en ruta */}
-            <div className="bg-blue-500/5 border border-blue-500/20 rounded-[24px] p-6">
+            <div className="bg-black border border-blue-500/20 rounded-[24px] p-6 shadow-xl">
                 <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <span className="text-2xl">🚗</span>
-                        <h3 className="text-lg font-black uppercase tracking-tighter text-blue-400">Ruta en Curso</h3>
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg border border-blue-500/30 flex items-center justify-center shrink-0">
+                            <img src={`http://${window.location.hostname}:5001/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
+                        </div>
+                        <h3 className="text-xl font-black uppercase tracking-tighter text-white">Ruta en <span className="text-blue-400">Curso</span></h3>
                     </div>
                     <span className="text-xs font-bold text-gray-500">{visits.length} visitas registradas</span>
                 </div>

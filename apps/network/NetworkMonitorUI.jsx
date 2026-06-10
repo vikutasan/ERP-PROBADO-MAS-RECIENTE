@@ -91,8 +91,9 @@ export const NetworkMonitorUI = () => {
                             termStatus = 'cash_open';
                         } else {
                             // Verificar si el lock es reciente (últimos 25 min = TTL + margen)
+                            const safeDate = info.locked_at.endsWith('Z') ? info.locked_at : info.locked_at + 'Z';
                             const lockAge = info.locked_at 
-                                ? (Date.now() - new Date(info.locked_at).getTime()) / 60000 
+                                ? (Date.now() - new Date(safeDate).getTime()) / 60000 
                                 : 999;
                             termStatus = lockAge < 25 ? 'online' : 'cash_open';
                         }
@@ -106,8 +107,10 @@ export const NetworkMonitorUI = () => {
                     };
 
                     // Detectar cambios de estado para el log
-                    const prevStatus = prevStatusRef.current[tid]?.status;
-                    if (prevStatus === 'online' && !isOccupied) {
+                    const prevOccupier = prevStatusRef.current[tid]?.occupier;
+                    const wasOccupied = !!prevOccupier;
+
+                    if (wasOccupied && !isOccupied) {
                         const evt = {
                             time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                             timestamp: now.getTime(),
@@ -115,8 +118,8 @@ export const NetworkMonitorUI = () => {
                             type: 'disconnect',
                             rawType: 'disconnect',
                             severity: 'normal',
-                            message: `${prevStatusRef.current[tid]?.occupier || 'Usuario'} se desconectó`,
-                            user: prevStatusRef.current[tid]?.occupier || 'Desconocido',
+                            message: `${prevOccupier || 'Usuario'} se desconectó`,
+                            user: prevOccupier || 'Desconocido',
                         };
                         setEventLog(prev => [evt, ...prev].slice(0, 100));
                         // Guardar en BD
@@ -126,11 +129,11 @@ export const NetworkMonitorUI = () => {
                             body: JSON.stringify({
                                 terminal_id: tid,
                                 incident_type: 'disconnect',
-                                user_logged: prevStatusRef.current[tid]?.occupier || null,
+                                user_logged: prevOccupier || null,
                                 details: 'Terminal desconectada — sesión perdida'
                             })
                         }).catch(() => {});
-                    } else if (prevStatus !== 'online' && isOccupied) {
+                    } else if (!wasOccupied && isOccupied) {
                         const evt = {
                             time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                             timestamp: now.getTime(),
@@ -407,6 +410,26 @@ export const NetworkMonitorUI = () => {
                                     <p className="text-sm text-gray-400">Problema serio. Revisa cables RJ-45, switch, y que Docker Desktop esté corriendo.</p>
                                 </div>
                             </div>
+                            <h3 className="text-base font-black uppercase text-gray-400 mt-6 mb-4">Estado de las Terminales</h3>
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-green-400 shrink-0"></span>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-green-400">Verde (En Línea)</span> — La terminal está activa, conectada y en uso.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-yellow-500 shrink-0"></span>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-yellow-500">Amarillo (Caja Abierta)</span> — La máquina está inactiva/apagada, pero su sesión está protegida porque <span className="text-white font-bold">no se ha sacado el corte de caja</span>.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-red-500">Rojo (Expirada/Caída)</span> — Pérdida total de conexión con una sesión ocupada.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-gray-500 shrink-0"></span>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-gray-400">Gris (Disponible)</span> — Terminal vacía y lista para ser usada.</p>
+                                </div>
+                            </div>
+
                             <h3 className="text-base font-black uppercase text-gray-400 mt-6 mb-4">Colores del Historial</h3>
                             <div className="space-y-3">
                                 <div className="flex items-center gap-3">
@@ -415,11 +438,11 @@ export const NetworkMonitorUI = () => {
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <span className="w-3 h-3 rounded-full bg-blue-400 shrink-0"></span>
-                                    <p className="text-sm text-gray-400"><span className="font-black text-blue-400">Azul</span> — Desconexión normal. El usuario salió y volvió a entrar rápido (cambio de terminal, recarga de página). No es falla.</p>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-blue-400">Azul</span> — Desconexión normal. El usuario salió ordenadamente. No es falla.</p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <span className="w-3 h-3 rounded-full bg-red-400 shrink-0"></span>
-                                    <p className="text-sm text-gray-400"><span className="font-black text-red-400">Rojo</span> — Desconexión sospechosa. No hubo reconexión en 2 minutos. Posible falla de cable LAN o red. Estas SÍ cuentan como fallas.</p>
+                                    <p className="text-sm text-gray-400"><span className="font-black text-red-400">Rojo</span> — Desconexión sospechosa sin reconexión. Posible falla de red. Éstas SÍ cuentan como fallas.</p>
                                 </div>
                             </div>
                             <button onClick={() => setShowInfoModal(false)} className="mt-6 w-full py-3 rounded-2xl bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/30 font-black uppercase text-[10px] tracking-widest text-white transition-all">ENTENDIDO</button>

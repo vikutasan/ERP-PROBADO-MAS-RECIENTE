@@ -422,19 +422,26 @@ export const GrandezaParamsUI = ({ onBack }) => {
     };
 
     return (
-        <div className="h-full flex flex-col bg-gradient-to-br from-[#0a0a0a] via-[#111] to-[#0a0a0a] text-white overflow-hidden relative">
+        <div className="h-full flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+            {/* Fondo de madera */}
+            <div className="absolute inset-0 z-0 pointer-events-none" style={{
+                backgroundImage: 'url("/assets/wood_bg.jpg")',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+            }} />
+
             {/* Header Global */}
-            <div className="p-8 pb-0">
-                <div className="flex items-center justify-between mb-8">
+            <div className="relative z-20 pt-6 px-8 bg-black border-b border-white/10 shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-700 rounded-3xl flex items-center justify-center text-3xl shadow-2xl shadow-blue-500/20">
-                            📋
+                        <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center shrink-0">
+                            <img src={`http://${window.location.hostname}:5001/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-black uppercase tracking-tighter text-white leading-none">
-                                Parámetros Generales
+                            <h1 className="text-4xl font-black uppercase tracking-tighter text-white leading-none">
+                                Parámetros <span className="text-amber-400">Generales</span>
                             </h1>
-                            <p className="text-sm font-bold text-blue-400 uppercase tracking-widest mt-1">
+                            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">
                                 Reparto Pan Grandeza
                             </p>
                         </div>
@@ -442,7 +449,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                            className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all shrink-0"
                         >
                             ← Volver al Menú
                         </button>
@@ -450,7 +457,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                 </div>
 
                 {/* Tabs de Navegación Interna */}
-                <div className="flex gap-8 border-b border-white/10 px-4">
+                <div className="flex gap-8 px-2 mt-4">
                     {[
                         { id: 'products', label: 'Productos Vinculados', icon: '🍞' },
                         { id: 'clients', label: 'Directorio de Clientes', icon: '👥' },
@@ -461,14 +468,14 @@ export const GrandezaParamsUI = ({ onBack }) => {
                             onClick={() => setActiveTab(tab.id)}
                             className={`pb-4 px-2 font-black uppercase tracking-widest text-sm transition-all relative ${
                                 activeTab === tab.id 
-                                ? 'text-white' 
+                                ? 'text-amber-400' 
                                 : 'text-gray-500 hover:text-gray-300'
                             }`}
                         >
                             <span className="mr-2">{tab.icon}</span>
                             {tab.label}
                             {activeTab === tab.id && (
-                                <div className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-500 rounded-t-full shadow-[0_0_10px_rgba(59,130,246,0.8)]"></div>
+                                <div className="absolute bottom-0 left-0 w-full h-[3px] bg-amber-400 rounded-t-full shadow-[0_0_10px_rgba(251,191,36,0.8)]"></div>
                             )}
                         </button>
                     ))}
@@ -483,7 +490,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
             )}
 
             {/* Contenido Dinámico */}
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <div className="relative z-10 flex-1 overflow-y-auto p-8 custom-scrollbar">
                 <div className="max-w-7xl mx-auto">
                     {activeTab === 'products' && renderProductsTab()}
                     {activeTab === 'clients' && renderClientsTab()}

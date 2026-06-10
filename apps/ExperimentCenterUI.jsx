@@ -107,7 +107,7 @@ export const ExperimentCenterUI = () => {
         { id: 'auditoria', name: 'Auditoría y Control', color: 'bg-slate-900', icon: '📋', access: ['ADMIN', 'MANAGER'] },
         { id: 'settings', name: 'Ajustes del Sistema', color: 'bg-red-900', icon: '⚙️', access: ['ADMIN'] },
         { id: 'network_monitor', name: 'Monitoreo de Red', color: 'bg-cyan-900', icon: '📡', access: ['ADMIN', 'MANAGER'] },
-        { id: 'reparto_grandeza', name: 'Reparto Pan Grandeza', color: 'bg-amber-700', icon: '🍞', access: ['ADMIN', 'MANAGER', 'LOGISTICS'] },
+        { id: 'reparto_grandeza', name: 'Reparto Pan Grandeza', color: 'bg-amber-700', icon: `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`, access: ['ADMIN', 'MANAGER', 'LOGISTICS'] },
     ];
 
 
@@ -199,7 +199,7 @@ export const ExperimentCenterUI = () => {
                         >
                             <span className="text-xl shrink-0 flex items-center justify-center">
                                 {mod.icon.endsWith('.png') ? (
-                                    <img src={mod.icon} alt={mod.name} className="w-8 h-8 object-contain" />
+                                    <img src={mod.icon} alt={mod.name} className="w-12 h-12 object-cover rounded-full border border-amber-500/40 shadow-lg" />
                                 ) : (
                                     mod.icon
                                 )}

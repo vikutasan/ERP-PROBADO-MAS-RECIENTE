@@ -40,7 +40,8 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
         const info = terminalStatuses[tid];
         if (!info || !info.occupier_id) return { color: '#555', label: 'SIN CONEXIÓN' }; // gris
         if (info.stale_session) return { color: '#ef4444', label: 'SESIÓN EXPIRADA' }; // rojo
-        const lockAge = info.locked_at ? (Date.now() - new Date(info.locked_at).getTime()) / 60000 : 999;
+        const safeDate = info.locked_at.endsWith('Z') ? info.locked_at : info.locked_at + 'Z';
+        const lockAge = info.locked_at ? (Date.now() - new Date(safeDate).getTime()) / 60000 : 999;
         if (lockAge < 25) return { color: '#4ade80', label: 'EN LÍNEA' }; // verde
         return { color: '#f59e0b', label: 'INACTIVA' }; // amarillo
     }, [terminalStatuses]);
