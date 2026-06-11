@@ -405,6 +405,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                     handleHoldAccount={() => handleTicketAction('OPEN')}
                     cashEnabled={isCashEnabled}
                     isSendingToPizarron={isSendingToPizarron}
+                    lastSaveStatus={lastSaveStatus}
                 />
             </div>
 

@@ -2,15 +2,15 @@
 
 > **⚠️ LECTURA OBLIGATORIA.** Cualquier IA o desarrollador que necesite modificar o auditar CUALQUIER aspecto del Punto de Venta (POS) de R de Rico **DEBE leer este documento completo primero.**
 >
-> **Última actualización:** 2026-06-10
-> **Versión de arquitectura POS:** v6.0 (Modelo SaaS — Persistencia Atómica)
+> **Última actualización:** 2026-06-11
+> **Versión de arquitectura POS:** v6.1 (Modelo SaaS — Persistencia Atómica + Verificación Post-Envío)
 > **Archivos gobernados:** `apps/pos/`, `apps/api/modules/pos/`, `apps/api/modules/cash/`
 
 ---
 
 > ⛔ **PROHIBICIONES ABSOLUTAS** (si solo lees 5 líneas de este documento, que sean estas):
 > 1. **NO** reintroducir auto-save, timers ni `setInterval` para guardar el carrito. La persistencia es atómica por ítem.
-> 2. **NO** hacer `clearCart()` sin confirmación HTTP 200 del servidor.
+> 2. **NO** hacer `clearCart()` sin confirmación HTTP 200 del servidor **Y** verificación post-envío (v6.1).
 > 3. **NO** leer variables de estado (`cart`, `currentAccountNum`) dentro de callbacks asíncronos — usar siempre `useRef` (`cartRef.current`).
 > 4. **NO** almacenar candados de terminal en RAM de Python — solo en PostgreSQL (tabla `terminal_locks`).
 > 5. **NO** generar folios en el frontend — solo el backend los genera vía secuencia atómica de PostgreSQL.
@@ -130,6 +130,43 @@ T=30s   Víctor cobra V11906 desde pizarrón
 2. `/terminals/status` detecta cuando un usuario tiene lock en otra terminal y marca la CashSession huérfana como `"CAJA ABIERTA"` con flag `operator_absent: true`.
 3. CashSessions abiertas >24 horas se marcan como `"SESIÓN EXPIRADA"` con flag `stale_session: true`.
 
+### Incidente Cuenta Fantasma $453 — Terminal T3 (11/Junio/2026)
+
+**Terminal afectada:** T3 (cajera Yami, ID: 25).
+**Síntoma:** Yami reportó que armó una cuenta por $453 en T3, le dio clic en "Enviar Cuenta" al Pizarrón, creyó que se envió correctamente, pero la cuenta **nunca apareció en el Pizarrón**.
+
+**Investigación forense:**
+1. **Base de datos:** No existe ningún ticket con total=$453, ni como OPEN, ni DRAFT, ni CANCELLED. La cuenta nunca llegó al servidor.
+2. **Logs del servidor:** Cero errores HTTP. Cero excepciones. El servidor nunca recibió la petición.
+3. **Auditoría POS:** Todos los requests de T3 ese día respondieron HTTP 200. No hay registro de un intento fallido.
+4. **Tickets de Yami:** Sus 16 tickets de esa noche están todos completos y pagados correctamente. Ninguno suma $453.
+5. **DRAFT tickets:** No existe ningún DRAFT de T3, confirmando que los items **nunca se persistieron atómicamente**.
+
+**Causa raíz:** La Terminal T3 sufrió un **corte de WiFi silencioso**. Los productos se agregaron a la pantalla (optimistic update de React), pero las llamadas a `addItemToTicket()` fallaron silenciosamente después de 3 reintentos. Los items solo existieron en la memoria del navegador. Cuando Yami presionó "Enviar Cuenta", el `createTicket()` también falló por falta de red, pero el indicador de error (un toast de 5 segundos y un texto de 10px) fue **insuficiente en hora pico** y la cajera no lo percibió.
+
+```
+T=0s    Yami empieza a armar cuenta de $453 en T3
+        Agrega productos → aparecen en pantalla (optimistic update)
+        PERO: WiFi de T3 está caído
+
+T=1-30s addItemToTicket() falla 3 veces por cada producto
+        Toast ⚠️ aparece brevemente → Yami no lo ve en hora pico
+        Items SOLO existen en memoria del navegador, NO en PostgreSQL
+
+T=31s   Yami da clic en "Enviar Cuenta"
+        createTicket() falla (sin red)
+        Toast ❌ aparece 5 segundos → Yami ya está atendiendo al siguiente cliente
+        Carrito NO se limpia (Regla de Oro funciona)
+        PERO Yami cree que se envió porque el error fue invisible
+
+T=32s+  Yami cambia a otra cuenta → la cuenta de $453 se pierde
+```
+
+**Solución implementada (v6.1 — vigente hoy, 3 capas de protección):**
+1. **Botón BLOQUEADO:** El botón "Enviar Cuenta" ahora se **deshabilita y se pone rojo** cuando `lastSaveStatus === 'failed'`. Es físicamente imposible enviarlo sin conexión. (`SalesReceipt.jsx`)
+2. **Banner Rojo Fijo:** Un banner grande, rojo y parpadeante aparece en el ticket diciendo "⛔ SIN CONEXIÓN AL SERVIDOR — Los productos NO se están guardando". Ya no es un toast que desaparece. (`SalesReceipt.jsx`)
+3. **Verificación Post-Envío:** Después de que `createTicket()` retorna HTTP 200, el sistema ejecuta un `GET /tickets/by-account/{folio}` para **confirmar que el ticket realmente existe** en la base de datos. Si la verificación falla, **NO limpia el carrito** y muestra una alerta de 10 segundos. (`useTicketActions.js`)
+
 ---
 
 ## 4. LAS REGLAS DE ORO SUPERVIVIENTES (v6.0)
@@ -146,7 +183,7 @@ El cobro y el envío al pizarrón (`handleTicketAction`) todavía usan `actionMu
 Esto evita que un cajero desespere, dé doble clic en "Cobrar", y se generen dos registros de pago para la misma cuenta.
 
 ### ⚡ REGLA 3: Zero-Loss en Acciones Finales
-Cuando se cobra o se manda al pizarrón explícitamente, la UI **nunca** debe hacer `clearCart()` hasta que la petición HTTP finalice con éxito.
+Cuando se cobra o se manda al pizarrón explícitamente, la UI **nunca** debe hacer `clearCart()` hasta que la petición HTTP finalice con éxito **Y se verifique que el ticket existe en el servidor** (v6.1).
 
 ### ⚡ REGLA 4: El Candado Anti-Wipe (v4.6)
 Si el cajero pierde internet y presiona F5, React se reinicia con `cart = []`.
@@ -183,6 +220,22 @@ Para recuperar un ticket por su folio (recovery o auto-heal), se usa el endpoint
 Cuando una terminal reserva un folio, el sistema intenta reciclar un ticket vacío existente antes de generar uno nuevo. Sin embargo, solo se reciclan tickets creados hace **menos de 5 minutos**.
 - ⛔ PROHIBIDO: Reciclar tickets vacíos sin límite de antigüedad (un ticket viejo pudo haber sido pagado y liberado en otro ciclo).
 - ✅ OBLIGATORIO: Filtro `created_at >= (now - 5min)` en `_find_empty_ticket()`.
+
+### ⚡ REGLA 12: Verificación Post-Envío al Pizarrón (v6.1)
+Después de que `createTicket()` retorna éxito, el sistema debe hacer un `GET` de verificación para confirmar que el ticket existe en la base de datos antes de limpiar el carrito.
+- ✅ OBLIGATORIO: Verificar existencia del ticket con `posService.getTicketByAccountNum(folio)` antes de `clearCart()`.
+- ⛔ PROHIBIDO: Confiar ciegamente en el HTTP 200 de `createTicket()` sin verificar que el commit de PostgreSQL fue exitoso.
+- Si la verificación falla: NO limpiar el carrito, mostrar alerta visible de 10+ segundos.
+
+**¿Por qué?** El incidente de la cuenta fantasma $453 demostró que un HTTP 200 no garantiza que los datos persistan si hay problemas de red intermitentes o fallos de commit en la DB. La verificación añade ~50ms de latencia pero previene pérdida de datos.
+
+### ⚡ REGLA 13: Bloqueo de Botón Sin Conexión (v6.1)
+El botón "Enviar Cuenta" (Guardar en Pizarrón) debe estar **físicamente deshabilitado** cuando `lastSaveStatus === 'failed'`.
+- ✅ OBLIGATORIO: `disabled={... || hasUnsavedItems}` en el botón del Pizarrón.
+- ✅ OBLIGATORIO: Banner rojo visible y persistente (no un toast efímero) cuando los items no se están guardando.
+- ⛔ PROHIBIDO: Permitir enviar al Pizarrón cuando hay items que fallaron la persistencia atómica.
+
+**¿Por qué?** Un toast que desaparece en 5 segundos es invisible en hora pico. El cajero debe ver un indicador FIJO y el botón debe ser INOPERABLE hasta que la conexión se restablezca y los items se persistan exitosamente.
 
 ---
 
@@ -282,6 +335,9 @@ Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, veri
 - [ ] ¿Las cuentas del pizarrón solo desaparecen por cobro o cancelación explícita?
 - [ ] ¿El `useEffect` de localStorage del carrito está protegido con el candado `cartState.key`?
 - [ ] ¿`cartRef.current` se sincroniza ANTES de `setCart()` en toda recuperación?
+- [ ] ¿El envío al Pizarrón verifica post-envío que el ticket existe antes de `clearCart()`? (v6.1)
+- [ ] ¿El botón "Enviar Cuenta" está bloqueado cuando `lastSaveStatus === 'failed'`? (v6.1)
+- [ ] ¿Hay un banner rojo FIJO (no toast) cuando los items fallan la persistencia atómica? (v6.1)
 
 ---
 
@@ -300,7 +356,8 @@ Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, veri
 
 ---
 
-> **Esta es la FUENTE ÚNICA DE VERDAD de la v6.0.**
+> **Esta es la FUENTE ÚNICA DE VERDAD de la v6.1.**
 > El POS de R de Rico es un monumento a la evolución: construimos sistemas complejos para sobrevivir, aprendimos que la complejidad causaba errores, y los sustituimos por simplicidad atómica robusta.
+> La v6.1 agrega una capa de verificación post-envío y bloqueo visual sin conexión, nacida del incidente de la cuenta fantasma $453.
 >
 > *Tu trabajo como IA no es reintroducir la complejidad antigua, sino proteger y expandir esta simplicidad.*

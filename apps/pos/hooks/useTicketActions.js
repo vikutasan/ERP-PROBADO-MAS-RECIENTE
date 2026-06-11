@@ -232,11 +232,30 @@ export const useTicketActions = ({
                 savedTicketRef.current = savedTicket;
                 
                 // El carrito solo se limpia DESPUÉS de confirmar el guardado
+                // + VERIFICACIÓN POST-ENVÍO (v6.1): confirmar que el ticket existe en el servidor
                 if (finalizeUI) {
                     if (status === 'PAID') {
                         handlePrintTicket(savedTicket);
                     }
                     if (savedTicket) {
+                        // 🔒 VERIFICACIÓN: Antes de limpiar, confirmar que el ticket está en la DB
+                        if (status === 'OPEN') {
+                            try {
+                                const verification = await posService.getTicketByAccountNum(targetAccountNum);
+                                if (!verification || verification.status !== 'OPEN') {
+                                    console.error('⚠️ VERIFICACIÓN FALLÓ: El ticket no se encontró en el servidor después de guardarlo');
+                                    setToastMessage('⚠️ ¡ATENCIÓN! El envío pareció exitoso pero el ticket NO se encontró en el servidor. NO se limpió el carrito. Intente de nuevo.');
+                                    setTimeout(() => setToastMessage(null), 10000);
+                                    return; // NO limpiar el carrito — el ticket puede no haberse guardado
+                                }
+                            } catch (verifyErr) {
+                                console.error('⚠️ Error verificando ticket post-envío:', verifyErr);
+                                setToastMessage('⚠️ No se pudo verificar el envío. El carrito NO se limpió por seguridad. Intente de nuevo.');
+                                setTimeout(() => setToastMessage(null), 10000);
+                                return; // NO limpiar — mejor seguro que perder datos
+                            }
+                        }
+
                         clearCart();
                         setOriginalCapturer(null);
                         setCurrentAccountNum('');
@@ -255,7 +274,7 @@ export const useTicketActions = ({
                             setTimeout(() => setToastMessage(null), 4000);
                         }
                         if (status === 'OPEN') {
-                            setToastMessage('📌 Cuenta guardada en el Pizarrón exitosamente.');
+                            setToastMessage('📌 Cuenta guardada en el Pizarrón exitosamente. ✅ Verificado.');
                             setTimeout(() => setToastMessage(null), 3000);
                         }
                     }

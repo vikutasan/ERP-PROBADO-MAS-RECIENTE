@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
-export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount, cashEnabled = false, isSendingToPizarron = false }) => {
+export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, currentAccountNum, selectedTerminal, handleCheckout, handleHoldAccount, cashEnabled = false, isSendingToPizarron = false, lastSaveStatus = 'idle' }) => {
+    const hasUnsavedItems = lastSaveStatus === 'failed' && cart.length > 0;
     const [editMode, setEditMode] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [editInputValue, setEditInputValue] = useState('');
@@ -98,6 +99,19 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                 )}
             </div>
 
+            {/* ⛔ BANNER DE ALERTA: Items sin guardar en servidor */}
+            {hasUnsavedItems && (
+                <div className="bg-red-600 text-white px-4 py-3 rounded-xl border-2 border-red-400 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)] mt-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl">⛔</span>
+                        <div>
+                            <p className="font-black text-sm uppercase tracking-wider leading-tight">SIN CONEXIÓN AL SERVIDOR</p>
+                            <p className="text-[10px] font-bold text-red-200 uppercase tracking-wider">Los productos NO se están guardando. Verifique WiFi.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="mt-4 pt-4 border-t-2 border-dashed border-gray-400 space-y-4">
                 <button 
                     onClick={() => cashEnabled && handleCheckout()}
@@ -140,16 +154,27 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                 <div className="flex flex-col gap-3">
                     <button 
                         onClick={handleHoldAccount}
-                        disabled={isSendingToPizarron || cart.length === 0}
+                        disabled={isSendingToPizarron || cart.length === 0 || hasUnsavedItems}
+                        title={hasUnsavedItems ? '⛔ No se puede enviar: hay productos sin guardar en el servidor. Verifique la conexión WiFi.' : ''}
                         className={`w-full border-2 border-black p-6 flex flex-col items-center justify-center transition-all group shadow-[4px_4px_0_rgba(0,0,0,1)] relative overflow-hidden ${
-                            isSendingToPizarron 
-                                ? 'bg-yellow-400 cursor-wait animate-pulse' 
-                                : cart.length === 0 
-                                    ? 'bg-gray-300 cursor-not-allowed opacity-50'
-                                    : 'bg-[#c1d72e] hover:bg-black hover:text-[#c1d72e] active:scale-95 hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]'
+                            hasUnsavedItems
+                                ? 'bg-red-500/30 border-red-500 cursor-not-allowed opacity-70'
+                                : isSendingToPizarron 
+                                    ? 'bg-yellow-400 cursor-wait animate-pulse' 
+                                    : cart.length === 0 
+                                        ? 'bg-gray-300 cursor-not-allowed opacity-50'
+                                        : 'bg-[#c1d72e] hover:bg-black hover:text-[#c1d72e] active:scale-95 hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]'
                         }`}>
                         <div className="flex items-center gap-4">
-                            {isSendingToPizarron ? (
+                            {hasUnsavedItems ? (
+                                <>
+                                    <span className="text-4xl">⛔</span>
+                                    <div className="text-left">
+                                        <span className="block text-[14px] font-black uppercase tracking-tighter leading-none text-red-700">BLOQUEADO</span>
+                                        <span className="block text-[10px] font-bold text-red-600/70 uppercase tracking-widest mt-1">Sin conexión — WiFi caído</span>
+                                    </div>
+                                </>
+                            ) : isSendingToPizarron ? (
                                 <>
                                     <span className="text-3xl animate-spin">⏳</span>
                                     <div className="text-left">
