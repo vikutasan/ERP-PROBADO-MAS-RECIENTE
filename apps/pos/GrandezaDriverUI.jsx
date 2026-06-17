@@ -375,7 +375,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                                         <div className="font-black text-sm uppercase text-amber-400 truncate pr-2 leading-none">{it.product_name}</div>
                                         <div className="flex gap-3 text-xs font-bold text-gray-300 shrink-0 leading-none">
                                             <span>${it.b2b_price?.toFixed(2)}</span>
-                                            <span className="text-blue-400 border-l border-white/10 pl-3">Sug: {it.suggested_fresh_qty}</span>
+                                            <span className="text-blue-400 border-l border-white/10 pl-3">Sugerido: {it.suggested_fresh_qty}</span>
                                         </div>
                                     </div>
                                     {/* Renglón 2: Controles y Total */}
