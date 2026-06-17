@@ -137,6 +137,7 @@ class GrandezaJourneyResponse(BaseModel):
 class GrandezaVisitItemCreate(BaseModel):
     product_id: int
     exchange_qty: int = 0
+    suggested_fresh_qty: int = 0
     actual_fresh_qty: int = 0
     missing_qty: int = 0
     unit_price: float = 0.0
@@ -156,6 +157,13 @@ class GrandezaVisitCreate(BaseModel):
     visit_order: int
     visit_type: str = "PROGRAMADA"
     ext_client_name: Optional[str] = None
+    items: List[GrandezaVisitItemCreate] = []
+    sale_amount: float = 0.0
+    payment_received: float = 0.0
+    change_given: float = 0.0
+    total_exchange_amount: float = 0.0
+    total_fresh_amount: float = 0.0
+    incident_notes: Optional[str] = None
 
 class GrandezaVisitUpdate(BaseModel):
     status: Optional[str] = None
