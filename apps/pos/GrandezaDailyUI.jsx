@@ -701,7 +701,7 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
                     </h3>
                     <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                         {visits.slice().reverse().map(v => (
-                            <div key={v.id} className="bg-white/5 rounded-xl p-3 flex justify-between items-center border border-white/5">
+                            <div key={v.id} className="bg-black rounded-xl p-3 flex justify-between items-center border border-white/10">
                                 <div>
                                     <div className="text-xs font-black text-white">{v.client_name || 'Cliente de Ruta'}</div>
                                     {v.completed_at ? (
