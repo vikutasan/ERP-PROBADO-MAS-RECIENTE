@@ -179,7 +179,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         });
         setVisitItems(items);
         setPaymentReceived(''); setIncidentNotes('');
-        setExtClientName(isExt ? '' : (client?.name || ''));
+        setExtClientName(isExt ? null : (client?.name || ''));
         setActiveVisit({ client_id: isExt ? null : slot.client_id, client,
             visit_order: isExt ? 999 : slot.visit_order,
             visit_type: isExt ? 'EXTEMPORANEA' : 'PROGRAMADA', slot });
@@ -355,7 +355,26 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         {isExt ? (
                             <div>
                                 <label className="text-[10px] font-black text-amber-400/80 uppercase mb-1 block">Nombre del cliente</label>
-                                <input value={extClientName} onChange={e => setExtClientName(e.target.value)} placeholder="¿A quién le vendes?" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none focus:border-amber-500" />
+                                <select value={activeVisit.client_id ? String(activeVisit.client_id) : (extClientName !== null ? 'CUSTOM' : '')} onChange={e => {
+                                    if (e.target.value === 'CUSTOM') {
+                                        setExtClientName('');
+                                        setActiveVisit(prev => ({ ...prev, client_id: null }));
+                                    } else if (e.target.value === '') {
+                                        setExtClientName(null);
+                                        setActiveVisit(prev => ({ ...prev, client_id: null }));
+                                    } else {
+                                        const sel = clients.find(c => c.id === parseInt(e.target.value));
+                                        setExtClientName(sel?.name || '');
+                                        setActiveVisit(prev => ({ ...prev, client_id: parseInt(e.target.value) }));
+                                    }
+                                }} className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }}>
+                                    <option value="" style={{ background: '#000', color: '#fff' }}>Seleccionar cliente...</option>
+                                    <option value="CUSTOM" style={{ background: '#000', color: '#fbbf24' }}>✏️ Cliente no registrado (escribir nombre)</option>
+                                    {clients.map(c => <option key={c.id} value={c.id} style={{ background: '#000', color: '#fff' }}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
+                                </select>
+                                {(!activeVisit.client_id && extClientName !== null) && (
+                                    <input value={extClientName || ''} onChange={e => setExtClientName(e.target.value)} placeholder="¿A quién le vendes?" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500 focus:border-amber-500" autoFocus />
+                                )}
                             </div>
                         ) : (
                             <div className="flex gap-3">
