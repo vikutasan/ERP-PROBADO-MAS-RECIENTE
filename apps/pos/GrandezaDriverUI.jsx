@@ -459,7 +459,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
                 {/* Barra de acciones fija */}
                 <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 flex z-50">
-                    <button onClick={saveVisit} disabled={saving} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50">
+                    <button onClick={saveVisit} disabled={saving} className="w-full py-4 bg-[#D35400] rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50 active:scale-95 transition-all">
                         {saving ? 'Guardando...' : '✅ Completar Visita'}
                     </button>
                 </div>
