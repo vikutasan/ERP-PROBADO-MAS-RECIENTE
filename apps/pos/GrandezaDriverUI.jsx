@@ -692,9 +692,9 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                 {/* Cliente */}
                 <div>
                     <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Cliente</label>
-                    <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none">
-                        <option value="">Seleccionar cliente...</option>
-                        {clients.map(c => <option key={c.id} value={c.id}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
+                    <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }}>
+                        <option value="" style={{ background: '#000', color: '#fff' }}>Seleccionar cliente...</option>
+                        {clients.map(c => <option key={c.id} value={c.id} style={{ background: '#000', color: '#fff' }}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
                     </select>
                 </div>
                 {/* Fecha de entrega */}
