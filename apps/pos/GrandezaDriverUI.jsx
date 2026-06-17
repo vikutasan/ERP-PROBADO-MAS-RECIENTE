@@ -240,39 +240,55 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         } finally { setSaving(false); }
     };
 
-    // ─── WhatsApp ───
+    // ─── WhatsApp Súper Detallado ───
     const sendWhatsApp = () => {
         const client = activeVisit?.client;
         const phone = client?.phone?.replace(/\D/g, '');
-        if (!phone) { showToast('⚠️ Cliente sin teléfono', 'error'); return; }
+        // Si no hay teléfono, abrimos WhatsApp vacío para que el conductor elija el contacto
 
         let msg = `🍞 *NOTA DE VENTA — PAN GRANDEZA*\n`;
         msg += `📅 ${todayStr()}\n`;
-        msg += `👤 ${client?.business_name || client?.name || extClientName}\n`;
+        msg += `👤 *Cliente:* ${client?.business_name || client?.name || extClientName || 'Cliente de Ruta'}\n`;
         msg += `────────────────\n`;
 
         const activeItems = visitItems.filter(it => it.actual_fresh_qty > 0 || it.exchange_qty > 0);
-        if (activeItems.some(it => it.exchange_qty > 0)) {
-            msg += `\n🔄 *CAMBIOS RECOGIDOS:*\n`;
-            activeItems.filter(it => it.exchange_qty > 0).forEach(it => {
-                msg += `  • ${it.product_name}: ${it.exchange_qty} pzas × $${it.b2b_price.toFixed(2)} = $${(it.exchange_qty * it.b2b_price).toFixed(2)}\n`;
-            });
-            msg += `  *Subtotal cambios: -$${visitCalc.exchangeTotal.toFixed(2)}*\n`;
+        
+        if (activeItems.length === 0) {
+            showToast('⚠️ No hay productos en la cuenta', 'error'); return;
         }
-        if (activeItems.some(it => it.actual_fresh_qty > 0)) {
-            msg += `\n🍞 *PRODUCTO FRESCO:*\n`;
-            activeItems.filter(it => it.actual_fresh_qty > 0).forEach(it => {
-                msg += `  • ${it.product_name}: ${it.actual_fresh_qty} pzas × $${it.b2b_price.toFixed(2)} = $${(it.actual_fresh_qty * it.b2b_price).toFixed(2)}\n`;
-            });
-            msg += `  *Subtotal fresco: $${visitCalc.freshTotal.toFixed(2)}*\n`;
-        }
-        msg += `\n────────────────\n`;
-        msg += `💰 *TOTAL A COBRAR: $${visitCalc.saleAmount.toFixed(2)}*\n`;
-        msg += `💵 Recibido: $${(parseFloat(paymentReceived)||0).toFixed(2)}\n`;
-        if (visitCalc.change > 0) msg += `🔙 Cambio: $${visitCalc.change.toFixed(2)}\n`;
-        msg += `\n_R de Rico • Pan Grandeza_`;
 
-        const url = `https://wa.me/52${phone}?text=${encodeURIComponent(msg)}`;
+        activeItems.forEach(it => {
+            const exAmount = (it.exchange_qty || 0) * (it.b2b_price || 0);
+            const frAmount = (it.actual_fresh_qty || 0) * (it.b2b_price || 0);
+            const netAmount = frAmount - exAmount;
+
+            msg += `\n📦 *${it.product_name}* ($${it.b2b_price.toFixed(2)} c/u)\n`;
+            if (it.actual_fresh_qty > 0) msg += `   🍞 Entregadas: ${it.actual_fresh_qty} pzas (+$${frAmount.toFixed(2)})\n`;
+            if (it.exchange_qty > 0) msg += `   🔄 Cambios: ${it.exchange_qty} pzas (-$${exAmount.toFixed(2)})\n`;
+            msg += `   👉 *Neto por producto:* $${netAmount.toFixed(2)}\n`;
+        });
+
+        msg += `\n────────────────\n`;
+        msg += `💰 *TOTAL DE LA VENTA: $${visitCalc.saleAmount.toFixed(2)}*\n`;
+        
+        const rec = parseFloat(paymentReceived) || 0;
+        if (rec > 0) {
+            msg += `💵 Dinero Recibido: $${rec.toFixed(2)}\n`;
+            if (visitCalc.change > 0) {
+                msg += `🔙 Su Cambio: $${visitCalc.change.toFixed(2)}\n`;
+            } else if (visitCalc.change < 0) {
+                msg += `⚠️ Saldo Pendiente: $${Math.abs(visitCalc.change).toFixed(2)}\n`;
+            }
+        }
+        
+        if (incidentNotes) {
+            msg += `\n📝 *Nota:* ${incidentNotes}\n`;
+        }
+
+        msg += `\n_¡Gracias por su preferencia!_\n_R de Rico • Pan Grandeza_`;
+
+        // Si tiene teléfono lo mandamos directo, si no, abrimos el selector de contactos
+        const url = phone ? `https://wa.me/52${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
         window.open(url, '_blank');
     };
 
