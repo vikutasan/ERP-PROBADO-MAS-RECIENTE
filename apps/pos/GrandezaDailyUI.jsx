@@ -691,7 +691,37 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
                         <div className="text-[8px] font-black text-white uppercase">Frescas Sobrantes</div>
                     </div>
                 </div>
+                </div>
             </div>
+
+            {/* Bitácora de Visitas */}
+            {visits.length > 0 && (
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-[24px] p-6 space-y-4">
+                    <h3 className="text-sm font-black uppercase tracking-widest text-white flex items-center gap-2">
+                        <span>📝</span> Bitácora de Visitas
+                    </h3>
+                    <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                        {visits.slice().reverse().map(v => (
+                            <div key={v.id} className="bg-white/5 rounded-xl p-3 flex justify-between items-center border border-white/5">
+                                <div>
+                                    <div className="text-xs font-black text-white">{v.client_name || 'Cliente de Ruta'}</div>
+                                    {v.completed_at ? (
+                                        <div className="text-[10px] font-bold text-blue-400 mt-1">
+                                            🕒 {new Date(v.completed_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                        </div>
+                                    ) : (
+                                        <div className="text-[10px] font-bold text-gray-500 mt-1">🕒 Hora no registrada</div>
+                                    )}
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-sm font-black text-emerald-400">${(v.sale_amount||0).toFixed(2)}</div>
+                                    <div className="text-[9px] font-bold text-gray-400 uppercase mt-1">{v.status}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Formulario de cierre */}
             <div className="bg-black/70 backdrop-blur-md border border-amber-500/20 rounded-[24px] p-6 space-y-4">
