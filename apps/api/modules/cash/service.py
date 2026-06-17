@@ -100,14 +100,14 @@ async def calcular_resumen(db: AsyncSession, session_id: int) -> schemas.CashSum
     tickets_pagados = await _obtener_tickets_pagados(db, session_id)
 
     # 1. Totales de movimientos (Entradas/Salidas)
-    t_entradas = sum(m.amount for m in movimientos if m.movement_type == "ENTRADA")
-    t_salidas = sum(m.amount for m in movimientos if m.movement_type == "SALIDA")
+    t_entradas = sum(float(m.amount) for m in movimientos if m.movement_type == "ENTRADA")
+    t_salidas = sum(float(m.amount) for m in movimientos if m.movement_type == "SALIDA")
 
     # 2. Clasificación de ventas por método de pago
     ventas = _clasificar_pagos(tickets_pagados)
 
     # 3. Cálculo de saldos esperados
-    efectivo_esp = sesion.opening_float + ventas["efectivo"] + t_entradas - t_salidas
+    efectivo_esp = float(sesion.opening_float or 0) + ventas["efectivo"] + t_entradas - t_salidas
     total_v = ventas["efectivo"] + ventas["credito"] + ventas["debito"]
 
     return schemas.CashSummaryResponse(
