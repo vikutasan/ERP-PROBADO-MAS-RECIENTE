@@ -436,8 +436,15 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
                             <label className="text-[10px] font-black text-amber-400 uppercase block mb-2">💵 Dinero Recibido</label>
                             <input type="number" value={paymentReceived} onChange={e => setPaymentReceived(e.target.value)} placeholder="0.00" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xl font-black text-white outline-none focus:border-amber-500" />
-                            {visitCalc.change > 0 && <div className="mt-2 text-sm font-black text-amber-400">🔙 Cambio: ${visitCalc.change.toFixed(2)}</div>}
-                            {visitCalc.change < 0 && parseFloat(paymentReceived) > 0 && <div className="mt-2 text-sm font-black text-red-400">⚠️ Faltan: ${Math.abs(visitCalc.change).toFixed(2)}</div>}
+                            
+                            <div className="mt-3 flex flex-col gap-2">
+                                {visitCalc.change > 0 && <div className="text-sm font-black text-amber-400">🔙 Cambio: ${visitCalc.change.toFixed(2)}</div>}
+                                {visitCalc.change < 0 && parseFloat(paymentReceived) > 0 && <div className="text-sm font-black text-red-400">⚠️ Faltan: ${Math.abs(visitCalc.change).toFixed(2)}</div>}
+                                
+                                <button onClick={sendWhatsApp} className="w-full py-3 bg-green-600/20 border border-green-500/30 rounded-xl text-xs font-black text-green-400 uppercase active:bg-green-600/40 flex justify-center items-center gap-2 mt-1">
+                                    📱 Enviar ticket por WhatsApp
+                                </button>
+                            </div>
                         </div>
                         {/* Incidentes */}
                         <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
@@ -448,9 +455,8 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 </div>
 
                 {/* Barra de acciones fija */}
-                <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 flex gap-2 z-50">
-                    <button onClick={sendWhatsApp} className="px-4 py-3 bg-green-600 rounded-xl text-xs font-black text-white uppercase">📱 WhatsApp</button>
-                    <button onClick={saveVisit} disabled={saving} className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50">
+                <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 flex z-50">
+                    <button onClick={saveVisit} disabled={saving} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50">
                         {saving ? 'Guardando...' : '✅ Completar Visita'}
                     </button>
                 </div>
