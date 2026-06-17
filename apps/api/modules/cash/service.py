@@ -184,10 +184,11 @@ async def obtener_historial_sesiones(db: AsyncSession, terminal_id: str = None, 
         
     if search_date:
         try:
-            from sqlalchemy import cast, Date
-            from datetime import datetime
-            target_date = datetime.strptime(search_date, "%Y-%m-%d").date()
-            query = query.where(cast(models.CashSession.closed_at, Date) == target_date)
+            from datetime import datetime, timedelta
+            target_date = datetime.strptime(search_date, "%Y-%m-%d")
+            start_utc = target_date + timedelta(hours=6)
+            end_utc = target_date + timedelta(days=1, hours=6)
+            query = query.where(models.CashSession.opened_at >= start_utc).where(models.CashSession.opened_at < end_utc)
         except Exception as e:
             import logging
             logging.error(f"Error parsing date {search_date}: {e}")

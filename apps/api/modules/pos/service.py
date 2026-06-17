@@ -532,10 +532,13 @@ class POSService:
             query = query.where(models.Ticket.account_num.ilike(f"%{search}%"))
         if search_date:
             try:
-                from sqlalchemy import cast, Date
-                from datetime import datetime
-                target_date = datetime.strptime(search_date, "%Y-%m-%d").date()
-                query = query.where(cast(models.Ticket.created_at, Date) == target_date)
+                from datetime import datetime, timedelta
+                # Los timestamps están en UTC. Hora local México es UTC-6.
+                # Calculamos el inicio y el fin del día en UTC para que el rango abarque correctamente la noche.
+                target_date = datetime.strptime(search_date, "%Y-%m-%d")
+                start_utc = target_date + timedelta(hours=6)
+                end_utc = target_date + timedelta(days=1, hours=6)
+                query = query.where(models.Ticket.created_at >= start_utc).where(models.Ticket.created_at < end_utc)
             except Exception as e:
                 import logging
                 logging.error(f"Error parsing date {search_date}: {e}")
