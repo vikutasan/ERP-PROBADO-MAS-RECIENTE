@@ -691,7 +691,6 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
                         <div className="text-[8px] font-black text-white uppercase">Frescas Sobrantes</div>
                     </div>
                 </div>
-                </div>
             </div>
 
             {/* Bitácora de Visitas */}
