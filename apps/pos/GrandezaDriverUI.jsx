@@ -638,6 +638,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
     const [selectedClient, setSelectedClient] = useState('');
+    const [customClientName, setCustomClientName] = useState('');
     const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price })));
     const [deliveryDate, setDeliveryDate] = useState('');
     const [payMethod, setPayMethod] = useState('EFECTIVO');
@@ -655,8 +656,8 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
             const res = await fetch(`${API}/grandeza/orders`, {
                 method: 'POST', headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({
-                    client_id: parseInt(selectedClient) || null,
-                    client_name: client?.name || 'Cliente en ruta',
+                    client_id: selectedClient === 'CUSTOM' ? null : (parseInt(selectedClient) || null),
+                    client_name: selectedClient === 'CUSTOM' ? (customClientName || 'Cliente no registrado') : (client?.name || 'Cliente en ruta'),
                     items: orderItems.filter(it => it.qty > 0),
                     total_amount: totalAmount,
                     payment_method: payMethod,
@@ -692,10 +693,14 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                 {/* Cliente */}
                 <div>
                     <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Cliente</label>
-                    <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }}>
+                    <select value={selectedClient} onChange={e => { setSelectedClient(e.target.value); if (e.target.value !== 'CUSTOM') setCustomClientName(''); }} className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }}>
                         <option value="" style={{ background: '#000', color: '#fff' }}>Seleccionar cliente...</option>
+                        <option value="CUSTOM" style={{ background: '#000', color: '#fbbf24' }}>✏️ Cliente no registrado (escribir nombre)</option>
                         {clients.map(c => <option key={c.id} value={c.id} style={{ background: '#000', color: '#fff' }}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
                     </select>
+                    {selectedClient === 'CUSTOM' && (
+                        <input type="text" value={customClientName} onChange={e => setCustomClientName(e.target.value)} placeholder="¿Cómo se llama el cliente?" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500" autoFocus />
+                    )}
                 </div>
                 {/* Fecha de entrega */}
                 <div>
