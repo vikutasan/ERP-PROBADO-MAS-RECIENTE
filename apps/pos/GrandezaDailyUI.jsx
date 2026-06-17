@@ -702,14 +702,14 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
                     <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                         {visits.slice().reverse().map(v => (
                             <div key={v.id} className="bg-black rounded-xl p-3 flex justify-between items-center border border-white/10">
-                                <div>
-                                    <div className="text-xs font-black text-white">{v.client_name || 'Cliente de Ruta'}</div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black text-white uppercase">{v.client_name || 'Cliente de Ruta'}</span>
                                     {v.completed_at ? (
-                                        <div className="text-[10px] font-bold text-blue-400 mt-1">
-                                            🕒 {new Date(v.completed_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                                        </div>
+                                        <span className="text-xs font-black text-blue-400">
+                                            • {new Date(v.completed_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                        </span>
                                     ) : (
-                                        <div className="text-[10px] font-bold text-gray-500 mt-1">🕒 Hora no registrada</div>
+                                        <span className="text-xs font-bold text-gray-500">• Hora no registrada</span>
                                     )}
                                 </div>
                                 <div className="text-right">
