@@ -364,34 +364,49 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                     {/* Productos */}
                     <div className="p-4 space-y-3">
                         <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest">Productos</h4>
-                        {visitItems.map(it => (
-                            <div key={it.product_id} className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
-                                <div className="flex justify-between items-center mb-3">
-                                    <div>
-                                        <div className="font-bold text-sm">{it.product_name}</div>
-                                        <div className="text-xs text-gray-300">${it.b2b_price?.toFixed(2)} c/u {it.suggested_fresh_qty > 0 && <span className="text-blue-400">• Sugerido: {it.suggested_fresh_qty}</span>}</div>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[9px] font-black text-red-400 uppercase block mb-1">🔄 Cambios</label>
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={() => updateItem(it.product_id, 'exchange_qty', Math.max(0, it.exchange_qty - 1))} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 font-bold">−</button>
-                                            <input type="number" value={it.exchange_qty} onChange={e => updateItem(it.product_id, 'exchange_qty', e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-lg text-center font-black text-white p-2 outline-none" />
-                                            <button onClick={() => updateItem(it.product_id, 'exchange_qty', it.exchange_qty + 1)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 font-bold">+</button>
+                        {visitItems.map(it => {
+                            const exAmount = (it.exchange_qty || 0) * (it.b2b_price || 0);
+                            const frAmount = (it.actual_fresh_qty || 0) * (it.b2b_price || 0);
+                            const netTotal = frAmount - exAmount;
+                            return (
+                                <div key={it.product_id} className="bg-white/[0.02] border border-white/5 rounded-xl p-3 flex flex-col gap-2">
+                                    {/* Renglón 1: Nombre, Precio, Sugerido */}
+                                    <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                                        <div className="font-black text-sm uppercase text-amber-400 truncate pr-2 leading-none">{it.product_name}</div>
+                                        <div className="flex gap-3 text-xs font-bold text-gray-300 shrink-0 leading-none">
+                                            <span>${it.b2b_price?.toFixed(2)}</span>
+                                            <span className="text-blue-400 border-l border-white/10 pl-3">Sug: {it.suggested_fresh_qty}</span>
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className="text-[9px] font-black text-emerald-400 uppercase block mb-1">🍞 Frescas</label>
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={() => updateItem(it.product_id, 'actual_fresh_qty', Math.max(0, it.actual_fresh_qty - 1))} className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold">−</button>
-                                            <input type="number" value={it.actual_fresh_qty} onChange={e => updateItem(it.product_id, 'actual_fresh_qty', e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-lg text-center font-black text-white p-2 outline-none" />
-                                            <button onClick={() => updateItem(it.product_id, 'actual_fresh_qty', it.actual_fresh_qty + 1)} className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold">+</button>
+                                    {/* Renglón 2: Controles y Total */}
+                                    <div className="flex justify-between items-end gap-2 mt-1">
+                                        {/* Cambios */}
+                                        <div className="flex flex-col gap-1 flex-1">
+                                            <div className="flex justify-between text-[9px] font-black text-red-400 uppercase px-1"><span>Cambios</span><span>-${exAmount.toFixed(2)}</span></div>
+                                            <div className="flex items-center gap-1">
+                                                <button onClick={() => updateItem(it.product_id, 'exchange_qty', Math.max(0, it.exchange_qty - 1))} className="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 font-black flex items-center justify-center active:scale-95">−</button>
+                                                <input type="number" value={it.exchange_qty} onChange={e => updateItem(it.product_id, 'exchange_qty', e.target.value)} className="w-12 bg-black/60 border border-white/10 rounded-lg text-center font-black text-white h-8 outline-none text-xs" />
+                                                <button onClick={() => updateItem(it.product_id, 'exchange_qty', it.exchange_qty + 1)} className="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 font-black flex items-center justify-center active:scale-95">+</button>
+                                            </div>
+                                        </div>
+                                        {/* Frescas */}
+                                        <div className="flex flex-col gap-1 flex-1 border-l border-white/10 pl-2">
+                                            <div className="flex justify-between text-[9px] font-black text-emerald-400 uppercase px-1"><span>Frescas</span><span>+${frAmount.toFixed(2)}</span></div>
+                                            <div className="flex items-center gap-1">
+                                                <button onClick={() => updateItem(it.product_id, 'actual_fresh_qty', Math.max(0, it.actual_fresh_qty - 1))} className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center active:scale-95">−</button>
+                                                <input type="number" value={it.actual_fresh_qty} onChange={e => updateItem(it.product_id, 'actual_fresh_qty', e.target.value)} className="w-12 bg-black/60 border border-white/10 rounded-lg text-center font-black text-white h-8 outline-none text-xs" />
+                                                <button onClick={() => updateItem(it.product_id, 'actual_fresh_qty', it.actual_fresh_qty + 1)} className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center active:scale-95">+</button>
+                                            </div>
+                                        </div>
+                                        {/* Total Neto */}
+                                        <div className="flex flex-col gap-1 shrink-0 text-right border-l border-white/10 pl-2 pb-1 min-w-[50px]">
+                                            <span className="text-[9px] font-black text-gray-400 uppercase">Total</span>
+                                            <span className={`text-base font-black leading-none ${netTotal < 0 ? 'text-red-400' : 'text-emerald-400'}`}>${netTotal.toFixed(2)}</span>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {/* Resumen Financiero */}

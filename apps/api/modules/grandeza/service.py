@@ -340,25 +340,44 @@ class GrandezaService:
     # ─── Sugerencias ──────────────────────────────────────────────────────
 
     async def get_client_suggestions(self, db: AsyncSession, client_id: int):
-        """Calcula promedio de piezas frescas vendidas por producto en las últimas 10 visitas."""
-        from sqlalchemy import func
-        stmt = (
-            select(
-                GrandezaVisitItem.product_id,
-                func.avg(GrandezaVisitItem.actual_fresh_qty).label("avg_qty"),
-                func.count(GrandezaVisitItem.id).label("visit_count")
-            )
-            .join(GrandezaVisit, GrandezaVisitItem.visit_id == GrandezaVisit.id)
+        """Calcula promedio de piezas vendidas netas (frescas - cambios) por producto en las últimas 3 visitas."""
+        # 1. Obtener las últimas 3 visitas completadas
+        visit_stmt = (
+            select(GrandezaVisit)
             .where(GrandezaVisit.client_id == client_id)
             .where(GrandezaVisit.status == "COMPLETADA")
-            .group_by(GrandezaVisitItem.product_id)
+            .order_by(GrandezaVisit.created_at.desc())
+            .limit(3)
+            .options(selectinload(GrandezaVisit.items))
         )
-        result = await db.execute(stmt)
-        rows = result.all()
-        return [
-            {"product_id": r.product_id, "suggested_qty": round(r.avg_qty), "visit_count": r.visit_count}
-            for r in rows
-        ]
+        visit_result = await db.execute(visit_stmt)
+        last_visits = visit_result.scalars().all()
+
+        if not last_visits:
+            return []
+
+        # 2. Agrupar items por producto
+        from collections import defaultdict
+        product_sales = defaultdict(list)
+        
+        for v in last_visits:
+            for item in v.items:
+                net_sale = max(0, (item.actual_fresh_qty or 0) - (item.exchange_qty or 0))
+                product_sales[item.product_id].append(net_sale)
+
+        # 3. Calcular promedios
+        suggestions = []
+        import math
+        for pid, sales in product_sales.items():
+            if not sales: continue
+            avg = sum(sales) / len(sales)
+            suggestions.append({
+                "product_id": pid,
+                "suggested_qty": math.ceil(avg), # Redondeo hacia arriba por seguridad de inventario
+                "visit_count": len(sales)
+            })
+
+        return suggestions
 
     # ─── Pedidos Grandeza ─────────────────────────────────────────────────
 
