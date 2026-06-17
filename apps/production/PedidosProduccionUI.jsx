@@ -32,7 +32,7 @@ const SECTIONS = [
         title: 'EN ESPERA DE ASIGNACIÓN DE TURNO', 
         icon: <ClipboardList size={20} />, 
         color: 'text-blue-400',
-        statuses: ['PAGADO'] 
+        statuses: ['TENTATIVO', 'PAGADO'] 
     },
     { 
         id: 'espera', 
@@ -65,6 +65,7 @@ const SECTIONS = [
 ];
 
 const STATUS_LABELS = {
+    TENTATIVO: 'Por Pagar (Tentativo)',
     PAGADO: 'Pagado',
     TURNO_ASIGNADO: 'Turno Asignado',
     EN_PREPARACION: 'En Preparación',

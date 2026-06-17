@@ -2,6 +2,65 @@ import React, { useState, useEffect } from 'react';
 
 const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
 
+const B2BProductCard = ({ p, b2bPrice }) => {
+    const [imgStatus, setImgStatus] = useState('TRY_PNG');
+
+    const resolveUrl = (url) => {
+        if (!url) return null;
+        if (url.startsWith('http')) return url;
+        return `http://${window.location.hostname}:5001${url.startsWith('/') ? '' : '/'}${url}`;
+    };
+
+    const baseStaticUrl = `http://${window.location.hostname}:5001/static/catalog`;
+    
+    const IMG_CHAIN = [
+        { key: 'API_IMG',    src: resolveUrl(p.image), next: 'TRY_PNG' },
+        { key: 'TRY_PNG',    src: `${baseStaticUrl}/${p.sku}.png`,     next: 'TRY_JPG' },
+        { key: 'TRY_JPG',    src: `${baseStaticUrl}/${p.sku}.jpg`,     next: 'LEGACY_PNG' },
+        { key: 'LEGACY_PNG', src: `${baseStaticUrl}/Img1118_${p.sku}.png`,     next: 'LEGACY_JPG' },
+        { key: 'LEGACY_JPG', src: `${baseStaticUrl}/Img1118_${p.sku}.jpg`,     next: 'FALLBACK' },
+    ];
+
+    const activeImg = IMG_CHAIN.find(i => i.key === (p.image && imgStatus === 'TRY_PNG' ? 'API_IMG' : imgStatus)) || IMG_CHAIN[1];
+
+    return (
+        <div className="p-4 rounded-2xl border bg-black/60 border-amber-500/30">
+            <div className="flex justify-between items-start mb-3 gap-3">
+                <div className="flex gap-3 items-center">
+                    <div className="w-16 h-16 rounded-xl bg-white/5 border border-white/10 p-1 flex shrink-0 items-center justify-center">
+                        {imgStatus !== 'FALLBACK' ? (
+                            <img 
+                                src={activeImg.src}
+                                alt={p.name}
+                                className="max-w-full max-h-full object-contain mix-blend-screen"
+                                onError={() => setImgStatus(activeImg.next)}
+                            />
+                        ) : (
+                            <div className="text-[10px] text-gray-500 font-bold uppercase text-center leading-tight">Sin Imagen</div>
+                        )}
+                    </div>
+                    <div>
+                        <div className="text-xs font-bold text-amber-500 uppercase">{p.sku}</div>
+                        <div className="font-bold text-white">{p.name}</div>
+                        <div className="text-xs text-gray-400 mt-1">Precio Tienda: ${p.price.toFixed(2)}</div>
+                    </div>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold shrink-0">
+                    ✓
+                </div>
+            </div>
+            
+            <div className="pt-3 border-t border-amber-500/20 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Precio B2B Grandeza</span>
+                <div className="font-black text-xl text-white">
+                    ${b2bPrice.toFixed(2)}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 export const GrandezaParamsUI = ({ onBack }) => {
     const [activeTab, setActiveTab] = useState('products');
     const [loading, setLoading] = useState(false);
@@ -19,7 +78,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
     const [selectedDay, setSelectedDay] = useState('LUNES');
     const [routeSlots, setRouteSlots] = useState([]);
 
-    const DAYS = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES'];
+    const DAYS = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
 
     useEffect(() => {
         if (activeTab === 'products') fetchProducts();
@@ -143,11 +202,20 @@ export const GrandezaParamsUI = ({ onBack }) => {
 
     const saveRoute = async (slotsToSave) => {
         try {
-            await fetch(`${API_BASE}/grandeza/routes/${selectedDay}`, {
+            const payload = slotsToSave.map((s, i) => ({
+                client_id: s.client_id,
+                day_of_week: selectedDay,
+                visit_order: i + 1
+            }));
+            const res = await fetch(`${API_BASE}/grandeza/routes/${selectedDay}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(slotsToSave)
+                body: JSON.stringify(payload)
             });
+            if (!res.ok) {
+                const err = await res.json();
+                console.error("Error saving route:", err);
+            }
             fetchRoute(selectedDay);
         } catch (error) {
             console.error(error);
@@ -165,11 +233,11 @@ export const GrandezaParamsUI = ({ onBack }) => {
 
         return (
             <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="bg-black/20 p-6 rounded-[24px] border border-white/5">
+                <div className="bg-black/70 p-6 rounded-[24px] border border-white/5">
                     <h3 className="text-xl font-black uppercase tracking-tighter text-white mb-2">Catálogo B2B (Solo Visualización)</h3>
-                    <p className="text-sm text-gray-500 mb-6">
+                    <p className="text-sm text-white mb-6">
                         Estos son los {linkedProducts.length} productos que están configurados para subir a la ruta de reparto. 
-                        Para agregar o quitar productos, ve al <strong>Maestro de Productos</strong> en el menú principal.
+                        Para agregar o quitar productos, ve al <strong className="text-amber-400">Maestro de Productos</strong> en el menú principal.
                     </p>
                     
                     {linkedProducts.length === 0 ? (
@@ -184,27 +252,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                 const config = grandezaProducts.find(gp => gp.product_id === p.id);
                                 const b2bPrice = config ? config.b2b_price : p.price;
 
-                                return (
-                                    <div key={p.id} className="p-4 rounded-2xl border bg-amber-900/10 border-amber-500/30">
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div>
-                                                <div className="text-xs font-bold text-amber-500 uppercase">{p.sku}</div>
-                                                <div className="font-bold text-white">{p.name}</div>
-                                                <div className="text-xs text-gray-400 mt-1">Precio Tienda: ${p.price.toFixed(2)}</div>
-                                            </div>
-                                            <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                                                ✓
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="pt-3 border-t border-amber-500/20 flex items-center justify-between">
-                                            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Precio B2B Grandeza</span>
-                                            <div className="font-black text-xl text-white">
-                                                ${b2bPrice.toFixed(2)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
+                                return <B2BProductCard key={p.id} p={p} b2bPrice={b2bPrice} />;
                             })}
                         </div>
                     )}
@@ -216,22 +264,22 @@ export const GrandezaParamsUI = ({ onBack }) => {
     const renderClientsTab = () => {
         return (
             <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="flex justify-between items-center bg-black/20 p-6 rounded-[24px] border border-white/5">
+                <div className="flex justify-between items-center bg-black/70 p-6 rounded-[24px] border border-white/5">
                     <div>
                         <h3 className="text-xl font-black uppercase tracking-tighter text-white mb-1">Directorio de Clientes</h3>
-                        <p className="text-sm text-gray-500">Gestiona los {clients.length} clientes de la ruta Grandeza.</p>
+                        <p className="text-sm text-white">Gestiona los {clients.length} clientes de la ruta Grandeza.</p>
                     </div>
                     <button 
                         onClick={() => setEditingClient({ active: true })}
-                        className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest text-xs rounded-xl transition-all"
+                        className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-xs rounded-xl transition-all"
                     >
                         + Nuevo Cliente
                     </button>
                 </div>
 
-                <div className="bg-black/20 rounded-[24px] border border-white/5 overflow-hidden">
+                <div className="bg-black/70 rounded-[24px] border border-white/5 overflow-hidden">
                     <table className="w-full text-left">
-                        <thead className="bg-black/40 text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-white/5">
+                        <thead className="bg-black/40 text-xs font-bold text-amber-400 uppercase tracking-widest border-b border-white/5">
                             <tr>
                                 <th className="p-4">Cliente / Negocio</th>
                                 <th className="p-4">Contacto</th>
@@ -244,16 +292,16 @@ export const GrandezaParamsUI = ({ onBack }) => {
                             {clients.map(c => (
                                 <tr key={c.id} className="hover:bg-white/5 transition-colors">
                                     <td className="p-4">
-                                        <div className="font-bold text-white">{c.name}</div>
-                                        <div className="text-xs text-gray-400">{c.business_name || 'Sin negocio registrado'}</div>
+                                        <div className="font-bold text-amber-400">{c.name}</div>
+                                        <div className="text-xs text-white">{c.business_name || 'Sin negocio registrado'}</div>
                                     </td>
                                     <td className="p-4">
-                                        <div className="text-sm text-gray-300">{c.phone || '-'}</div>
+                                        <div className="text-sm text-white">{c.phone || '-'}</div>
                                     </td>
                                     <td className="p-4">
-                                        <div className="text-sm text-gray-300 truncate max-w-[200px]">{c.address || '-'}</div>
+                                        <div className="text-sm text-white truncate max-w-[200px]">{c.address || '-'}</div>
                                         {c.google_maps_url && (
-                                            <a href={c.google_maps_url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline">Ver en Mapa</a>
+                                            <a href={c.google_maps_url} target="_blank" rel="noreferrer" className="text-xs text-orange-400 hover:underline">Ver en Mapa</a>
                                         )}
                                     </td>
                                     <td className="p-4 text-center">
@@ -287,39 +335,39 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Nombre del Cliente *</label>
-                                        <input required name="name" defaultValue={editingClient.name} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500" />
+                                        <input required name="name" defaultValue={editingClient.name} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500" />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Nombre del Negocio</label>
-                                        <input name="business_name" defaultValue={editingClient.business_name} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500" />
+                                        <input name="business_name" defaultValue={editingClient.business_name} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500" />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Teléfono</label>
-                                        <input name="phone" defaultValue={editingClient.phone} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500" />
+                                        <input name="phone" defaultValue={editingClient.phone} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500" />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Estado</label>
-                                        <select name="active" defaultValue={editingClient.active} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500 appearance-none">
+                                        <select name="active" defaultValue={editingClient.active} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500 appearance-none">
                                             <option value="true">Activo</option>
                                             <option value="false">Inactivo</option>
                                         </select>
                                     </div>
                                     <div className="col-span-2">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Dirección Física</label>
-                                        <input name="address" defaultValue={editingClient.address} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500" />
+                                        <input name="address" defaultValue={editingClient.address} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500" />
                                     </div>
                                     <div className="col-span-2">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">URL Google Maps</label>
-                                        <input name="google_maps_url" defaultValue={editingClient.google_maps_url} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500 text-blue-400" />
+                                        <input name="google_maps_url" defaultValue={editingClient.google_maps_url} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500 text-orange-400" />
                                     </div>
                                     <div className="col-span-2">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Notas / Instrucciones de entrega</label>
-                                        <textarea name="notes" defaultValue={editingClient.notes} rows="2" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500"></textarea>
+                                        <textarea name="notes" defaultValue={editingClient.notes} rows="2" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500"></textarea>
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-3 mt-8">
                                     <button type="button" onClick={() => setEditingClient(null)} className="px-6 py-3 border border-white/10 rounded-xl text-sm font-bold text-gray-400 hover:bg-white/5">Cancelar</button>
-                                    <button type="submit" className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest text-sm rounded-xl transition-all shadow-lg shadow-blue-500/20">Guardar Cliente</button>
+                                    <button type="submit" className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-sm rounded-xl transition-all shadow-lg shadow-orange-500/20">Guardar Cliente</button>
                                 </div>
                             </form>
                         </div>
@@ -340,8 +388,8 @@ export const GrandezaParamsUI = ({ onBack }) => {
                             onClick={() => setSelectedDay(day)}
                             className={`flex-1 py-3 px-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all ${
                                 selectedDay === day 
-                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 scale-[1.02]' 
-                                : 'text-gray-500 hover:bg-white/5 hover:text-white'
+                                ? 'bg-orange-600 text-white shadow-lg shadow-orange-500/20 scale-[1.02]' 
+                                : 'text-white hover:bg-white/5 hover:text-white'
                             }`}
                         >
                             {day}
@@ -351,9 +399,9 @@ export const GrandezaParamsUI = ({ onBack }) => {
 
                 <div className="grid grid-cols-3 gap-6">
                     {/* Lista de la ruta del día */}
-                    <div className="col-span-2 bg-black/20 p-6 rounded-[24px] border border-white/5 min-h-[500px]">
+                    <div className="col-span-2 bg-black/70 p-6 rounded-[24px] border border-white/5 min-h-[500px]">
                         <h3 className="text-xl font-black uppercase tracking-tighter text-white mb-1">Ruta: {selectedDay}</h3>
-                        <p className="text-sm text-gray-500 mb-6">{routeSlots.length} clientes programados para visitar.</p>
+                        <p className="text-sm text-white mb-6">{routeSlots.length} clientes programados para visitar.</p>
                         
                         {routeSlots.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-white/10 rounded-2xl text-gray-500">
@@ -363,19 +411,19 @@ export const GrandezaParamsUI = ({ onBack }) => {
                         ) : (
                             <div className="space-y-2">
                                 {routeSlots.map((slot, index) => (
-                                    <div key={slot.slot_id || index} className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl group hover:border-blue-500/50 transition-all">
+                                    <div key={slot.slot_id || index} className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl group hover:border-orange-500/50 transition-all">
                                         <div className="flex flex-col gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => moveSlot(index, -1)} disabled={index === 0} className="w-6 h-6 rounded bg-black/50 hover:bg-blue-500 text-white flex items-center justify-center disabled:opacity-0">▲</button>
-                                            <button onClick={() => moveSlot(index, 1)} disabled={index === routeSlots.length - 1} className="w-6 h-6 rounded bg-black/50 hover:bg-blue-500 text-white flex items-center justify-center disabled:opacity-0">▼</button>
+                                            <button onClick={() => moveSlot(index, -1)} disabled={index === 0} className="w-6 h-6 rounded bg-black/50 hover:bg-orange-500 text-white flex items-center justify-center disabled:opacity-0">▲</button>
+                                            <button onClick={() => moveSlot(index, 1)} disabled={index === routeSlots.length - 1} className="w-6 h-6 rounded bg-black/50 hover:bg-orange-500 text-white flex items-center justify-center disabled:opacity-0">▼</button>
                                         </div>
                                         
-                                        <div className="w-8 h-8 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-black text-xs shrink-0">
+                                        <div className="w-8 h-8 rounded-full bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400 font-black text-xs shrink-0">
                                             {slot.visit_order}
                                         </div>
                                         
                                         <div className="flex-1">
-                                            <div className="font-bold text-white">{slot.client?.name}</div>
-                                            <div className="text-xs text-gray-400">{slot.client?.business_name} • {slot.client?.address}</div>
+                                            <div className="font-bold text-amber-400">{slot.client?.name}</div>
+                                            <div className="text-xs text-white">{slot.client?.business_name} • {slot.client?.address}</div>
                                         </div>
                                         
                                         <button 
@@ -392,22 +440,22 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     </div>
 
                     {/* Agregar a la ruta */}
-                    <div className="bg-black/20 p-6 rounded-[24px] border border-white/5 h-fit sticky top-6">
-                        <h3 className="text-sm font-black uppercase tracking-widest text-blue-400 mb-4">Agregar Cliente a {selectedDay}</h3>
+                    <div className="bg-black/70 p-6 rounded-[24px] border border-white/5 h-fit sticky top-6">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 mb-4">Agregar Cliente a {selectedDay}</h3>
                         
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                             {clients.filter(c => c.active).map(c => {
                                 const isAlreadyInDay = routeSlots.some(s => s.client_id === c.id);
                                 return (
-                                    <div key={c.id} className={`p-3 rounded-xl border flex justify-between items-center ${isAlreadyInDay ? 'bg-black/40 border-white/5 opacity-50' : 'bg-white/5 border-white/10 hover:border-blue-500/50'}`}>
+                                    <div key={c.id} className={`p-3 rounded-xl border flex justify-between items-center ${isAlreadyInDay ? 'bg-black/40 border-white/5 opacity-50' : 'bg-white/5 border-white/10 hover:border-orange-500/50'}`}>
                                         <div className="truncate pr-2">
-                                            <div className="text-sm font-bold text-white truncate">{c.name}</div>
-                                            <div className="text-[10px] text-gray-500 truncate">{c.business_name}</div>
+                                            <div className="text-sm font-bold text-amber-400 truncate">{c.name}</div>
+                                            <div className="text-[10px] text-white truncate">{c.business_name}</div>
                                         </div>
                                         <button 
                                             onClick={() => handleAddClientToRoute(c.id)}
                                             disabled={isAlreadyInDay}
-                                            className="w-8 h-8 rounded-full bg-blue-600 text-white shrink-0 hover:scale-110 disabled:opacity-0 disabled:scale-100 transition-all flex items-center justify-center font-black"
+                                            className="w-8 h-8 rounded-full bg-orange-600 text-white shrink-0 hover:scale-110 disabled:opacity-0 disabled:scale-100 transition-all flex items-center justify-center font-black"
                                         >
                                             +
                                         </button>
@@ -484,7 +532,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
 
             {/* Loading Overlay */}
             {loading && (
-                <div className="absolute top-8 right-1/2 translate-x-1/2 px-4 py-2 bg-blue-500 text-white text-xs font-bold uppercase tracking-widest rounded-full animate-pulse z-50 shadow-lg shadow-blue-500/20">
+                <div className="absolute top-8 right-1/2 translate-x-1/2 px-4 py-2 bg-orange-500 text-white text-xs font-bold uppercase tracking-widest rounded-full animate-pulse z-50 shadow-lg shadow-orange-500/20">
                     Sincronizando...
                 </div>
             )}

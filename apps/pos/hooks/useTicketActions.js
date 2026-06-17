@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { posService } from '../services/POSService';
-import { generateTicketHTML } from '../utils/ticketGenerator';
+import { generateTicketHTML, combineOrderTicketsForPrint } from '../utils/ticketGenerator';
 
 /**
  * Hook: useTicketActions
@@ -78,7 +78,11 @@ export const useTicketActions = ({
             created_at: new Date().toISOString()
         };
         
-        const html = generateTicketHTML(activeTicket);
+        // PEDIDO pagado: doble copia (CLIENTE + COMERCIO) en un solo print
+        // VENTA DIRECTA: copia única estándar
+        const html = (activeTicket.order_type === 'PEDIDO')
+            ? combineOrderTicketsForPrint(activeTicket)
+            : generateTicketHTML(activeTicket);
 
         const iframe = document.createElement('iframe');
         iframe.style.position = 'fixed';
@@ -160,7 +164,11 @@ export const useTicketActions = ({
 
                 // Inyectar data del OMS si es pedido
                 if (orderType === 'PEDIDO' && orderData) {
-                    payload = { ...payload, ...orderData };
+                    payload = { 
+                        ...payload, 
+                        ...orderData,
+                        order_notes: orderData.notes // Ensure notes are mapped properly for backend schema
+                    };
                 }
 
                 let savedTicket = null;

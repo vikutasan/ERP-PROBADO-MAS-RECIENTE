@@ -9,18 +9,23 @@ export const AuditoriaUI = () => {
     const [cortes, setCortes] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchDate, setSearchDate] = useState('');
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [selectedCorte, setSelectedCorte] = useState(null);
 
     useEffect(() => {
-        if (activeTab === 'ventas') fetchTickets();
-        else fetchCortes();
+        if (activeTab === 'ventas') fetchTickets(searchTerm, searchDate);
+        else fetchCortes(searchDate);
     }, [activeTab]);
 
-    const fetchTickets = async (search = '') => {
+    const fetchTickets = async (search = '', sDate = '') => {
         setLoading(true);
         try {
-            const url = search ? `${API_BASE}/pos/tickets?search=${search}` : `${API_BASE}/pos/tickets`;
+            const params = new URLSearchParams();
+            if (search) params.append('search', search);
+            if (sDate) params.append('search_date', sDate);
+            const qs = params.toString();
+            const url = qs ? `${API_BASE}/pos/tickets?${qs}` : `${API_BASE}/pos/tickets`;
             const resp = await fetch(url);
             const data = await resp.json();
             const arr = Array.isArray(data) ? data : [];
@@ -33,10 +38,14 @@ export const AuditoriaUI = () => {
         }
     };
 
-    const fetchCortes = async () => {
+    const fetchCortes = async (sDate = '') => {
         setLoading(true);
         try {
-            const resp = await fetch(`${API_BASE}/cash/sessions/history`);
+            const params = new URLSearchParams();
+            if (sDate) params.append('search_date', sDate);
+            const qs = params.toString();
+            const url = qs ? `${API_BASE}/cash/sessions/history?${qs}` : `${API_BASE}/cash/sessions/history`;
+            const resp = await fetch(url);
             const data = await resp.json();
             setCortes(Array.isArray(data) ? data : []);
         } catch (e) {
@@ -69,7 +78,11 @@ export const AuditoriaUI = () => {
 
     const handleSearch = (e) => {
         e.preventDefault();
-        fetchTickets(searchTerm);
+        if (activeTab === 'ventas') {
+            fetchTickets(searchTerm, searchDate);
+        } else {
+            fetchCortes(searchDate);
+        }
     };
 
     return (
@@ -99,19 +112,30 @@ export const AuditoriaUI = () => {
 
             <div className="flex-1 overflow-hidden flex">
                 <div className="flex-1 flex flex-col p-8 overflow-hidden">
+                    <form onSubmit={handleSearch} className="mb-6 flex gap-4 shrink-0">
+                        {activeTab === 'ventas' && (
+                            <input 
+                                type="text" 
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Buscar por folio (ej. V0015)..."
+                                className="flex-1 bg-gray-50 border border-gray-200 px-6 py-4 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all shadow-inner min-w-[200px]"
+                            />
+                        )}
+                        <input
+                            type="date"
+                            value={searchDate}
+                            onChange={(e) => setSearchDate(e.target.value)}
+                            className={`${activeTab === 'cortes' ? 'flex-1' : ''} bg-gray-50 border border-gray-200 px-6 py-4 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all shadow-inner`}
+                        />
+                        <button type="submit" className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-xs hover:bg-orange-600 transition-all shadow-lg active:scale-95 shrink-0">Buscar</button>
+                        {(searchTerm || searchDate) && (
+                            <button type="button" onClick={() => { setSearchTerm(''); setSearchDate(''); if (activeTab === 'ventas') fetchTickets('', ''); else fetchCortes(''); }} className="bg-gray-200 text-gray-700 px-6 py-4 rounded-2xl font-black uppercase text-xs hover:bg-gray-300 transition-all shadow active:scale-95 shrink-0">Limpiar</button>
+                        )}
+                    </form>
+
                     {activeTab === 'ventas' ? (
                         <div className="flex flex-col h-full min-h-0">
-                            <form onSubmit={handleSearch} className="mb-6 flex gap-4 shrink-0">
-                                <input 
-                                    type="text" 
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    placeholder="Buscar por folio (ej. V0015)..."
-                                    className="flex-1 bg-gray-50 border border-gray-200 px-6 py-4 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all shadow-inner"
-                                />
-                                <button type="submit" className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-xs hover:bg-orange-600 transition-all shadow-lg active:scale-95">Buscar</button>
-                            </form>
-
                             <div className="bg-white rounded-3xl border border-gray-100 shadow-xl flex-1 overflow-y-auto">
                                 <table className="w-full text-left relative">
                                     <thead className="bg-gray-50/95 backdrop-blur-sm border-b border-gray-100 sticky top-0 z-10 shadow-[0_4px_10px_-4px_rgba(0,0,0,0.05)]">

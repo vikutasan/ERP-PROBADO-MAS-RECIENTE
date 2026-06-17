@@ -381,7 +381,10 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, orderData
                                     <OrderDetailRow label="Dirección" value={orderData.delivery_address} />
                                 )}
                                 {orderData.notes && (
-                                    <OrderDetailRow label="Notas" value={orderData.notes} />
+                                    <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-4 py-3">
+                                        <p className="text-[9px] font-black uppercase text-amber-400/80 tracking-widest mb-1 flex items-center gap-1">📝 Notas del Pedido</p>
+                                        <p className="text-sm font-black leading-snug text-amber-200">{orderData.notes}</p>
+                                    </div>
                                 )}
                             </div>
 

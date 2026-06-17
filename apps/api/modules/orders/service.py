@@ -12,6 +12,7 @@ from .models import Order
 from .schemas import OrderCreate, OrderUpdate
 from modules.pos.models import Ticket, TicketItem
 from modules.catalog.models import Product
+from modules.security.models import Employee
 
 
 async def create_order(db: AsyncSession, data: OrderCreate) -> Order:
@@ -38,7 +39,7 @@ async def get_pending_orders(db: AsyncSession) -> list[Order]:
     Usa PostgreSQL (disco), NO RAM.
     """
     production_statuses = [
-        "PAGADO", "TURNO_ASIGNADO", "EN_PREPARACION", 
+        "TENTATIVO", "PAGADO", "TURNO_ASIGNADO", "EN_PREPARACION", 
         "PREPARADO_ENFRIAMIENTO", "PREPARADO_REPOSO", "LISTO_EMPAQUE",
         "EN_EMPAQUE_PICKUP", "LISTO_PICKUP_SIN_EMPAQUE", "LISTO_PICKUP_EMPACADO",
         "EN_EMPAQUE_REPARTO", "LISTO_REPARTO_EMPACADO", "EN_RUTA"
@@ -46,9 +47,10 @@ async def get_pending_orders(db: AsyncSession) -> list[Order]:
     result = await db.execute(
         select(Order)
         .options(
-            selectinload(Order.ticket)
-            .selectinload(Ticket.items)
-            .selectinload(TicketItem.product)
+            selectinload(Order.ticket).selectinload(Ticket.items).selectinload(TicketItem.product).selectinload(Product.category),
+            selectinload(Order.ticket).selectinload(Ticket.items).selectinload(TicketItem.product).selectinload(Product.technical_sheet),
+            selectinload(Order.ticket).selectinload(Ticket.captured_by).selectinload(Employee.profile),
+            selectinload(Order.ticket).selectinload(Ticket.cashed_by).selectinload(Employee.profile)
         )
         .where(Order.status.in_(production_statuses))
         .order_by(Order.committed_at.asc())
@@ -65,9 +67,10 @@ async def get_pickup_orders(db: AsyncSession) -> list[Order]:
     result = await db.execute(
         select(Order)
         .options(
-            selectinload(Order.ticket)
-            .selectinload(Ticket.items)
-            .selectinload(TicketItem.product)
+            selectinload(Order.ticket).selectinload(Ticket.items).selectinload(TicketItem.product).selectinload(Product.category),
+            selectinload(Order.ticket).selectinload(Ticket.items).selectinload(TicketItem.product).selectinload(Product.technical_sheet),
+            selectinload(Order.ticket).selectinload(Ticket.captured_by).selectinload(Employee.profile),
+            selectinload(Order.ticket).selectinload(Ticket.cashed_by).selectinload(Employee.profile)
         )
         .where(
             Order.delivery_type == "PICKUP",
@@ -87,9 +90,10 @@ async def get_reparto_orders(db: AsyncSession) -> list[Order]:
     result = await db.execute(
         select(Order)
         .options(
-            selectinload(Order.ticket)
-            .selectinload(Ticket.items)
-            .selectinload(TicketItem.product)
+            selectinload(Order.ticket).selectinload(Ticket.items).selectinload(TicketItem.product).selectinload(Product.category),
+            selectinload(Order.ticket).selectinload(Ticket.items).selectinload(TicketItem.product).selectinload(Product.technical_sheet),
+            selectinload(Order.ticket).selectinload(Ticket.captured_by).selectinload(Employee.profile),
+            selectinload(Order.ticket).selectinload(Ticket.cashed_by).selectinload(Employee.profile)
         )
         .where(
             Order.delivery_type == "DOMICILIO",

@@ -167,6 +167,23 @@ T=32s+  Yami cambia a otra cuenta → la cuenta de $453 se pierde
 2. **Banner Rojo Fijo:** Un banner grande, rojo y parpadeante aparece en el ticket diciendo "⛔ SIN CONEXIÓN AL SERVIDOR — Los productos NO se están guardando". Ya no es un toast que desaparece. (`SalesReceipt.jsx`)
 3. **Verificación Post-Envío:** Después de que `createTicket()` retorna HTTP 200, el sistema ejecuta un `GET /tickets/by-account/{folio}` para **confirmar que el ticket realmente existe** en la base de datos. Si la verificación falla, **NO limpia el carrito** y muestra una alerta de 10 segundos. (`useTicketActions.js`)
 
+### Incidente Ticket Secuestrado por la CAJA — Terminal 5 (16/Junio/2026)
+
+**Terminal afectada:** T5 y CAJA.
+**Síntoma:** Un ticket (V34538) de $2,550 capturado en la Terminal 5 no aparecía bajo "T5" en la base de datos ni en las auditorías de esa terminal. Parecía estar extraviado, pero en realidad estaba bajo "CAJA".
+
+**Causa raíz:**
+1. Cuando la Terminal 5 reserva el ticket, se registra correctamente (`terminal_id='T5'`).
+2. El ticket pasa al Pizarrón y queda en estado `OPEN`.
+3. El cajero en "CAJA" abre el ticket desde el Pizarrón y lo cobra (`status='PAID'`).
+4. **El Bug:** Al hacer `update_ticket_fields`, el backend aplicaba la regla: *"Asegurar que la terminal actual se convierte en la dueña del ticket"*, sobreescribiendo el `terminal_id` original ("T5") con la sesión actual ("CAJA").
+5. Esto destruía la trazabilidad de qué tablet originó la venta.
+
+**Solución implementada (vigente hoy):**
+1. Se **eliminó** la sobreescritura de `terminal_id` en `apps/api/modules/pos/service.py` (`_update_ticket_fields`).
+2. El `terminal_id` solo se asigna en `_initialize_new_ticket` y **jamás cambia**.
+3. Las métricas del cobrador se mantienen a salvo porque se utilizan `cashed_by_id` y `cash_session_id`.
+
 ---
 
 ## 4. LAS REGLAS DE ORO SUPERVIVIENTES (v6.0)
@@ -236,6 +253,13 @@ El botón "Enviar Cuenta" (Guardar en Pizarrón) debe estar **físicamente desha
 - ⛔ PROHIBIDO: Permitir enviar al Pizarrón cuando hay items que fallaron la persistencia atómica.
 
 **¿Por qué?** Un toast que desaparece en 5 segundos es invisible en hora pico. El cajero debe ver un indicador FIJO y el botón debe ser INOPERABLE hasta que la conexión se restablezca y los items se persistan exitosamente.
+
+### ⚡ REGLA 14: Inmutabilidad de la Terminal de Origen
+El campo `terminal_id` de un Ticket **solo** se asigna en su creación (`_initialize_new_ticket`).
+- ⛔ PROHIBIDO: Sobreescribir el `terminal_id` al actualizar o cobrar el ticket en `_update_ticket_fields`.
+- ✅ OBLIGATORIO: Para registrar quién cobró, usar exclusivamente `cashed_by_id` y `cash_session_id`.
+
+**¿Por qué?** Si la CAJA recauda un ticket creado por un vendedor en una tablet, y la base de datos sobreescribe el `terminal_id` a "CAJA", se destruye la trazabilidad física de las ventas y la auditoría.
 
 ---
 

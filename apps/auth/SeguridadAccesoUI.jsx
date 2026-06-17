@@ -4,6 +4,12 @@ import { PerfilesAccessSuite } from './PerfilesAccessSuite';
 
 export const SeguridadAccesoUI = ({ onPermissionsUpdate }) => {
     const [showProfileSuite, setShowProfileSuite] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
+
+    const handleCloseProfileSuite = () => {
+        setShowProfileSuite(false);
+        setRefreshKey(prev => prev + 1);
+    };
 
     return (
         <div className="flex flex-col h-full bg-[#050505] text-white overflow-hidden p-10">
@@ -32,7 +38,7 @@ export const SeguridadAccesoUI = ({ onPermissionsUpdate }) => {
                     <section className="animate-in fade-in slide-in-from-bottom-10 duration-700">
                         <div className="relative group">
                             <div className="absolute -inset-1 bg-orange-500/5 blur-2xl rounded-[60px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                            <GestionPersonal isSection={true} onClose={() => {}} />
+                            <GestionPersonal key={refreshKey} isSection={true} onClose={() => {}} />
                         </div>
                     </section>
 
@@ -43,7 +49,7 @@ export const SeguridadAccesoUI = ({ onPermissionsUpdate }) => {
 
             {showProfileSuite && (
                 <PerfilesAccessSuite 
-                    onClose={() => setShowProfileSuite(false)} 
+                    onClose={handleCloseProfileSuite} 
                     onPermissionsUpdate={onPermissionsUpdate}
                 />
             )}

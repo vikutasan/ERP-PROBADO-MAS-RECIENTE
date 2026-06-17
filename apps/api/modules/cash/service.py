@@ -168,7 +168,7 @@ async def cerrar_sesion(
     )
 
 
-async def obtener_historial_sesiones(db: AsyncSession, terminal_id: str = None, limit: int = 50) -> list[models.CashSession]:
+async def obtener_historial_sesiones(db: AsyncSession, terminal_id: str = None, search_date: str = None, limit: int = 50) -> list[models.CashSession]:
     """Obtiene el historial de sesiones de caja cerradas con sus resúmenes y tickets."""
     query = (
         select(models.CashSession)
@@ -182,6 +182,16 @@ async def obtener_historial_sesiones(db: AsyncSession, terminal_id: str = None, 
     if terminal_id:
         query = query.where(models.CashSession.terminal_id == terminal_id)
         
+    if search_date:
+        try:
+            from sqlalchemy import cast, Date
+            from datetime import datetime
+            target_date = datetime.strptime(search_date, "%Y-%m-%d").date()
+            query = query.where(cast(models.CashSession.closed_at, Date) == target_date)
+        except Exception as e:
+            import logging
+            logging.error(f"Error parsing date {search_date}: {e}")
+            
     query = query.order_by(models.CashSession.closed_at.desc()).limit(limit)
     
     resultado = await db.execute(query)

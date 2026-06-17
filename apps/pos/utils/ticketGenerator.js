@@ -1,4 +1,9 @@
-export const generateTicketHTML = (ticketData) => {
+/**
+ * Genera el HTML de un ticket de venta/pedido para impresión térmica.
+ * @param {Object} ticketData - Datos del ticket (items, payments, order data, etc.)
+ * @param {string|null} copyLabel - Etiqueta de copia: 'CLIENTE', 'COMERCIO', o null para venta directa.
+ */
+export const generateTicketHTML = (ticketData, copyLabel = null) => {
     let dateObj = new Date();
     if (ticketData.created_at) {
         dateObj = new Date(String(ticketData.created_at).endsWith('Z') ? ticketData.created_at : ticketData.created_at + 'Z');
@@ -164,9 +169,22 @@ export const generateTicketHTML = (ticketData) => {
                         </div>
                     ` : ''}
 
-                    <div class="center bold upper" style="margin-top: 6px; font-size: 8.5pt; border-top: 1.5px solid #000; pt: 3px;">
+                    ${(ticketData.notes || ticketData.order_notes) ? `
+                        <div style="margin-top: 4px; padding-top: 2px; border-top: 1px dashed #000;">
+                            <div class="small bold">NOTAS:</div>
+                            <div class="xsmall upper" style="line-height: 1.3;">${ticketData.notes || ticketData.order_notes}</div>
+                        </div>
+                    ` : ''}
+
+                    <div class="center bold upper" style="margin-top: 6px; font-size: 8.5pt; border-top: 1.5px solid #000; padding-top: 3px;">
                         ${ticketData.delivery_type === 'PICKUP' ? 'PAGADO - PENDIENTE DE RECOLECCION' : 'PAGADO - PENDIENTE DE ENTREGA'}
                     </div>
+
+                    ${copyLabel ? `
+                        <div class="center bold" style="font-size: 9pt; margin-top: 6px; border: 1.5px dashed #000; padding: 3px 0;">
+                            --- COPIA: ${copyLabel} ---
+                        </div>
+                    ` : ''}
                 </div>
             ` : ''}
 
@@ -182,6 +200,65 @@ export const generateTicketHTML = (ticketData) => {
             <div class="center xsmall" style="margin-top: 2px; font-weight: bold;">
                 ¡¡¡Gracias por su compra, disfrute su pan!!!
             </div>
+        </body>
+        </html>
+    `;
+};
+
+/**
+ * Genera un HTML combinado con doble copia del ticket de pedido.
+ * Copia 1: CLIENTE (para el comprador)
+ * Copia 2: COMERCIO (para el gerente de producción)
+ * Separadas por page-break para que la impresora térmica corte entre ambas.
+ * 
+ * @param {Object} ticketData - Datos del ticket completo
+ * @returns {string} HTML listo para imprimir con dos copias
+ */
+export const combineOrderTicketsForPrint = (ticketData) => {
+    const clienteHTML = generateTicketHTML(ticketData, 'CLIENTE');
+    const comercioHTML = generateTicketHTML(ticketData, 'COMERCIO');
+
+    // Extraer solo el <body> de cada copia para combinarlos en un solo documento
+    const extractBody = (html) => {
+        const bodyMatch = html.match(/<body>([\s\S]*)<\/body>/);
+        return bodyMatch ? bodyMatch[1] : html;
+    };
+
+    return `
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                @page { size: 80mm auto; margin: 0; }
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                html, body {
+                    font-family: 'Courier New', Courier, monospace;
+                    width: 76mm;
+                    padding: 0mm 1mm;
+                    font-size: 8pt;
+                    line-height: 1.15;
+                    color: #000;
+                    background: #fff;
+                    font-weight: bold;
+                }
+                .line { border-top: 1px dashed #000; margin: 2px 0; }
+                .row { display: flex; justify-content: space-between; align-items: center; }
+                .col { display: flex; flex-direction: column; }
+                .bold { font-weight: bold; }
+                .upper { text-transform: uppercase; }
+                .center { text-align: center; }
+                .small { font-size: 7pt; }
+                .xsmall { font-size: 6.5pt; }
+                table { width: 100%; border-collapse: collapse; font-size: 8pt; font-weight: bold; }
+                td { padding: 1px 0; vertical-align: top; }
+                .audit { font-size: 7pt; text-transform: uppercase; margin-top: 3px; padding-top: 2px; border-top: 1px dashed #000; }
+                .ticket-copy { page-break-after: always; }
+                .ticket-copy:last-child { page-break-after: auto; }
+            </style>
+        </head>
+        <body>
+            <div class="ticket-copy">${extractBody(clienteHTML)}</div>
+            <div class="ticket-copy">${extractBody(comercioHTML)}</div>
         </body>
         </html>
     `;

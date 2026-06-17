@@ -98,7 +98,7 @@ class GrandezaService:
         client = GrandezaClient(**data)
         db.add(client)
         await db.flush()
-        return client
+        return await self.get_client(db, client.id)
 
     async def update_client(self, db: AsyncSession, client_id: int, data: dict):
         client = await self.get_client(db, client_id)
@@ -162,6 +162,11 @@ class GrandezaService:
         journey = result.scalar_one_or_none()
         if not journey:
             return None
+            
+        from datetime import datetime
+        if data.get("status") == "EN_RUTA" and journey.status != "EN_RUTA" and not journey.dispatched_at:
+            journey.dispatched_at = datetime.utcnow()
+            
         for key, value in data.items():
             if value is not None and hasattr(journey, key):
                 setattr(journey, key, value)

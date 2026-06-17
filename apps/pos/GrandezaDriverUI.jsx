@@ -47,6 +47,42 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
     const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null), 3000); };
 
+    // ─── GPS: Guardar ubicación de un cliente ───
+    const saveClientLocation = async (clientId) => {
+        if (!navigator.geolocation) {
+            showToast('⚠️ GPS no disponible en este dispositivo', 'error');
+            return;
+        }
+        showToast('📡 Capturando ubicación...', 'success');
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                const url = `https://www.google.com/maps?q=${lat},${lng}`;
+                try {
+                    const res = await fetch(`${API}/grandeza/clients/${clientId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ google_maps_url: url })
+                    });
+                    if (res.ok) {
+                        showToast('✅ Ubicación guardada correctamente');
+                        // Actualizar clientes en memoria
+                        setClients(prev => prev.map(c => c.id === clientId ? { ...c, google_maps_url: url } : c));
+                    } else {
+                        showToast('❌ Error al guardar ubicación', 'error');
+                    }
+                } catch (e) {
+                    showToast('❌ Error de red al guardar', 'error');
+                }
+            },
+            (err) => {
+                showToast('❌ No se pudo obtener GPS. Activa la ubicación.', 'error');
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
+
     // ─── Load ───
     useEffect(() => { loadAll(); }, []);
 
@@ -301,7 +337,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                     <div className="p-4 border-b border-amber-500/20 bg-black/20">
                         {isExt ? (
                             <div>
-                                <label className="text-[10px] font-black text-gray-500 uppercase mb-1 block">Nombre del cliente</label>
+                                <label className="text-[10px] font-black text-amber-400/80 uppercase mb-1 block">Nombre del cliente</label>
                                 <input value={extClientName} onChange={e => setExtClientName(e.target.value)} placeholder="¿A quién le vendes?" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none focus:border-amber-500" />
                             </div>
                         ) : (
@@ -309,10 +345,14 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                                 {client?.facade_photo_url && <img src={`http://${window.location.hostname}:5001${client.facade_photo_url}`} className="w-16 h-16 rounded-xl object-cover border border-white/10" />}
                                 <div className="flex-1 min-w-0">
                                     <h3 className="font-black text-lg leading-tight truncate">{client?.name}</h3>
-                                    <p className="text-xs text-gray-400 truncate">{client?.business_name}</p>
-                                    <div className="flex gap-2 mt-2">
+                                    <p className="text-xs text-amber-200/60 truncate">{client?.business_name}</p>
+                                    <div className="flex gap-2 mt-2 flex-wrap">
                                         {client?.phone && <a href={`tel:${client.phone}`} className="text-xs bg-blue-500/20 text-blue-400 px-3 py-1 rounded-lg font-bold">📞 Llamar</a>}
-                                        {client?.google_maps_url && <a href={client.google_maps_url} target="_blank" className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-lg font-bold">📍 Mapa</a>}
+                                        {client?.google_maps_url ? (
+                                            <a href={client.google_maps_url} target="_blank" className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-lg font-bold">📍 Navegar</a>
+                                        ) : (
+                                            <button onClick={() => saveClientLocation(client.id)} className="text-xs bg-amber-500/20 text-amber-400 px-3 py-1 rounded-lg font-bold">📍 Guardar Ubicación</button>
+                                        )}
                                         {canEditClients && <button onClick={() => setEditingClient(client)} className="text-xs bg-white/5 text-gray-400 px-3 py-1 rounded-lg font-bold">✏️</button>}
                                     </div>
                                 </div>
@@ -322,13 +362,13 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
                     {/* Productos */}
                     <div className="p-4 space-y-3">
-                        <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest">Productos</h4>
+                        <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest">Productos</h4>
                         {visitItems.map(it => (
                             <div key={it.product_id} className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
                                 <div className="flex justify-between items-center mb-3">
                                     <div>
                                         <div className="font-bold text-sm">{it.product_name}</div>
-                                        <div className="text-xs text-gray-500">${it.b2b_price?.toFixed(2)} c/u {it.suggested_fresh_qty > 0 && <span className="text-blue-400">• Sugerido: {it.suggested_fresh_qty}</span>}</div>
+                                        <div className="text-xs text-gray-300">${it.b2b_price?.toFixed(2)} c/u {it.suggested_fresh_qty > 0 && <span className="text-blue-400">• Sugerido: {it.suggested_fresh_qty}</span>}</div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
@@ -369,7 +409,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         </div>
                         {/* Incidentes */}
                         <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
-                            <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">📝 Notas / Incidente</label>
+                            <label className="text-[10px] font-black text-gray-300 uppercase block mb-2">📝 Notas / Incidente</label>
                             <textarea value={incidentNotes} onChange={e => setIncidentNotes(e.target.value)} placeholder="Opcional: documenta cualquier incidente..." className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-white/30 min-h-[60px] resize-none" />
                         </div>
                     </div>
@@ -423,24 +463,24 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         </div>
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
                             <div className="text-2xl font-black text-white">${runningTotals.totalCash.toFixed(0)}</div>
-                            <div className="text-[9px] font-black text-gray-500 uppercase">Efectivo en Mano</div>
+                            <div className="text-[9px] font-black text-gray-300 uppercase">Efectivo en Mano</div>
                         </div>
                     </div>
-                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest pt-2">Detalle de Visitas</h4>
+                    <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest pt-2">Detalle de Visitas</h4>
                     {visits.map((v, i) => (
                         <div key={v.id || i} className="bg-white/[0.02] border border-white/5 rounded-xl p-3 flex justify-between items-center">
                             <div>
                                 <div className="font-bold text-sm">{v.client_name || v.ext_client_name || `Visita ${i+1}`}</div>
-                                <div className="text-xs text-gray-500">{v.visit_type === 'EXTEMPORANEA' ? '⚡ Extemporánea' : `📋 Programada`}</div>
+                                <div className="text-xs text-gray-300">{v.visit_type === 'EXTEMPORANEA' ? '⚡ Extemporánea' : `📋 Programada`}</div>
                             </div>
                             <div className="text-right">
                                 <div className="font-black text-emerald-400 text-sm">${(v.sale_amount||0).toFixed(2)}</div>
-                                <div className="text-xs text-gray-500">${(v.payment_received||0).toFixed(2)} cobrado</div>
+                                <div className="text-xs text-gray-300">${(v.payment_received||0).toFixed(2)} cobrado</div>
                             </div>
                         </div>
                     ))}
-                    {visits.length === 0 && <p className="text-center text-gray-600 py-8 font-bold text-sm">Aún no hay visitas registradas</p>}
-                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest pt-2">Inventario Restante</h4>
+                    {visits.length === 0 && <p className="text-center text-gray-400 py-8 font-bold text-sm">Aún no hay visitas registradas</p>}
+                    <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest pt-2">Inventario Restante</h4>
                     {grandezaProducts.map(gp => {
                         const remaining = runningTotals.freshRemaining[gp.product_id] || 0;
                         return (
@@ -475,7 +515,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         </div>
                         <div>
                             <h1 className="font-black text-2xl uppercase tracking-tighter text-white leading-none">Herramienta <span className="text-amber-400">Repartidor</span></h1>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{todayDay} — {todayStr()}</p>
+                            <p className="text-[10px] font-bold text-amber-200/70 uppercase tracking-widest mt-1">{todayDay} — {todayStr()}</p>
                         </div>
                     </div>
                     <button onClick={onBack} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Salir</button>
@@ -483,16 +523,16 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 {/* Totales en vivo */}
                 <div className="grid grid-cols-3 gap-2">
                     <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 text-center">
-                        <div className="text-sm font-black text-emerald-400">${runningTotals.totalCash.toFixed(0)}</div>
-                        <div className="text-[8px] font-black text-emerald-500/60 uppercase">Efectivo</div>
+                        <div className="text-sm font-black text-emerald-300">${runningTotals.totalCash.toFixed(0)}</div>
+                        <div className="text-[8px] font-black text-emerald-200 uppercase">Efectivo</div>
                     </div>
                     <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-2 text-center">
-                        <div className="text-sm font-black text-red-400">{runningTotals.totalExchangePieces}</div>
-                        <div className="text-[8px] font-black text-red-500/60 uppercase">Cambios</div>
+                        <div className="text-sm font-black text-red-300">{runningTotals.totalExchangePieces}</div>
+                        <div className="text-[8px] font-black text-red-200 uppercase">Cambios</div>
                     </div>
                     <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-2 text-center">
-                        <div className="text-sm font-black text-blue-400">{runningTotals.freshTotal}</div>
-                        <div className="text-[8px] font-black text-blue-500/60 uppercase">Frescas</div>
+                        <div className="text-sm font-black text-blue-300">{runningTotals.freshTotal}</div>
+                        <div className="text-[8px] font-black text-blue-200 uppercase">Frescas</div>
                     </div>
                 </div>
             </div>
@@ -504,17 +544,19 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                     const done = visitedIds.has(slot.client_id);
                     return (
                         <button key={slot.slot_id || idx} onClick={() => !done && openVisit(slot)} disabled={done}
-                            className={`w-full text-left p-4 rounded-2xl border transition-all ${done ? 'bg-emerald-500/5 border-emerald-500/20 opacity-60' : 'bg-white/[0.02] border-white/5 active:scale-[0.98]'}`}>
+                            className={`w-full text-left p-4 rounded-2xl border transition-all ${done ? 'bg-emerald-500/5 border-emerald-500/20 opacity-60' : 'bg-black/60 border-amber-500/20 active:scale-[0.98]'}`}>
                             <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${done ? 'bg-emerald-500 text-black' : 'bg-white/10 text-white'}`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${done ? 'bg-emerald-500 text-black' : 'bg-amber-500 text-black'}`}>
                                     {done ? '✓' : idx + 1}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-bold text-sm truncate">{client?.name || `Cliente #${slot.client_id}`}</div>
-                                    <div className="text-xs text-gray-500 truncate">{client?.business_name || ''}</div>
+                                    <div className="font-black text-white text-base truncate">{client?.name || `Cliente #${slot.client_id}`}</div>
+                                    <div className="text-xs text-amber-200 truncate font-medium">{client?.business_name || ''}</div>
                                 </div>
-                                {client?.google_maps_url && (
-                                    <a href={client.google_maps_url} target="_blank" onClick={e => e.stopPropagation()} className="text-lg">📍</a>
+                                {client?.google_maps_url ? (
+                                    <a href={client.google_maps_url} target="_blank" onClick={e => e.stopPropagation()} className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-sm" title="Navegar">📍</a>
+                                ) : (
+                                    <button onClick={(e) => { e.stopPropagation(); saveClientLocation(slot.client_id); }} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-sm opacity-40" title="Guardar ubicación">📍</button>
                                 )}
                             </div>
                         </button>
@@ -522,7 +564,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 })}
 
                 {routeSlots.length === 0 && (
-                    <div className="text-center py-12 text-gray-500">
+                    <div className="text-center py-12 text-amber-200">
                         <div className="text-3xl mb-2">🗺️</div>
                         <p className="font-bold text-sm">No hay clientes en la ruta de hoy</p>
                     </div>
@@ -607,7 +649,7 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
             <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-4 pb-28">
                 {/* Cliente */}
                 <div>
-                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Cliente</label>
+                    <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Cliente</label>
                     <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none">
                         <option value="">Seleccionar cliente...</option>
                         {clients.map(c => <option key={c.id} value={c.id}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
@@ -615,24 +657,24 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                 </div>
                 {/* Fecha de entrega */}
                 <div>
-                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Fecha de Entrega</label>
+                    <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Fecha de Entrega</label>
                     <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none" />
                 </div>
                 {/* Forma de pago */}
                 <div>
-                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Forma de Pago</label>
+                    <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Forma de Pago</label>
                     <div className="flex gap-2">
                         {['EFECTIVO','TRANSFERENCIA'].map(m => (
-                            <button key={m} onClick={() => setPayMethod(m)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase border ${payMethod === m ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-white/5 border-white/10 text-gray-500'}`}>{m === 'EFECTIVO' ? '💵' : '📲'} {m}</button>
+                            <button key={m} onClick={() => setPayMethod(m)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase border ${payMethod === m ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-white/5 border-white/10 text-gray-300'}`}>{m === 'EFECTIVO' ? '💵' : '📲'} {m}</button>
                         ))}
                     </div>
                 </div>
                 {/* Productos */}
                 <div>
-                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">Productos</label>
+                    <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-2">Productos</label>
                     {orderItems.map(it => (
                         <div key={it.product_id} className="flex items-center justify-between bg-white/[0.02] border border-white/5 rounded-xl p-3 mb-2">
-                            <div className="flex-1"><div className="font-bold text-sm">{it.product_name}</div><div className="text-xs text-gray-500">${it.unit_price.toFixed(2)}</div></div>
+                            <div className="flex-1"><div className="font-bold text-sm">{it.product_name}</div><div className="text-xs text-gray-300">${it.unit_price.toFixed(2)}</div></div>
                             <div className="flex items-center gap-1">
                                 <button onClick={() => setOrderItems(prev => prev.map(x => x.product_id === it.product_id ? {...x, qty: Math.max(0, x.qty-1)} : x))} className="w-8 h-8 rounded-lg bg-white/5 text-white font-bold">−</button>
                                 <input type="number" value={it.qty} onChange={e => setOrderItems(prev => prev.map(x => x.product_id === it.product_id ? {...x, qty: parseInt(e.target.value)||0} : x))} className="w-14 bg-black/40 border border-white/10 rounded-lg text-center font-black text-white p-2 outline-none" />
@@ -642,7 +684,7 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                     ))}
                 </div>
                 <div>
-                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-1">Notas</label>
+                    <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Notas</label>
                     <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Instrucciones especiales..." className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white outline-none resize-none min-h-[50px]" />
                 </div>
             </div>
@@ -650,7 +692,7 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
             <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 z-50">
                 <div className="flex justify-between items-center mb-3">
                     <span className="font-black text-lg">Total: <span className="text-blue-400">${totalAmount.toFixed(2)}</span></span>
-                    <span className="text-xs text-gray-500 font-bold">{payMethod}</span>
+                    <span className="text-xs text-gray-300 font-bold">{payMethod}</span>
                 </div>
                 <button onClick={submitOrder} disabled={saving} className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50">
                     {saving ? 'Procesando...' : '📋 Confirmar Pedido'}

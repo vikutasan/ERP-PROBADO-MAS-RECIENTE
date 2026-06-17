@@ -40,9 +40,9 @@ class POSService:
         
         await db.commit()
 
-        # 4. PUENTE POS → PRODUCCIÓN: Si es un PEDIDO pagado, crear Order en PostgreSQL
-        if db_ticket.order_type == "PEDIDO" and db_ticket.status == "PAID":
-            await self._create_order_from_ticket(db, db_ticket)
+        # 4. PUENTE POS → PRODUCCIÓN: Sincronizar PEDIDOs con PostgreSQL
+        if db_ticket.order_type == "PEDIDO" and db_ticket.status in ["OPEN", "PAID"]:
+            await self._sync_order_from_ticket(db, db_ticket)
 
         return await self._get_full_ticket(db, db_ticket.id)
 
@@ -139,11 +139,8 @@ class POSService:
         if ticket.captured_by_id:
             db_ticket.captured_by_id = ticket.captured_by_id
 
-        # Asegurar que la terminal actual se convierte en la dueña del ticket
-        if ticket.session_id:
-            session = await db.get(models.TerminalSession, ticket.session_id)
-            if session:
-                db_ticket.terminal_id = session.terminal_id
+        # El terminal_id original NUNCA se sobreescribe. 
+        # La CAJA u otra terminal que cobra solo registra el cashed_by_id y cash_session_id.
 
         # v4.0 BLOQUEO OPTIMISTA: Incrementar versión en cada update
         db_ticket.version = (db_ticket.version or 1) + 1
@@ -262,23 +259,36 @@ class POSService:
             
         return ticket_obj
 
-    async def _create_order_from_ticket(self, db: AsyncSession, ticket: models.Ticket):
+    async def _sync_order_from_ticket(self, db: AsyncSession, ticket: models.Ticket):
         """
         PUENTE POS → PRODUCCIÓN (PostgreSQL, NO RAM).
-        Crea un registro en la tabla 'orders' cuando se paga un pedido.
-        Protección de idempotencia: si ya existe un Order para este ticket, no duplica.
+        Crea o actualiza un registro en la tabla 'orders' cuando un pedido es OPEN (TENTATIVO) o PAID (PAGADO).
         """
-        # Verificar que no exista ya (idempotencia)
         existing = await db.execute(
             select(Order).where(Order.ticket_id == ticket.id)
         )
-        if existing.scalar_one_or_none():
-            return  # Ya existe, no duplicar
+        order = existing.scalar_one_or_none()
+        
+        target_status = "PAGADO" if ticket.status == "PAID" else "TENTATIVO"
 
-        order = Order(
+        if order:
+            # Actualizar si ya existe
+            order.status = target_status
+            order.delivery_type = ticket.delivery_type or "PICKUP"
+            order.customer_name = ticket.customer_name
+            order.customer_phone = ticket.customer_phone
+            order.committed_at = ticket.committed_at
+            order.packaging_type = ticket.packaging_type or "PROPIO"
+            order.delivery_address = ticket.delivery_address
+            order.notes = ticket.order_notes
+            await db.commit()
+            return
+
+        # Crear nuevo si no existe
+        new_order = Order(
             ticket_id=ticket.id,
             delivery_type=ticket.delivery_type or "PICKUP",
-            status="PAGADO",  # Primer estado de producción
+            status=target_status,
             customer_name=ticket.customer_name,
             customer_phone=ticket.customer_phone,
             committed_at=ticket.committed_at,
@@ -286,7 +296,7 @@ class POSService:
             delivery_address=ticket.delivery_address,
             notes=ticket.order_notes,
         )
-        db.add(order)
+        db.add(new_order)
         await db.commit()
 
 
@@ -499,7 +509,7 @@ class POSService:
         tickets = result.scalars().all()
         return [self._populate_flat_fields(t) for t in tickets]
 
-    async def get_tickets(self, db: AsyncSession, terminal_id: str = None, status: str = None, search: str = None, limit: int = 100):
+    async def get_tickets(self, db: AsyncSession, terminal_id: str = None, status: str = None, search: str = None, search_date: str = None, limit: int = 100):
         """
         SERIALIZACIÓN UNIFICADA: Usa el MISMO patrón de carga ansiosa y
         _populate_flat_fields() que _get_full_ticket() para garantizar
@@ -520,6 +530,15 @@ class POSService:
             query = query.where(models.Ticket.status == status)
         if search:
             query = query.where(models.Ticket.account_num.ilike(f"%{search}%"))
+        if search_date:
+            try:
+                from sqlalchemy import cast, Date
+                from datetime import datetime
+                target_date = datetime.strptime(search_date, "%Y-%m-%d").date()
+                query = query.where(cast(models.Ticket.created_at, Date) == target_date)
+            except Exception as e:
+                import logging
+                logging.error(f"Error parsing date {search_date}: {e}")
             
         query = query.order_by(models.Ticket.created_at.desc()).limit(limit)
         

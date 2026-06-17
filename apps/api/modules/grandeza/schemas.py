@@ -97,6 +97,7 @@ class GrandezaJourneyUpdate(BaseModel):
     exchange_pieces_received: Optional[int] = None
     fresh_leftover_received: Optional[int] = None
     feedback_notes: Optional[str] = None
+    driver_user_id: Optional[int] = None
 
 class GrandezaInventoryCreate(BaseModel):
     product_id: int
@@ -127,6 +128,7 @@ class GrandezaJourneyResponse(BaseModel):
     fresh_leftover_received: Optional[int] = None
     driver_user_id: Optional[int] = None
     feedback_notes: Optional[str] = None
+    dispatched_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 

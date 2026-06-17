@@ -78,6 +78,7 @@ class GrandezaJourney(Base):
     
     # Fondo de caja (variable, puede ser 0)
     cash_fund = Column(Float, default=0.0)  # Lo que se le entrega al repartidor para dar cambio
+    dispatched_at = Column(DateTime, nullable=True) # Hora en la que se despacha la ruta
     
     # Cierre — Sistema vs Recibido
     cash_expected = Column(Float, nullable=True)  # Calculado por el sistema al cierre

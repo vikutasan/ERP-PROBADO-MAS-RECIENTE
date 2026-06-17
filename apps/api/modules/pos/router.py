@@ -79,10 +79,11 @@ async def get_tickets(
     terminal_id: str = None, 
     status: str = None, 
     search: str = None, 
+    search_date: str = None,
     limit: int = 100, 
     db: AsyncSession = Depends(get_db)
 ):
-    return await pos_service.get_tickets(db=db, terminal_id=terminal_id, status=status, search=search, limit=limit)
+    return await pos_service.get_tickets(db=db, terminal_id=terminal_id, status=status, search=search, search_date=search_date, limit=limit)
 
 @router.get("/tickets/by-account/{account_num}", response_model=schemas.TicketResponse)
 async def get_ticket_by_account_num(account_num: str, db: AsyncSession = Depends(get_db)):
