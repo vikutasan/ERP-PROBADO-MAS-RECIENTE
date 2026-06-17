@@ -28,8 +28,8 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
             permissionId: 'grandeza_params',
             icon: '📋',
             title: 'Herramienta Administrador Grandeza',
-            subtitle: 'Reparto Pan Grandeza',
-            description: 'Productos, clientes, rutas por día, estadísticas',
+            subtitle: '',
+            description: '',
             color: 'from-blue-500 to-indigo-700',
             shadow: 'shadow-blue-500/20',
             accent: 'text-blue-400',
@@ -39,8 +39,8 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
             permissionId: 'grandeza_daily',
             icon: '📅',
             title: 'Herramienta Gerente Grandeza',
-            subtitle: 'Reparto Pan Grandeza',
-            description: 'Inventario inicial, entregas, cierre de jornada, rastreo',
+            subtitle: '',
+            description: '',
             color: 'from-emerald-500 to-green-700',
             shadow: 'shadow-emerald-500/20',
             accent: 'text-emerald-400',
@@ -50,8 +50,8 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
             permissionId: 'grandeza_driver',
             icon: '🚗',
             title: 'Herramienta Repartidor Grandeza',
-            subtitle: 'Pan Grandeza',
-            description: 'Captura de ventas en ruta, cobros, incidentes, pedidos',
+            subtitle: '',
+            description: '',
             color: 'from-amber-500 to-orange-700',
             shadow: 'shadow-amber-500/20',
             accent: 'text-amber-400',
@@ -172,12 +172,16 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
                                 <h3 className="text-lg font-black uppercase tracking-tight text-white text-center leading-tight mb-1">
                                     {suite.title}
                                 </h3>
-                                <p className={`text-xs font-bold uppercase tracking-widest mb-4 ${suite.accent}`}>
-                                    {suite.subtitle}
-                                </p>
-                                <p className="text-xs text-gray-500 font-medium text-center leading-relaxed">
-                                    {suite.description}
-                                </p>
+                                {suite.subtitle && (
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-4 ${suite.accent}`}>
+                                        {suite.subtitle}
+                                    </p>
+                                )}
+                                {suite.description && (
+                                    <p className="text-xs text-gray-500 font-medium text-center leading-relaxed">
+                                        {suite.description}
+                                    </p>
+                                )}
 
                                 {/* Badge de estado */}
                                 {!permitted && (
