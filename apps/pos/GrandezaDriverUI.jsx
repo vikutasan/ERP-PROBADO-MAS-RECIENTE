@@ -342,7 +342,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                                 <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                             </div>
                             <div>
-                                <h1 className="font-black text-xl uppercase tracking-tighter text-white leading-none"><span className="text-amber-400">{isExt ? 'Venta Ext.' : `Visita #${activeVisit.visit_order}`}</span></h1>
+                                <h1 className="font-black text-xl uppercase tracking-tighter text-white leading-none"><span className="text-amber-400">{isExt ? 'Venta No Programada' : `Visita #${activeVisit.visit_order}`}</span></h1>
                             </div>
                         </div>
                         <button onClick={() => { setView('route'); setActiveVisit(null); }} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Ruta</button>
