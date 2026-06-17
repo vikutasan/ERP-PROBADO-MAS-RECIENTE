@@ -616,7 +616,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 flex gap-2 z-50">
                 <button onClick={() => openVisit({client_id: null, visit_order: 999}, true)}
                     className="flex-1 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs font-black text-amber-400 uppercase">
-                    + Ext.
+                    + Venta No Programada
                 </button>
                 <button onClick={() => setView('order')}
                     className="flex-1 py-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs font-black text-blue-400 uppercase">
