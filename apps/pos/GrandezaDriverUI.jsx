@@ -636,6 +636,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
 // ─── Sub-Componente: Levantar Pedido ─────────────────────────────────────────
 const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
+    const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
     const [selectedClient, setSelectedClient] = useState('');
     const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price })));
     const [deliveryDate, setDeliveryDate] = useState('');
