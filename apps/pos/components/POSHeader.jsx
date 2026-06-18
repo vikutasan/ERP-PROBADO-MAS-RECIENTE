@@ -58,7 +58,7 @@ export const POSHeader = ({
                                 Cambiar Estación
                             </p>
                             )}
-                            <p className={`text-[9px] font-black uppercase tracking-widest leading-none mt-1 flex items-center gap-1 ${netStatus === 'good' ? 'text-green-400' : netStatus === 'slow' ? 'text-yellow-400 animate-pulse' : 'text-red-500 animate-pulse'}`}>
+                            <p className={`text-[9px] font-black uppercase tracking-widest leading-none mt-1 flex items-center gap-1 ${netStatus === 'good' ? 'text-green-400' : netStatus === 'slow' ? 'text-yellow-400' : 'text-red-500'}`}>
                                 <span className={`inline-block w-1.5 h-1.5 rounded-full ${netStatus === 'good' ? 'bg-green-400' : netStatus === 'slow' ? 'bg-yellow-400' : 'bg-red-500'}`}></span>
                                 {netStatus === 'good' ? `RED OK` : netStatus === 'slow' ? 'RED LENTA' : 'SIN RED'}
                                 {netStatus === 'good' && netLatency > 0 ? ` ${netLatency}ms` : ''}
@@ -75,7 +75,7 @@ export const POSHeader = ({
                         <span className={`text-4xl font-black uppercase tracking-tighter italic drop-shadow-[0_0_12px_rgba(193,215,46,0.4)] ${
                             currentAccountNum
                                 ? orderData ? 'text-orange-400' : 'text-[#c1d72e]'
-                                : 'text-orange-500 animate-pulse'
+                                : 'text-orange-500'
                         }`}>
                             {currentAccountNum
                                 ? `CTA ${currentAccountNum}`
@@ -86,7 +86,7 @@ export const POSHeader = ({
                             <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest mt-0.5">📝 BORRADOR</span>
                         )}
                         {orderData && (
-                            <span className="text-[8px] font-black text-orange-400 uppercase tracking-widest animate-pulse mt-0.5">📦 PEDIDO TENTATIVO</span>
+                            <span className="text-[8px] font-black text-orange-400 uppercase tracking-widest mt-0.5">📦 PEDIDO TENTATIVO</span>
                         )}
                     </div>
 
@@ -158,7 +158,7 @@ export const POSHeader = ({
                             </p>
                             {/* v4.0 ZERO-LOSS: Badge de estado de guardado */}
                             {lastSaveStatus === 'failed' && cartLength > 0 && (
-                                <p className="text-[10px] font-black text-red-500 uppercase tracking-tighter leading-none animate-pulse mt-0.5">
+                                <p className="text-[10px] font-black text-red-500 uppercase tracking-tighter leading-none mt-0.5">
                                     ⚠️ SIN GUARDAR
                                 </p>
                             )}
@@ -169,7 +169,7 @@ export const POSHeader = ({
                             )}
                             {/* v5.1: Estado 'queued' = guardado offline localmente */}
                             {lastSaveStatus === 'queued' && (
-                                <p className="text-[10px] font-black text-amber-400 uppercase tracking-tighter leading-none animate-pulse mt-0.5">
+                                <p className="text-[10px] font-black text-amber-400 uppercase tracking-tighter leading-none mt-0.5">
                                     📥 GUARDADO LOCAL
                                 </p>
                             )}

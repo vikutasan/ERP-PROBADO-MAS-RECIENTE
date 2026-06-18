@@ -213,7 +213,7 @@ export const ExperimentCenterUI = () => {
 
                 <div className={`mt-auto transition-all duration-500 ${isSidebarCollapsed ? 'opacity-0 scale-0 h-0 overflow-hidden' : 'opacity-100 scale-100'}`}>
                     <div className="p-6 bg-orange-600/10 border border-orange-500/20 rounded-[30px] relative overflow-hidden group">
-                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-orange-500/10 blur-3xl rounded-full" />
+                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-orange-500/10 rounded-full" />
                         <p className="text-[10px] font-black uppercase text-orange-400 mb-2 tracking-widest">Usuario</p>
                         <p className="text-sm font-black leading-relaxed uppercase italic truncate text-white">{userName || 'Administrador'}</p>
                     </div>
