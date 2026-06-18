@@ -50,7 +50,7 @@ export const VisionVisor = ({ isScanning, setIsScanning, addToCart, products, ca
                 <div className="absolute top-10 right-10 z-30 flex flex-col gap-3">
                     <div className="bg-black/60 p-5 rounded-[28px] border border-white/10 animate-in fade-in slide-in-from-right-4 duration-500 shadow-2xl min-w-[180px]">
                         <div className="flex items-center gap-3 mb-2">
-                            <div className={`w-3 h-3 rounded-full ${currentStatus.color} ${aiStatus !== 'IDLE' ? 'animate-pulse' : ''} shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
+                            <div className={`w-3 h-3 rounded-full ${currentStatus.color} shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
                             <p className="text-[9px] font-black text-white/90 uppercase tracking-widest">{currentStatus.label}</p>
                         </div>
                         <div className="flex justify-between items-end">

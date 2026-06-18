@@ -101,7 +101,7 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
 
             {/* ⛔ BANNER DE ALERTA: Items sin guardar en servidor */}
             {hasUnsavedItems && (
-                <div className="bg-red-600 text-white px-4 py-3 rounded-xl border-2 border-red-400 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)] mt-2">
+                <div className="bg-red-600 text-white px-4 py-3 rounded-xl border-2 border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.4)] mt-2">
                     <div className="flex items-center gap-2">
                         <span className="text-2xl">⛔</span>
                         <div>
@@ -160,7 +160,7 @@ export const SalesReceipt = ({ cart, removeFromCart, updateQuantity, total, curr
                             hasUnsavedItems
                                 ? 'bg-red-500/30 border-red-500 cursor-not-allowed opacity-70'
                                 : isSendingToPizarron 
-                                    ? 'bg-yellow-400 cursor-wait animate-pulse' 
+                                    ? 'bg-yellow-400 cursor-wait' 
                                     : cart.length === 0 
                                         ? 'bg-gray-300 cursor-not-allowed opacity-50'
                                         : 'bg-[#c1d72e] hover:bg-black hover:text-[#c1d72e] active:scale-95 hover:shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]'

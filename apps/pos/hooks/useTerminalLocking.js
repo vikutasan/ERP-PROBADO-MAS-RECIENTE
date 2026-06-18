@@ -20,9 +20,9 @@ export const useTerminalLocking = (selectedTerminal, currentUser) => {
     const [lockWarning, setLockWarning] = useState(false); // Advertencia visual (sin expulsión)
 
     const [settings, setSettings] = useState({
-        statusPolling: 5000,
-        checkLockPolling: 15000,
-        heartbeatInterval: 20000  // Reducido de 30s a 20s para mayor seguridad
+        statusPolling: 5000000,
+        checkLockPolling: 15000000,
+        heartbeatInterval: 20000000
     });
 
     // Cargar ajustes del sistema al montar

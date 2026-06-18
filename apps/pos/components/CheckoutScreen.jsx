@@ -227,7 +227,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, orderData
                     {/* Right Panel: Payments List */}
                     <div className="w-1/2 p-10 bg-black/10 flex flex-col">
                         <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-gray-500 mb-8 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+                            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                             Resumen de Pagos
                         </h3>
 
@@ -320,7 +320,7 @@ export const CheckoutScreen = ({ cart = [], total, onConfirm, onClose, orderData
                     {orderData && (
                         <div className="w-[320px] flex-shrink-0 p-8 bg-orange-500/5 border-l border-orange-500/20 flex flex-col gap-4 animate-in slide-in-from-right-4 duration-300">
                             <div className="flex items-center gap-2 mb-2">
-                                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+                                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                                 <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-orange-400">Confirmar con el Cliente</h3>
                             </div>
 
