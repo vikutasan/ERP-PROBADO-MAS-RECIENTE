@@ -25,7 +25,7 @@ class GrandezaService:
         """Lista todos los productos habilitados para Grandeza con su info del catálogo."""
         stmt = (
             select(GrandezaProductConfig)
-            .options(selectinload(GrandezaProductConfig.product))
+            .options(selectinload(GrandezaProductConfig.product).selectinload(Product.technical_sheet))
             .where(GrandezaProductConfig.is_enabled == True)
             .order_by(GrandezaProductConfig.id)
         )
@@ -36,8 +36,8 @@ class GrandezaService:
         response = []
         for cfg in configs:
             lead_time = 0.0
-            if cfg.product and cfg.product.technical_data:
-                lead_time = float(cfg.product.technical_data.get("order_lead_time_hours") or 0.0)
+            if cfg.product and cfg.product.technical_sheet:
+                lead_time = float(cfg.product.technical_sheet.order_lead_time_hours or 0.0)
                 
             data = {
                 "id": cfg.id,
