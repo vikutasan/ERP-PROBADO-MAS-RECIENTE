@@ -52,7 +52,7 @@ export const LoginUI = ({ onLogin }) => {
 
     return (
         <div className="min-h-screen flex items-start justify-center p-6 pt-12 font-sans text-white bg-cover bg-center" style={{ backgroundImage: 'url("/assets/wood_bg.jpg")' }}>
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+            <div className="absolute inset-0 bg-black/60"></div>
             <div className="max-w-md w-full relative z-10">
                 {/* Branding */}
                 <div className="text-center mb-6 animate-in fade-in slide-in-from-top-4 duration-700">
@@ -61,10 +61,10 @@ export const LoginUI = ({ onLogin }) => {
                     <p className="text-[10px] font-black text-gray-500 tracking-[0.4em] uppercase">Evolutive Digital Ecosystem</p>
                 </div>
 
-                <div className="bg-gray-900/40 border border-white/5 p-6 rounded-[50px] shadow-2xl backdrop-blur-3xl relative overflow-hidden ring-1 ring-white/10">
+                <div className="bg-gray-900/80 border border-white/5 p-6 rounded-[50px] shadow-2xl relative overflow-hidden ring-1 ring-white/10">
                     {/* Efectos de luz */}
-                    <div className="absolute -top-20 -left-20 w-40 h-40 bg-orange-600/10 blur-3xl rounded-full"></div>
-                    <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-[#c1d72e]/10 blur-3xl rounded-full"></div>
+                    <div className="absolute -top-20 -left-20 w-40 h-40 bg-orange-600/10 rounded-full"></div>
+                    <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-[#c1d72e]/10 rounded-full"></div>
 
                     <form onSubmit={handleSubmit} className="relative z-10 space-y-5">
                         <div className="text-center">

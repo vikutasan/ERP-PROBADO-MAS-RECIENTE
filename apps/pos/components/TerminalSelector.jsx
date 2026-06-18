@@ -232,7 +232,7 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                 </div>
 
                 {deniedModal && (
-                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100]">
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100]">
                         <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] max-w-sm w-full text-center">
                             <h2 className="text-xl font-black uppercase text-white mb-3">{deniedModal.title}</h2>
                             <p className="text-xs font-bold text-gray-400 mb-6 whitespace-pre-wrap">{deniedModal.message}</p>
@@ -242,9 +242,9 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
                 )}
 
                 {confirmDelete && (
-                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in duration-300">
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] animate-in fade-in duration-300">
                         <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] shadow-[0_0_50px_rgba(255,0,0,0.2)] max-w-sm w-full text-center relative overflow-hidden">
-                            <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
+                            <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 rounded-full"></div>
                             <div className="text-6xl mb-4 relative z-10">⚠️</div>
                             <h2 className="text-xl font-black uppercase text-red-500 mb-2 relative z-10">ELIMINAR TERMINAL</h2>
                             <p className="text-sm font-bold text-gray-400 mb-2 relative z-10">
@@ -363,9 +363,9 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
 
 
             {unlockingTerminal && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100]">
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100]">
                     <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] max-w-sm w-full text-center relative overflow-hidden">
-                        <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
+                        <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 rounded-full"></div>
                         <div className="text-6xl mb-4 relative z-10">⚠️</div>
                         <h2 className="text-xl font-black uppercase text-white mb-2 relative z-10">FORZAR LIBERACION</h2>
                         <p className="text-sm font-bold text-gray-400 mb-6 relative z-10">
@@ -387,9 +387,9 @@ export const TerminalSelector = ({ currentUser, terminalStatuses, setTerminalSta
             )}
 
             {deniedModal && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100]">
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100]">
                     <div className="bg-gray-900 border border-white/10 p-8 rounded-[40px] max-w-sm w-full text-center relative overflow-hidden">
-                        <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 blur-3xl rounded-full"></div>
+                        <div className="absolute -top-20 -left-20 w-40 h-40 bg-red-600/20 rounded-full"></div>
                         <h2 className="text-xl font-black uppercase text-red-500 mb-3 relative z-10">{deniedModal.title}</h2>
                         <p className="text-xs font-bold text-gray-400 mb-4 relative z-10 whitespace-pre-wrap">{deniedModal.message}</p>
                         <button onClick={() => setDeniedModal(null)} className="w-full py-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 font-black uppercase text-[10px] tracking-widest text-white relative z-10">ENTENDIDO</button>
