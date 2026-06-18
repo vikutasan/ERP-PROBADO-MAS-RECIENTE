@@ -15,6 +15,15 @@ export default defineConfig({
         open: false,
         watch: {
             usePolling: true,
+            ignored: [
+                '**/apps/api/**',
+                '**/node_modules/**',
+                '**/.git/**',
+                '**/database_backups/**',
+                '**/dist/**',
+                '**/*.py',
+                '**/*.log',
+            ],
         },
     },
 });
