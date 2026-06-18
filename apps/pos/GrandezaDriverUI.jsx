@@ -39,12 +39,16 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const canEditClients = userPermissions.all === 'full' || userPermissions.grandeza_edit_clients === 'full';
 
     const todayStr = () => {
-        const d = new Date();
-        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
     };
 
     const dayNames = { 0:'DOMINGO',1:'LUNES',2:'MARTES',3:'MIERCOLES',4:'JUEVES',5:'VIERNES',6:'SABADO' };
-    const todayDay = dayNames[new Date().getDay()];
+    const getTodayDay = () => {
+        const mxDateStr = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Mexico_City', weekday: 'short' }).format(new Date());
+        const mapping = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+        return dayNames[mapping[mxDateStr]] || 'LUNES';
+    };
+    const todayDay = getTodayDay();
 
     const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null), 3000); };
 
