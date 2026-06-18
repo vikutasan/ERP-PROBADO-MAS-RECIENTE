@@ -49,8 +49,8 @@ class Order(Base):
     delivery_fee = Column(Float, nullable=True, default=0.0)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     notes = Column(Text, nullable=True)
 
     ticket = relationship("Ticket", backref="order", uselist=False)

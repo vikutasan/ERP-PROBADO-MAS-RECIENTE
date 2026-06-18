@@ -114,7 +114,7 @@ async def update_order(db: AsyncSession, order_id: int, data: OrderUpdate) -> Or
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(order, field, value)
 
-    order.updated_at = datetime.utcnow()
+    order.updated_at = datetime.now()
     await db.commit()
     await db.refresh(order)
     return order

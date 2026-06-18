@@ -17,7 +17,7 @@ class CashSession(Base):
     employee_name = Column(String, nullable=False)  # Desnormalizado para reportes rápidos
     opening_float = Column(Numeric(12, 2), nullable=False, default=0)
     status = Column(String, nullable=False, default="OPEN")  # OPEN, CLOSED
-    opened_at = Column(DateTime, default=datetime.utcnow)
+    opened_at = Column(DateTime, default=datetime.now)
     closed_at = Column(DateTime, nullable=True)
 
     # Montos físicos capturados al cierre
@@ -41,6 +41,6 @@ class CashMovement(Base):
     movement_type = Column(String, nullable=False)  # ENTRADA, SALIDA
     amount = Column(Numeric(12, 2), nullable=False)
     concept = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     session = relationship("CashSession", back_populates="movements")

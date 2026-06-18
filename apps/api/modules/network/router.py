@@ -32,9 +32,9 @@ async def list_incidents(
         try:
             target = datetime.strptime(date, "%Y-%m-%d")
         except ValueError:
-            target = datetime.utcnow()
+            target = datetime.now()
     else:
-        target = datetime.utcnow()
+        target = datetime.now()
 
     # El servidor guarda timestamps en UTC pero el usuario selecciona fechas en hora local (CST = UTC-6).
     # "4 de Mayo" en México = 4 May 06:00 UTC → 5 May 06:00 UTC
@@ -65,9 +65,9 @@ async def incidents_summary(
         try:
             target = datetime.strptime(date, "%Y-%m-%d")
         except ValueError:
-            target = datetime.utcnow()
+            target = datetime.now()
     else:
-        target = datetime.utcnow()
+        target = datetime.now()
 
     tz_offset_hours = 6  # CST
     start = target.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=tz_offset_hours)

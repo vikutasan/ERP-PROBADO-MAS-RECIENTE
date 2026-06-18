@@ -15,7 +15,7 @@ from .models import TerminalLock
 
 async def _purge_stale_locks(db: AsyncSession, ttl_minutes: int = 15):
     """Elimina candados cuyo timestamp supere el TTL."""
-    cutoff = datetime.utcnow() - timedelta(minutes=ttl_minutes)
+    cutoff = datetime.now() - timedelta(minutes=ttl_minutes)
     stale = await db.execute(
         select(TerminalLock).where(TerminalLock.locked_at < cutoff)
     )
@@ -63,7 +63,7 @@ async def lock_terminal(db: AsyncSession, terminal_id: str, occupier_id: int, oc
     if lock:
         if lock.occupier_id == occupier_id:
             # Renueva TTL si es el mismo usuario
-            lock.locked_at = datetime.utcnow()
+            lock.locked_at = datetime.now()
             await db.flush()
             return True
         return False  # Ocupada por otra persona
@@ -73,7 +73,7 @@ async def lock_terminal(db: AsyncSession, terminal_id: str, occupier_id: int, oc
         terminal_id=terminal_id,
         occupier_id=occupier_id,
         occupier_name=occupier_name,
-        locked_at=datetime.utcnow()
+        locked_at=datetime.now()
     )
     db.add(new_lock)
     await db.flush()
@@ -137,7 +137,7 @@ async def heartbeat(db: AsyncSession, terminal_id: str, occupier_id: int, ttl_mi
     )
     lock = result.scalars().first()
     if lock:
-        lock.locked_at = datetime.utcnow()
+        lock.locked_at = datetime.now()
         await db.flush()
         return True
     return False

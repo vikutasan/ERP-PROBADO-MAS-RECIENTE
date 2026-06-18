@@ -20,8 +20,8 @@ class GrandezaProductConfig(Base):
     product_id = Column(Integer, ForeignKey("products.id"), unique=True, nullable=False)
     is_enabled = Column(Boolean, default=True)
     b2b_price = Column(Float, nullable=False, default=0.0)  # Precio B2B Grandeza (distinto al precio tienda)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     product = relationship("Product", backref="grandeza_config", uselist=False)
 
@@ -42,8 +42,8 @@ class GrandezaClient(Base):
     facade_photo_url = Column(String, nullable=True)  # Ruta al archivo en disco local
     notes = Column(Text, nullable=True)
     active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # Relaciones
     route_slots = relationship("GrandezaRouteSlot", back_populates="client", cascade="all, delete-orphan")
@@ -94,8 +94,8 @@ class GrandezaJourney(Base):
     # Notas de retroalimentación del gerente
     feedback_notes = Column(Text, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # Relaciones
     visits = relationship("GrandezaVisit", back_populates="journey", cascade="all, delete-orphan")
@@ -156,7 +156,7 @@ class GrandezaVisit(Base):
     # Vinculación con pedido de producción (opcional)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     # Relaciones
     journey = relationship("GrandezaJourney", back_populates="visits")
@@ -198,7 +198,7 @@ class GrandezaDriverLocation(Base):
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     accuracy = Column(Float, nullable=True)  # Precisión en metros del GPS
-    recorded_at = Column(DateTime, default=datetime.utcnow)
+    recorded_at = Column(DateTime, default=datetime.now)
     
     journey = relationship("GrandezaJourney", back_populates="driver_locations")
 
@@ -250,5 +250,5 @@ class GrandezaOrder(Base):
     delivery_journey_id = Column(Integer, ForeignKey("grandeza_journeys.id"), nullable=True)
     
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

@@ -606,7 +606,7 @@ class POSService:
         Tickets viejos son ignorados para evitar colisiones con folios ya pagados.
         Usa FOR UPDATE SKIP LOCKED para evitar que dos terminales reciclen el mismo ticket.
         """
-        cutoff = datetime.utcnow() - timedelta(minutes=5)
+        cutoff = datetime.now() - timedelta(minutes=5)
         result = await db.execute(
             select(models.Ticket)
             .options(selectinload(models.Ticket.items))
@@ -632,7 +632,7 @@ class POSService:
         """
         import logging
         logger = logging.getLogger("pos.gc")
-        now = datetime.utcnow()
+        now = datetime.now()
         if POSService._last_gc_time and (now - POSService._last_gc_time) < timedelta(minutes=1):
             return  # Throttle: no ejecutar mas de 1x por minuto
         POSService._last_gc_time = now
@@ -906,7 +906,7 @@ class POSService:
         tickets = result.scalars().all()
         populated = [self._populate_flat_fields(t) for t in tickets]
         # Inyectar edad en horas para que el frontend muestre "X horas sin enviarse"
-        now = datetime.utcnow()
+        now = datetime.now()
         for t in populated:
             if t.created_at:
                 age = now - t.created_at
@@ -928,7 +928,7 @@ class POSService:
         except Exception:
             pass
 
-        now = datetime.utcnow()
+        now = datetime.now()
         # Proximos a expirar = creados hace mas de (TTL - 2h)
         warn_cutoff = now - timedelta(days=draft_ttl_days) + timedelta(hours=2)
         hard_cutoff = now - timedelta(days=draft_ttl_days)

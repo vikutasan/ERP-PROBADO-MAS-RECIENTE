@@ -79,7 +79,7 @@ def audit_pos_write(request: Request, endpoint: str, payload: dict = None, respo
     audit_result = "OK" if not audit_flags else "|".join(audit_flags)
     
     log_entry = (
-        f"POS_AUDIT | {datetime.utcnow().isoformat()} | {endpoint} | "
+        f"POS_AUDIT | {datetime.now().isoformat()} | {endpoint} | "
         f"ip={client_ip} | session={session_id} | employee={captured_by_id} | "
         f"terminal={terminal_id} | account={account_num} | req_status={status} | "
         f"http={response_code} | audit={audit_result}"

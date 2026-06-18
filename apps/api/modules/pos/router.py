@@ -129,7 +129,7 @@ async def get_audit_log(
     from modules.catalog.models import Product
 
     # Defaults: hoy
-    now = datetime.utcnow()
+    now = datetime.now()
     try:
         d_from = datetime.fromisoformat(date_from) if date_from else now.replace(hour=0, minute=0, second=0, microsecond=0)
     except ValueError:
@@ -243,7 +243,7 @@ async def get_terminals_status(db: AsyncSession = Depends(get_db)):
     
     # Combinar: locks de DB + caja abierta
     res = dict(locks)
-    cutoff = datetime.utcnow() - timedelta(hours=CASH_SESSION_MAX_TTL_HOURS)
+    cutoff = datetime.now() - timedelta(hours=CASH_SESSION_MAX_TTL_HOURS)
     
     for c in active_cash:
         tid = c.terminal_id.strip() if c.terminal_id else ""
@@ -383,7 +383,7 @@ async def force_terminal_unlock(terminal_id: str, req: LockRequest, db: AsyncSes
         f"Ejecutado por: {emp.name} (id={emp.id}) | "
         f"Quitado a: {prev_name} (id={prev_id}) | "
         f"CashSession transferida: {cash_transferred} | "
-        f"Timestamp: {datetime.utcnow().isoformat()}"
+        f"Timestamp: {datetime.now().isoformat()}"
     )
 
     await db.commit()

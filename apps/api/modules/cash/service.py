@@ -151,7 +151,7 @@ async def cerrar_sesion(
     resumen = await calcular_resumen(db, session_id)
 
     sesion.status = "CLOSED"
-    sesion.closed_at = datetime.utcnow()
+    sesion.closed_at = datetime.now()
     sesion.physical_cash = datos.physical_cash
     sesion.physical_credit = datos.physical_credit
     sesion.physical_debit = datos.physical_debit

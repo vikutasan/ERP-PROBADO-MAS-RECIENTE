@@ -170,7 +170,7 @@ class GrandezaService:
             
         from datetime import datetime
         if data.get("status") == "EN_RUTA" and journey.status != "EN_RUTA" and not journey.dispatched_at:
-            journey.dispatched_at = datetime.utcnow()
+            journey.dispatched_at = datetime.now()
             
         for key, value in data.items():
             if value is not None and hasattr(journey, key):
@@ -295,8 +295,8 @@ class GrandezaService:
             visit_order=data.get("visit_order", 0),
             visit_type=data.get("visit_type", "PROGRAMADA"),
             status="COMPLETADA",
-            arrived_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
+            arrived_at=datetime.now(),
+            completed_at=datetime.now(),
             total_exchange_amount=data.get("total_exchange_amount", 0),
             total_fresh_amount=data.get("total_fresh_amount", 0),
             sale_amount=data.get("sale_amount", 0),
