@@ -39,7 +39,15 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const canEditClients = userPermissions.all === 'full' || userPermissions.grandeza_edit_clients === 'full';
 
     const todayStr = () => {
-        return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Mexico_City',
+            year: 'numeric', month: '2-digit', day: '2-digit'
+        });
+        const parts = formatter.formatToParts(new Date());
+        const year = parts.find(p => p.type === 'year').value;
+        const month = parts.find(p => p.type === 'month').value;
+        const day = parts.find(p => p.type === 'day').value;
+        return `${year}-${month}-${day}`;
     };
 
     const dayNames = { 0:'DOMINGO',1:'LUNES',2:'MARTES',3:'MIERCOLES',4:'JUEVES',5:'VIERNES',6:'SABADO' };
