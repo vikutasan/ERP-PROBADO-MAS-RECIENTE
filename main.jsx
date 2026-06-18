@@ -53,11 +53,9 @@ class ErrorBoundary extends React.Component {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-    <React.StrictMode>
-        <ErrorBoundary>
-            <div className="h-screen w-screen bg-black overflow-hidden">
-                <ExperimentCenterUI />
-            </div>
-        </ErrorBoundary>
-    </React.StrictMode>
+    <ErrorBoundary>
+        <div className="h-screen w-screen bg-black overflow-hidden">
+            <ExperimentCenterUI />
+        </div>
+    </ErrorBoundary>
 );
