@@ -409,7 +409,28 @@ GPS pasivo vía PWA (`IndexedDB`) durante rutas offline. Sincronización en masa
 
 ---
 
-## 16. TU COMPORTAMIENTO ESPERADO COMO IA
+## 16. LECCIONES APRENDIDAS E INCIDENTES ARQUITECTÓNICOS
+
+### 16.1 Estandarización de Zona Horaria (América/Mexico_City) y Efecto Estrobo UI
+**Contexto del Problema:** El sistema operaba inicialmente bajo husos horarios mixtos (PostgreSQL en UTC, Frontend en Local). Esto amenazaba la integridad del Corte de Caja, auditorías de seguridad y programación de pedidos de producción, ya que ventas nocturnas se registraban en el día siguiente.
+
+**La Intervención y el "Efecto Estrobo":**
+Al forzar la zona horaria en el stack completo (Base de Datos, Python, Docker y React `Day.js`), se desencadenó un fallo visual masivo ("flasheo" de la interfaz) en el POS.
+El diagnóstico reveló una "tormenta perfecta" de tres factores:
+1. **Polling Desincronizado:** Los hooks `useTerminalLocking` (cada 5s) y `useNetworkHealth` (cada 15s) reaccionaron a la transición temporal alterando violentamente el estado local de React, lo que obligaba a la jerarquía de componentes a re-renderizarse de forma agresiva.
+2. **Animaciones CSS Infinitas (animate-pulse):** Elementos de alerta de la UI que empleaban Tailwind `animate-pulse` ("Sin Red", "Borrador", "Sin Guardar") generaban un parpadeo de opacidad incesante al combinarse con los continuos ciclos de reconciliación de React.
+3. **Instancias Zombie y HMR Conflicts:** Existían procesos huérfanos de NodeJS (Vite HMR) compitiendo con el contenedor Docker por recargar los mismos archivos.
+4. **React StrictMode:** Multiplicaba por dos las recargas de componentes durante el desarrollo, magnificando la frecuencia de las animaciones de entrada (`animate-in`).
+
+**Solución Arquitectónica Definitiva:**
+- El huso horario quedó unificado permanentemente a nivel sistema operativo, contenedor y aplicación. Todo timestamp es explícito a la geografía del negocio.
+- Se depuraron radicalmente todos los procesos huérfanos locales.
+- Se removió temporalmente `React.StrictMode` del root para estabilizar visualmente el desarrollo.
+- **Regla Crítica UX/UI:** Quedan estrictamente prohibidas las animaciones CSS de bucle infinito (como `animate-pulse`) en indicadores estáticos que dependan de estado de Red o Polling en pantallas pesadas del POS, ya que el re-render de React las convierte en efectos estroboscópicos epilépticos. Solo deben emplearse clases `animate-in` simples de montaje único.
+
+---
+
+## 17. TU COMPORTAMIENTO ESPERADO COMO IA
 
 En cada interacción que tengas:
 1. **Asume tu rol** de Arquitecto de Software y aplica estas reglas implícitamente en todas tus respuestas.
