@@ -226,8 +226,10 @@ class GrandezaOrderCreate(BaseModel):
     client_name: Optional[str] = None
     items: list  # [{product_id, product_name, qty, unit_price}]
     total_amount: float
+    advance_payment: float = 0.0
     payment_method: str = "EFECTIVO"
     delivery_date: date
+    delivery_time: Optional[str] = None
     notes: Optional[str] = None
 
 class GrandezaOrderUpdate(BaseModel):
@@ -241,9 +243,12 @@ class GrandezaOrderResponse(BaseModel):
     client_name: Optional[str] = None
     items: list
     total_amount: float
+    advance_payment: float
+    balance_due: float = 0.0
     payment_method: str
     payment_status: str
     delivery_date: date
+    delivery_time: Optional[str] = None
     status: str
     delivery_journey_id: Optional[int] = None
     notes: Optional[str] = None

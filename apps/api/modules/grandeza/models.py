@@ -238,6 +238,9 @@ class GrandezaOrder(Base):
     
     # Programación de entrega
     delivery_date = Column(Date, nullable=False)  # Día en que se entregará
+    delivery_time = Column(String, nullable=True) # Hora en que se entregará
+    
+    advance_payment = Column(Float, default=0.0)  # Anticipo recibido por el repartidor
     
     # Estado de producción
     status = Column(String, default="PAGADO")

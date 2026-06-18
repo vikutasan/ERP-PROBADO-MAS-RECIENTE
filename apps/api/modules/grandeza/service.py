@@ -383,7 +383,7 @@ class GrandezaService:
 
     async def get_grandeza_orders(self, db: AsyncSession, status: str = None):
         from .models import GrandezaOrder
-        stmt = select(GrandezaOrder).order_by(GrandezaOrder.delivery_date)
+        stmt = select(GrandezaOrder).order_by(GrandezaOrder.created_at.desc())
         if status:
             stmt = stmt.where(GrandezaOrder.status == status)
         result = await db.execute(stmt)
@@ -391,31 +391,44 @@ class GrandezaService:
         return [
             {
                 "id": o.id, "client_id": o.client_id, "client_name": o.client_name,
-                "items": o.items, "total_amount": o.total_amount,
+                "items": o.items, "total_amount": o.total_amount, "advance_payment": o.advance_payment,
+                "balance_due": max(0.0, o.total_amount - o.advance_payment),
                 "payment_method": o.payment_method, "payment_status": o.payment_status,
-                "delivery_date": str(o.delivery_date), "status": o.status,
-                "delivery_journey_id": o.delivery_journey_id,
-                "notes": o.notes, "created_at": str(o.created_at)
+                "delivery_date": o.delivery_date, "delivery_time": o.delivery_time,
+                "status": o.status, "delivery_journey_id": o.delivery_journey_id,
+                "notes": o.notes, "created_at": o.created_at
             }
             for o in orders
         ]
 
     async def create_grandeza_order(self, db: AsyncSession, data: dict):
         from .models import GrandezaOrder
+        
+        total = float(data.get("total_amount", 0))
+        advance = float(data.get("advance_payment", 0))
+        
+        pay_status = "PENDIENTE"
+        if advance >= total and total > 0:
+            pay_status = "PAGADO"
+        elif advance > 0:
+            pay_status = "ANTICIPO"
+            
         order = GrandezaOrder(
             client_id=data.get("client_id"),
             client_name=data.get("client_name"),
             items=data.get("items", []),
-            total_amount=data.get("total_amount", 0),
+            total_amount=total,
+            advance_payment=advance,
             payment_method=data.get("payment_method", "EFECTIVO"),
-            payment_status="PAGADO",
+            payment_status=pay_status,
             delivery_date=data["delivery_date"],
-            status="PAGADO",
+            delivery_time=data.get("delivery_time"),
+            status="PAGADO", # Para que Producción lo vea de inmediato
             notes=data.get("notes"),
         )
         db.add(order)
         await db.flush()
-        return {"id": order.id, "status": "PAGADO", "delivery_date": str(order.delivery_date)}
+        return {"id": order.id, "status": order.status, "payment_status": order.payment_status, "delivery_date": str(order.delivery_date), "delivery_time": order.delivery_time}
 
     async def update_grandeza_order(self, db: AsyncSession, order_id: int, data: dict):
         from .models import GrandezaOrder

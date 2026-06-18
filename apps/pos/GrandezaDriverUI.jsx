@@ -660,11 +660,16 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     const [customClientName, setCustomClientName] = useState('');
     const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price })));
     const [deliveryDate, setDeliveryDate] = useState('');
+    const [deliveryTime, setDeliveryTime] = useState('');
+    const [paymentStatus, setPaymentStatus] = useState('PAGADO'); // PENDIENTE, ANTICIPO, PAGADO
+    const [advancePaymentStr, setAdvancePaymentStr] = useState('');
     const [payMethod, setPayMethod] = useState('EFECTIVO');
     const [notes, setNotes] = useState('');
     const [saving, setSaving] = useState(false);
 
     const totalAmount = orderItems.reduce((s, it) => s + (it.qty * it.unit_price), 0);
+    const advanceAmount = paymentStatus === 'PAGADO' ? totalAmount : (paymentStatus === 'ANTICIPO' ? (parseFloat(advancePaymentStr) || 0) : 0);
+    const balanceDue = Math.max(0, totalAmount - advanceAmount);
     const client = clients.find(c => c.id === parseInt(selectedClient));
 
     const submitOrder = async () => {
@@ -679,8 +684,10 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                     client_name: selectedClient === 'CUSTOM' ? (customClientName || 'Cliente no registrado') : (client?.name || 'Cliente en ruta'),
                     items: orderItems.filter(it => it.qty > 0),
                     total_amount: totalAmount,
+                    advance_payment: advanceAmount,
                     payment_method: payMethod,
                     delivery_date: deliveryDate,
+                    delivery_time: deliveryTime || null,
                     notes: notes || null,
                 })
             });
@@ -721,20 +728,64 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                         <input type="text" value={customClientName} onChange={e => setCustomClientName(e.target.value)} placeholder="¿Cómo se llama el cliente?" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500" autoFocus />
                     )}
                 </div>
-                {/* Fecha de entrega */}
-                <div>
-                    <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Fecha de Entrega</label>
-                    <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none" />
-                </div>
-                {/* Forma de pago */}
-                <div>
-                    <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Forma de Pago</label>
-                    <div className="flex gap-2">
-                        {['EFECTIVO','TRANSFERENCIA'].map(m => (
-                            <button key={m} onClick={() => setPayMethod(m)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase border ${payMethod === m ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-white/5 border-white/10 text-gray-300'}`}>{m === 'EFECTIVO' ? '💵' : '📲'} {m}</button>
-                        ))}
+                {/* Fecha y Hora de entrega */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Fecha Entrega</label>
+                        <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }} />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Hora Entrega</label>
+                        <input type="time" value={deliveryTime} onChange={e => setDeliveryTime(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }} />
                     </div>
                 </div>
+                
+                {/* Cobro del Pedido */}
+                <div className="bg-black/30 p-4 rounded-2xl border border-white/5 space-y-4">
+                    <div>
+                        <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-2">¿Se cobró el pedido?</label>
+                        <div className="flex gap-2">
+                            {['PAGADO', 'ANTICIPO', 'PENDIENTE'].map(status => (
+                                <button key={status} onClick={() => setPaymentStatus(status)} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border ${paymentStatus === status ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-white/5 border-white/10 text-gray-400'}`}>
+                                    {status === 'PAGADO' ? 'Pagado Total' : status === 'ANTICIPO' ? 'Dio Anticipo' : 'No Cobrado'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {paymentStatus !== 'PENDIENTE' && (
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase block mb-2">Forma de Pago</label>
+                            <div className="flex gap-2">
+                                {['EFECTIVO','TRANSFERENCIA'].map(m => (
+                                    <button key={m} onClick={() => setPayMethod(m)} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase border ${payMethod === m ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-white/5 border-white/10 text-gray-400'}`}>{m === 'EFECTIVO' ? '💵 EFECTIVO' : '📲 TRANSF.'}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {paymentStatus === 'ANTICIPO' && (
+                        <div>
+                            <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Monto del Anticipo Recibido</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                                <input type="number" step="0.01" value={advancePaymentStr} onChange={e => setAdvancePaymentStr(e.target.value)} placeholder="0.00" className="w-full bg-black border border-white/10 rounded-xl p-3 pl-8 text-white font-bold outline-none" />
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="flex justify-between items-center border-t border-white/10 pt-3">
+                        <span className="text-xs text-gray-400 font-bold uppercase">Total Pedido:</span>
+                        <span className="text-sm font-black text-white">${totalAmount.toFixed(2)}</span>
+                    </div>
+                    {paymentStatus === 'ANTICIPO' && (
+                        <div className="flex justify-between items-center">
+                            <span className="text-xs text-amber-400/80 font-bold uppercase">Resta por Cobrar:</span>
+                            <span className="text-sm font-black text-amber-400">${balanceDue.toFixed(2)}</span>
+                        </div>
+                    )}
+                </div>
+
                 {/* Productos */}
                 <div>
                     <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-2">Productos</label>
