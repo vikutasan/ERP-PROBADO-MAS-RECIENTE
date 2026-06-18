@@ -2,7 +2,7 @@ import React from 'react';
 
 export const CategoryBar = ({ categories, activeCategory, setActiveCategory, viewMode, setViewMode, setCurrentPage }) => {
     return (
-        <div className="bg-black/40 backdrop-blur-md rounded-2xl p-2 border border-white/5 shadow-2xl">
+        <div className="bg-black/40 rounded-2xl p-2 border border-white/5 shadow-2xl">
             <div className="overflow-x-auto custom-scrollbar pb-1">
                 <div className="flex gap-2 min-w-max">
                     <button

@@ -466,7 +466,7 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
             {/* Modal de Confirmación de Salida */}
             {showExitModal && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowExitModal(false)} />
+                    <div className="absolute inset-0 bg-black/70" onClick={() => setShowExitModal(false)} />
                     <div className="relative bg-gradient-to-b from-zinc-800 to-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-white/10">
                         {/* Icono de advertencia */}
                         <div className="text-center mb-6">

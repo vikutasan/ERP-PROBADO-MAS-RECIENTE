@@ -25,7 +25,7 @@ export const VisionVisor = ({ isScanning, setIsScanning, addToCart, products, ca
             />
 
             <div className="absolute top-8 left-8 z-30 pointer-events-none">
-                <div className="bg-black/40 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/10">
+                <div className="bg-black/40 px-5 py-3 rounded-2xl border border-white/10">
                     <h3 className="text-[9px] font-black text-[#c1d72e] uppercase tracking-[0.4em] mb-1 drop-shadow-lg">Vision Inteligente</h3>
                     <h2 className="text-xl font-black uppercase tracking-tighter italic text-white/90 drop-shadow-lg">Scanner R-1 <span className="text-white/20 font-black">PRO</span></h2>
                 </div>
@@ -48,7 +48,7 @@ export const VisionVisor = ({ isScanning, setIsScanning, addToCart, products, ca
 
             {isScanning && (
                 <div className="absolute top-10 right-10 z-30 flex flex-col gap-3">
-                    <div className="bg-black/60 backdrop-blur-xl p-5 rounded-[28px] border border-white/10 animate-in fade-in slide-in-from-right-4 duration-500 shadow-2xl min-w-[180px]">
+                    <div className="bg-black/60 p-5 rounded-[28px] border border-white/10 animate-in fade-in slide-in-from-right-4 duration-500 shadow-2xl min-w-[180px]">
                         <div className="flex items-center gap-3 mb-2">
                             <div className={`w-3 h-3 rounded-full ${currentStatus.color} ${aiStatus !== 'IDLE' ? 'animate-pulse' : ''} shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
                             <p className="text-[9px] font-black text-white/90 uppercase tracking-widest">{currentStatus.label}</p>

@@ -54,7 +54,7 @@ export const ProductCard = ({ product, onAdd }) => {
                 </div>
             </div>
 
-            <div className="absolute top-3 right-3 w-6 h-6 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-inner">
+            <div className="absolute top-3 right-3 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-inner">
                 <span className="text-black font-black text-xs">+</span>
             </div>
         </button>

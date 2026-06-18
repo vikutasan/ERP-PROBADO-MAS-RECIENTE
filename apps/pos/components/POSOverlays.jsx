@@ -16,9 +16,9 @@ export const ForceLogoutModal = ({ visible, onForceLogout }) => {
     if (!visible) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] animate-in fade-in zoom-in duration-500">
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[200] animate-in fade-in zoom-in duration-500">
             <div className="bg-gray-950 border border-red-500/30 p-12 rounded-[50px] shadow-[0_0_100px_rgba(255,0,0,0.3)] max-w-md w-full text-center relative overflow-hidden">
-                <div className="absolute -top-40 -left-40 w-80 h-80 bg-red-600/20 blur-[100px] rounded-full"></div>
+                <div className="absolute -top-40 -left-40 w-80 h-80 bg-red-600/20 rounded-full"></div>
                 <div className="text-8xl mb-6 relative z-10 animate-pulse">🚨</div>
                 <h2 className="text-3xl font-black uppercase text-red-500 mb-4 relative z-10 tracking-tighter">SESIÓN TERMINADA</h2>
                 <p className="text-sm font-bold text-gray-300 mb-10 relative z-10 leading-relaxed">
