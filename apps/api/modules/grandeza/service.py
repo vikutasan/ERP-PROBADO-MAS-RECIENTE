@@ -35,6 +35,10 @@ class GrandezaService:
         # Enriquecer con datos del producto
         response = []
         for cfg in configs:
+            lead_time = 0.0
+            if cfg.product and cfg.product.technical_data:
+                lead_time = float(cfg.product.technical_data.get("order_lead_time_hours") or 0.0)
+                
             data = {
                 "id": cfg.id,
                 "product_id": cfg.product_id,
@@ -43,6 +47,7 @@ class GrandezaService:
                 "product_name": cfg.product.name if cfg.product else None,
                 "product_sku": cfg.product.sku if cfg.product else None,
                 "product_price": cfg.product.price if cfg.product else None,
+                "order_lead_time_hours": lead_time,
             }
             response.append(data)
         return response

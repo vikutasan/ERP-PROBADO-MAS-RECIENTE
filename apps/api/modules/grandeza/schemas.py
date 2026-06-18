@@ -27,6 +27,7 @@ class GrandezaProductConfigResponse(BaseModel):
     product_name: Optional[str] = None
     product_sku: Optional[str] = None
     product_price: Optional[float] = None  # Precio tienda
+    order_lead_time_hours: Optional[float] = 0.0
     model_config = ConfigDict(from_attributes=True)
 
 

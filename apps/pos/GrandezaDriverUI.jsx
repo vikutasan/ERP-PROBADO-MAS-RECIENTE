@@ -658,7 +658,7 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
     const [selectedClient, setSelectedClient] = useState('');
     const [customClientName, setCustomClientName] = useState('');
-    const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price })));
+    const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price, lead_time_hours: gp.order_lead_time_hours || 0 })));
     const [deliveryDate, setDeliveryDate] = useState('');
     const [deliveryTime, setDeliveryTime] = useState('');
     const [paymentStatus, setPaymentStatus] = useState('PAGADO'); // PENDIENTE, ANTICIPO, PAGADO
@@ -668,6 +668,28 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     const [saving, setSaving] = useState(false);
 
     const totalAmount = orderItems.reduce((s, it) => s + (it.qty * it.unit_price), 0);
+
+    // Calcular la fecha mínima de entrega según el lead time más largo de los productos seleccionados
+    const selectedItems = orderItems.filter(it => it.qty > 0);
+    const maxLeadTimeHours = selectedItems.length > 0 ? Math.max(...selectedItems.map(it => it.lead_time_hours || 0)) : 0;
+    const now = new Date();
+    const earliestDelivery = new Date(now.getTime() + maxLeadTimeHours * 60 * 60 * 1000);
+    const earliestDateStr = earliestDelivery.toISOString().split('T')[0];
+    const earliestTimeStr = earliestDelivery.toTimeString().slice(0, 5);
+
+    // Auto-rellenar la fecha sugerida cuando cambian los productos seleccionados
+    useEffect(() => {
+        if (selectedItems.length > 0 && maxLeadTimeHours > 0) {
+            // Solo auto-llenar si aún no ha puesto fecha o si la fecha actual es anterior a la mínima
+            if (!deliveryDate || deliveryDate < earliestDateStr || (deliveryDate === earliestDateStr && deliveryTime && deliveryTime < earliestTimeStr)) {
+                setDeliveryDate(earliestDateStr);
+                setDeliveryTime(earliestTimeStr);
+            }
+        }
+    }, [maxLeadTimeHours]);
+
+    // Validar si la fecha seleccionada es válida respecto al lead time
+    const isDateTooEarly = deliveryDate && maxLeadTimeHours > 0 && (deliveryDate < earliestDateStr || (deliveryDate === earliestDateStr && deliveryTime && deliveryTime < earliestTimeStr));
     const advanceAmount = paymentStatus === 'PAGADO' ? totalAmount : (paymentStatus === 'ANTICIPO' ? (parseFloat(advancePaymentStr) || 0) : 0);
     const balanceDue = Math.max(0, totalAmount - advanceAmount);
     const client = clients.find(c => c.id === parseInt(selectedClient));
@@ -675,6 +697,7 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     const submitOrder = async () => {
         if (!deliveryDate) { showToast('⚠️ Selecciona fecha de entrega', 'error'); return; }
         if (totalAmount <= 0) { showToast('⚠️ Agrega productos al pedido', 'error'); return; }
+        if (isDateTooEarly) { showToast(`⚠️ La fecha no alcanza. Se requieren ${maxLeadTimeHours}h de producción`, 'error'); return; }
         setSaving(true);
         try {
             const res = await fetch(`${API}/grandeza/orders`, {
@@ -732,13 +755,25 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Fecha Entrega</label>
-                        <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }} />
+                        <input type="date" value={deliveryDate} min={earliestDateStr} onChange={e => setDeliveryDate(e.target.value)} className={`w-full bg-white/5 border rounded-xl p-3 text-white font-bold outline-none ${isDateTooEarly ? 'border-red-500/50' : 'border-white/10'}`} style={{ colorScheme: 'dark' }} />
                     </div>
                     <div>
                         <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Hora Entrega</label>
-                        <input type="time" value={deliveryTime} onChange={e => setDeliveryTime(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }} />
+                        <input type="time" value={deliveryTime} onChange={e => setDeliveryTime(e.target.value)} className={`w-full bg-white/5 border rounded-xl p-3 text-white font-bold outline-none ${isDateTooEarly ? 'border-red-500/50' : 'border-white/10'}`} style={{ colorScheme: 'dark' }} />
                     </div>
                 </div>
+                {maxLeadTimeHours > 0 && (
+                    <div className={`flex items-start gap-2 p-3 rounded-xl text-[10px] font-bold ${isDateTooEarly ? 'bg-red-500/10 border border-red-500/30 text-red-400' : 'bg-purple-500/10 border border-purple-500/20 text-purple-300'}`}>
+                        <span className="text-sm mt-[-2px]">{isDateTooEarly ? '⚠️' : '⏱️'}</span>
+                        <div>
+                            {isDateTooEarly ? (
+                                <span>La fecha seleccionada no alcanza. Los productos de este pedido requieren <strong>{maxLeadTimeHours}h</strong> de producción. Fecha más próxima: <strong>{earliestDateStr} {earliestTimeStr}</strong></span>
+                            ) : (
+                                <span>Según tiempos de producción ({maxLeadTimeHours}h), la entrega más próxima es el <strong>{earliestDateStr}</strong> a las <strong>{earliestTimeStr}</strong></span>
+                            )}
+                        </div>
+                    </div>
+                )}
                 
                 {/* Cobro del Pedido */}
                 <div className="bg-black/30 p-4 rounded-2xl border border-white/5 space-y-4">
