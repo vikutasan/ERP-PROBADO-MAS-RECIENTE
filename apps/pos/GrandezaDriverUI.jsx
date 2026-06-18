@@ -639,7 +639,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 </button>
                 <button onClick={() => setView('order')}
                     className="flex-1 py-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs font-black text-blue-400 uppercase">
-                    📋 Pedido
+                    📋 Levantar Pedido
                 </button>
                 <button onClick={() => setView('summary')}
                     className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-gray-300 uppercase">
