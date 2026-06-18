@@ -428,6 +428,33 @@ El diagnóstico reveló una "tormenta perfecta" de tres factores:
 - Se removió temporalmente `React.StrictMode` del root para estabilizar visualmente el desarrollo.
 - **Regla Crítica UX/UI:** Quedan estrictamente prohibidas las animaciones CSS de bucle infinito (como `animate-pulse`) en indicadores estáticos que dependan de estado de Red o Polling en pantallas pesadas del POS, ya que el re-render de React las convierte en efectos estroboscópicos epilépticos. Solo deben emplearse clases `animate-in` simples de montaje único.
 
+### 16.2 Efecto Estrobo en Pizarrón de Cuentas Abiertas (OpenAccountsCorkboard)
+**Contexto del Problema:** Al abrir el Pizarrón de Cuentas en Espera dentro del POS, la pantalla alternaba estroboscópicamente entre mostrar el Pizarrón y el POS subyacente, haciendo la interfaz inutilizable.
+
+**Diagnóstico — Triple Causa Raíz:**
+1. **`backdrop-blur-xl` en overlay modal:** El filtro CSS `backdrop-blur` sobre el fondo del Pizarrón obligaba a la GPU a re-componer las capas del POS y el overlay en cada ciclo de reconciliación de React. En hardware limitado o dentro de Docker, este cálculo de GPU generaba flashes visibles cada vez que React actualizaba cualquier estado.
+2. **`animate-in fade-in` en contenedor con polling activo:** El Pizarrón tenía un efecto de entrada (`animate-in fade-in duration-500`) en su `div` raíz. Un `useEffect` con polling cada 5 segundos llamaba a `setAllOpenAccounts(data.map(...))`, creando un **nuevo array de referencias** en cada ciclo. Esto forzaba un re-render del componente padre (`RetailVisionPOS`), que a su vez reconciliaba el Pizarrón. En ciertos navegadores, la animación CSS se re-disparaba en cada reconciliación, provocando que el overlay completo parpadeara de visible a invisible repetidamente.
+3. **Polling sin comparación de datos:** El polling anterior llamaba `setState` incondicionalmente cada 5 segundos, incluso cuando la respuesta del servidor era idéntica a la anterior. Esto generaba re-renders completamente innecesarios que amplificaban los problemas 1 y 2.
+
+**Solución Aplicada:**
+- Reemplazo de `backdrop-blur-xl` por `bg-black/90` opaco (sin cálculo GPU).
+- Eliminación de `animate-in fade-in` del contenedor raíz del Pizarrón.
+- Implementación de **Smart Polling**: se calcula un hash ligero (`id + total + version`) de las cuentas recibidas y solo se llama `setState` si el hash difiere del anterior (almacenado en `useRef`).
+
+**Reglas Arquitectónicas Derivadas:**
+- **PROHIBIDO** usar `backdrop-blur` en cualquier overlay modal que coexista con componentes que tengan polling activo o actualizaciones frecuentes de estado.
+- **PROHIBIDO** usar clases `animate-in` en contenedores raíz de componentes que reciban props actualizadas por polling. Las animaciones de entrada solo deben usarse en elementos internos estáticos o en componentes que se montan una única vez.
+- **OBLIGATORIO** implementar comparación de datos (hash o deep-equal) antes de llamar `setState` en cualquier efecto de polling, para evitar re-renders innecesarios. Patrón recomendado:
+```javascript
+const lastHashRef = useRef('');
+// Dentro del fetch:
+const newHash = JSON.stringify(data.map(item => item.id + item.version));
+if (newHash !== lastHashRef.current) {
+    lastHashRef.current = newHash;
+    setState(data);
+}
+```
+
 ---
 
 ## 17. TU COMPORTAMIENTO ESPERADO COMO IA
