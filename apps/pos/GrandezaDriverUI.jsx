@@ -120,25 +120,31 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
     const loadAll = async () => {
         setLoading(true);
+        let step = 'products';
         try {
-            const [prodRes, jRes, cliRes, routeRes] = await Promise.all([
-                fetch(`${API}/grandeza/products`),
-                fetch(`${API}/grandeza/journeys/${todayStr()}`),
-                fetch(`${API}/grandeza/clients`),
-                fetch(`${API}/grandeza/routes/${todayDay}`),
-            ]);
-
+            const prodRes = await fetch(`${API}/grandeza/products`);
             if (prodRes.ok) setGrandezaProducts((await prodRes.json()).filter(p => p.is_enabled));
+
+            step = 'journeys';
+            const jRes = await fetch(`${API}/grandeza/journeys/${todayStr()}`);
+            
+            step = 'clients';
+            const cliRes = await fetch(`${API}/grandeza/clients`);
             if (cliRes.ok) setClients(await cliRes.json());
+
+            step = 'routes';
+            const routeRes = await fetch(`${API}/grandeza/routes/${todayDay}`);
             if (routeRes.ok) setRouteSlots(await routeRes.json());
 
             if (jRes.ok) {
                 const j = await jRes.json();
                 setJourney(j);
                 setDebugInfo(`jRes OK`);
+                step = 'inventory';
                 const invRes = await fetch(`${API}/grandeza/journeys/${j.id}/inventory?inventory_type=INITIAL`);
                 if (invRes.ok) setInitialInventory(await invRes.json());
-                // Cargar visitas existentes de la API
+                
+                step = 'visits';
                 const visRes = await fetch(`${API}/grandeza/journeys/${j.id}/visits`);
                 if (visRes.ok) setVisits(await visRes.json());
             } else {
@@ -146,7 +152,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             }
         } catch(e) { 
             console.error(e); 
-            setDebugInfo(`FETCH ERR: ${e.message}`);
+            setDebugInfo(`FETCH ERR en ${step}: ${e.message}`);
         }
         finally { setLoading(false); }
     };
