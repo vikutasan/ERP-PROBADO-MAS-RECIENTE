@@ -316,6 +316,12 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     if (!journey || journey.status === 'PREPARANDO') return (
         <div className="h-screen flex flex-col text-white relative" style={{ backgroundColor: '#3a2e1e' }}>
             <DriverBackground />
+            
+            {/* DEBUG BANNER TEMPORAL */}
+            <div className="absolute top-0 inset-x-0 bg-red-600 text-white text-[10px] p-2 z-[999] font-mono break-words">
+                DEBUG INFO: todayStr={todayStr()} | jRes.ok={journey ? 'YES' : 'NO'} | journey={JSON.stringify(journey)}
+            </div>
+
             <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
