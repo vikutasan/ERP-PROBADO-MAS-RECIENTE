@@ -428,7 +428,7 @@ class GrandezaService:
             payment_status=pay_status,
             delivery_date=data["delivery_date"],
             delivery_time=data.get("delivery_time"),
-            status="PAGADO", # Para que Producción lo vea de inmediato
+            status="TENTATIVO", # Entra a Producción como tentativo, se confirma al liquidar
             notes=data.get("notes"),
         )
         db.add(order)

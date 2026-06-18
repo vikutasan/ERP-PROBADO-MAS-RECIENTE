@@ -111,10 +111,13 @@ export const PedidosProduccionUI = ({ onBack }) => {
                             status: o.status,
                             customer_name: o.client_name || 'Cliente Grandeza',
                             delivery_type: 'REPARTO_GRANDEZA',
-                            committed_at: o.delivery_date,
+                            committed_at: o.delivery_time ? `${o.delivery_date}T${o.delivery_time}` : o.delivery_date,
                             packaging_type: 'PROPIO',
                             notes: o.notes,
                             total_amount: o.total_amount,
+                            advance_payment: o.advance_payment || 0,
+                            balance_due: o.balance_due || 0,
+                            payment_status: o.payment_status || 'PENDIENTE',
                             payment_method: o.payment_method,
                             ticket: {
                                 account_num: `🍞G-${o.id}`,
@@ -320,6 +323,15 @@ const OrderRow = ({ order, color, onViewDetails, onUpdateStatus }) => {
                         <Clock size={10} />
                         {order.committed_at ? new Date(order.committed_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '---'}
                     </span>
+                    {order.source === 'GRANDEZA' && order.payment_status && (
+                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase not-italic ${
+                            order.payment_status === 'PAGADO' ? 'bg-green-100 text-green-700' :
+                            order.payment_status === 'ANTICIPO' ? 'bg-amber-100 text-amber-700' :
+                            'bg-red-100 text-red-700'
+                        }`}>
+                            {order.payment_status === 'ANTICIPO' ? `Anticipo $${order.advance_payment} · Resta $${order.balance_due}` : order.payment_status}
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -399,9 +411,39 @@ const OrderDetailsModal = ({ order, onClose }) => {
                         <DetailItem 
                             icon={order.delivery_type === 'PICKUP' ? <Store size={16}/> : <Truck size={16}/>} 
                             label="Tipo de Entrega" 
-                            value={order.delivery_type === 'PICKUP' ? 'Pick Up en Tienda' : 'Entrega a Domicilio'} 
+                            value={order.source === 'GRANDEZA' ? '🍞 Reparto Grandeza' : (order.delivery_type === 'PICKUP' ? 'Pick Up en Tienda' : 'Entrega a Domicilio')} 
                         />
                     </div>
+
+                    {/* Info Financiera Grandeza */}
+                    {order.source === 'GRANDEZA' && (
+                        <div className="p-6 rounded-3xl bg-amber-50/60 border border-amber-200/50 shadow-sm">
+                            <h4 className="text-[11px] font-black text-amber-700/60 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <span>💰</span> Información de Pago
+                            </h4>
+                            <div className="grid grid-cols-3 gap-6">
+                                <div>
+                                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total</p>
+                                    <p className="text-lg font-black text-black">${order.total_amount?.toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Anticipo</p>
+                                    <p className="text-lg font-black text-green-600">${(order.advance_payment || 0).toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Resta</p>
+                                    <p className={`text-lg font-black ${(order.balance_due || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>${(order.balance_due || 0).toFixed(2)}</p>
+                                </div>
+                            </div>
+                            <div className="mt-3">
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                                    order.payment_status === 'PAGADO' ? 'bg-green-100 text-green-700' :
+                                    order.payment_status === 'ANTICIPO' ? 'bg-amber-100 text-amber-700' :
+                                    'bg-red-100 text-red-700'
+                                }`}>{order.payment_status}</span>
+                            </div>
+                        </div>
+                    )}
 
                     {order.delivery_type === 'DOMICILIO' && (
                         <div className="p-6 rounded-3xl bg-white/40 border border-black/5 shadow-sm">
