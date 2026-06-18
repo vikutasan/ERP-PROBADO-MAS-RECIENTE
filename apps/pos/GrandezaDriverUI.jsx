@@ -709,11 +709,11 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     const earliestDateStr = earliestDelivery.toISOString().split('T')[0];
     const earliestTimeStr = earliestDelivery.toTimeString().slice(0, 5);
 
-    // Auto-rellenar la fecha sugerida cuando cambian los productos seleccionados
+    // Auto-rellenar la fecha sugerida cuando cambian los productos seleccionados (solo si está vacío)
     useEffect(() => {
         if (selectedItems.length > 0 && maxLeadTimeHours > 0) {
-            // Solo auto-llenar si aún no ha puesto fecha o si la fecha actual es anterior a la mínima
-            if (!deliveryDate || deliveryDate < earliestDateStr || (deliveryDate === earliestDateStr && deliveryTime && deliveryTime < earliestTimeStr)) {
+            // Solo auto-llenar si está completamente vacío, para no borrar la captura manual del usuario
+            if (!deliveryDate) {
                 setDeliveryDate(earliestDateStr);
                 setDeliveryTime(earliestTimeStr);
             }
