@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { OpenAccountsCorkboard } from './OpenAccountsCorkboard';
 import { posService } from './services/POSService';
 import { useCart } from './hooks/useCart';
@@ -178,12 +178,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
 
     useBarcodeScanner(PRODUCTS, handleAddToCart);
 
-    // --- Polling de Cuentas Abiertas ---
+    // --- Polling de Cuentas Abiertas (optimizado: solo actualiza si hay cambios reales) ---
+    const lastAccountsHashRef = useRef('');
     useEffect(() => {
         if (!showCorkboard) return;
         const fetchOpenAccounts = () => {
             posService.getOpenTickets().then(data => {
-                setAllOpenAccounts(data.map(t => ({
+                const mapped = data.map(t => ({
                     id: t.account_num,
                     accountNum: t.account_num,
                     terminal: t.terminal_id || 'T1',
@@ -204,7 +205,13 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
                     packagingType: t.packaging_type,
                     deliveryAddress: t.delivery_address,
                     orderNotes: t.order_notes
-                })));
+                }));
+                // Solo actualizar estado si los datos realmente cambiaron
+                const newHash = JSON.stringify(mapped.map(a => a.id + a.total + a.version));
+                if (newHash !== lastAccountsHashRef.current) {
+                    lastAccountsHashRef.current = newHash;
+                    setAllOpenAccounts(mapped);
+                }
             }).catch(console.error);
         };
         fetchOpenAccounts();

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
 // Importación de módulos creados (Simulada para el demo)
 import { B2BManagerUI } from './b2b/B2BManagerUI';

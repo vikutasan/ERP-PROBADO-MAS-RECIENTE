@@ -32,9 +32,9 @@ export const OpenAccountsCorkboard = ({ openAccounts, onSelectAccount, onClose }
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-10 animate-in fade-in duration-500">
-            {/* Backdrop con desenfoque profundo */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" onClick={onClose} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-10">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/90" onClick={onClose} />
 
             {/* El Pizarrón de Corcho */}
             <div className="relative w-full max-w-6xl aspect-[16/9] rounded-[40px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] border-[20px] border-[#3d2b1f] overflow-hidden flex flex-col">
