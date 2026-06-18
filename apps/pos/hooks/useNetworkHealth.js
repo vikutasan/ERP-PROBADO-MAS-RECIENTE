@@ -9,7 +9,7 @@ import { CONFIG } from '../config';
  * NO modifica ningún estado existente del POS.
  * Es completamente pasivo para el POS, pero reporta incidentes al backend.
  */
-export const useNetworkHealth = (intervalMs = 15000000, terminalId = null, currentUser = null) => {
+export const useNetworkHealth = (intervalMs = 15000, terminalId = null, currentUser = null) => {
     const [status, setStatus] = useState('good'); // 'good' | 'slow' | 'down'
     const [latency, setLatency] = useState(0);
     const failCountRef = useRef(0);
@@ -23,7 +23,7 @@ export const useNetworkHealth = (intervalMs = 15000000, terminalId = null, curre
                     signal: AbortSignal.timeout(5000) // Timeout 5s
                 });
                 const elapsed = Math.round(performance.now() - start);
-                // setLatency(elapsed); // DESHABILITADO TEMPORALMENTE PARA DEBUG
+                setLatency(elapsed);
 
                 if (!res.ok) {
                     failCountRef.current++;
