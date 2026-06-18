@@ -116,6 +116,8 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         return () => clearInterval(interval);
     }, [journey]);
 
+    const [debugInfo, setDebugInfo] = useState('');
+
     const loadAll = async () => {
         setLoading(true);
         try {
@@ -133,13 +135,19 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             if (jRes.ok) {
                 const j = await jRes.json();
                 setJourney(j);
+                setDebugInfo(`jRes OK`);
                 const invRes = await fetch(`${API}/grandeza/journeys/${j.id}/inventory?inventory_type=INITIAL`);
                 if (invRes.ok) setInitialInventory(await invRes.json());
                 // Cargar visitas existentes de la API
                 const visRes = await fetch(`${API}/grandeza/journeys/${j.id}/visits`);
                 if (visRes.ok) setVisits(await visRes.json());
+            } else {
+                setDebugInfo(`jRes FAIL: ${jRes.status} ${jRes.statusText}`);
             }
-        } catch(e) { console.error(e); }
+        } catch(e) { 
+            console.error(e); 
+            setDebugInfo(`FETCH ERR: ${e.message}`);
+        }
         finally { setLoading(false); }
     };
 
@@ -319,7 +327,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             
             {/* DEBUG BANNER TEMPORAL */}
             <div className="absolute top-0 inset-x-0 bg-red-600 text-white text-[10px] p-2 z-[999] font-mono break-words">
-                DEBUG INFO: todayStr={todayStr()} | jRes.ok={journey ? 'YES' : 'NO'} | journey={JSON.stringify(journey)}
+                DEBUG INFO: todayStr={todayStr()} | {debugInfo}
             </div>
 
             <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
