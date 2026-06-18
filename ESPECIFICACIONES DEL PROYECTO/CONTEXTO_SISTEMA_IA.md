@@ -264,8 +264,9 @@ Aplica seguridad en 4 capas redundantes obligatorias:
 3. **Backend:** Valida independientemente.
 4. **Base de Datos:** Constraints e integridad referencial.
 
-### 4.5 DISCIPLINA DE REPOSITORIO
-- Los commits deben seguir Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`).
+### 4.6 MANEJO DE TIEMPOS Y ZONAS HORARIAS (REGLA MÉXICO CST)
+- **Backend:** Está **estrictamente prohibido** el uso de `datetime.utcnow()`. Todo el sistema operativo del servidor, la base de datos y la lógica de negocio (POS, Auditoría, Sesiones de Caja) operan nativamente en la hora local de México (CST). Utiliza exclusivamente `datetime.now()` para no romper la coherencia temporal de los tickets y sesiones.
+- **Frontend:** Siempre que el dispositivo móvil deba calcular "Hoy" (ej. para cargar rutas del día), se debe **forzar explícitamente** la zona horaria `America/Mexico_City` usando `Intl.DateTimeFormat` para prevenir que tablets configuradas incorrectamente soliciten datos de fechas futuras o pasadas.
 
 ---
 
@@ -282,7 +283,6 @@ alembic upgrade head
 
 ### 5.2 Integridad Referencial
 - Toda relación tiene su `FOREIGN KEY` con `ON DELETE` explícito.
-- Fechas siempre en **UTC**.
 
 ### 5.3 Convenciones de Naming
 - Tablas: `snake_case` plural (`productos`).
