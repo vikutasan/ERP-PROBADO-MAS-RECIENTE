@@ -385,6 +385,27 @@ Variables que cambian frecuentemente provienen de la tabla `SystemSetting`, no d
 - BD: PostgreSQL 15, Alembic
 - Contenedores: Docker + Docker Compose
 
+### 12.1 Zona Horaria — LEY ABSOLUTA: `America/Mexico_City` (UTC-6 / UTC-5 DST)
+
+**El sistema opera EXCLUSIVAMENTE en horario local de Toluca, México.** Esta regla es inquebrantable y aplica a todas las capas del stack sin excepción. Violarla compromete directamente la integridad financiera del negocio (cortes de caja, auditorías, declaraciones fiscales).
+
+**Configuración obligatoria por capa:**
+
+| Capa | Configuración | Archivo / Ubicación |
+|------|--------------|---------------------|
+| **PostgreSQL** | `timezone = 'America/Mexico_City'` | `postgresql.conf` o variable de entorno `TZ` del contenedor |
+| **Docker** | `TZ=America/Mexico_City` | `docker-compose.yml` → `environment` de cada servicio |
+| **Python (FastAPI)** | `from zoneinfo import ZoneInfo; TZ_LOCAL = ZoneInfo('America/Mexico_City')` | Archivo de configuración central del backend |
+| **Frontend (Day.js)** | `dayjs.tz.setDefault('America/Mexico_City')` | `main.jsx` o archivo de inicialización global |
+| **Frontend (Date nativo)** | `new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })` | Cualquier uso de `Date` para display |
+
+**Reglas de programación:**
+1. **PROHIBIDO** usar `UTC` o `datetime.utcnow()` en cualquier parte del código. Siempre usar `datetime.now(TZ_LOCAL)`.
+2. **PROHIBIDO** guardar timestamps sin zona horaria explícita. Todo campo `TIMESTAMP` en PostgreSQL debe ser `TIMESTAMP WITH TIME ZONE`.
+3. **PROHIBIDO** asumir que el reloj del servidor o contenedor está en la zona correcta. Siempre especificar la zona explícitamente en el código.
+4. Todo timestamp mostrado al usuario debe reflejar la hora local de Toluca, **nunca** UTC ni la hora del navegador del cliente.
+5. Los cortes de caja, reportes financieros y auditorías usan el concepto de "día fiscal" que inicia y termina a medianoche hora local (`America/Mexico_City`).
+
 ---
 
 ## 13. SISTEMA DE ROLES Y PERMISOS (RBAC)
