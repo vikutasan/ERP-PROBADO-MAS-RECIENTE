@@ -171,11 +171,17 @@ El módulo distingue dos tipos de categorías:
 
 ### Operaciones sobre Categorías
 
-- **Crear:** El nombre se convierte automáticamente a MAYÚSCULAS.
-- **Renombrar:** Se actualiza el nombre de la categoría y se sincronizan automáticamente los productos que la contenían.
-- **Reordenar:** Drag & drop. El nuevo orden se persiste en la base de datos (`position`).
-- **Visibilidad POS:** Cada categoría tiene un switch (`vision_enabled`) que controla si sus productos aparecen en el Punto de Venta. Las categorías ocultas se muestran desaturadas y con opacidad reducida en el gestor.
-- **Eliminar:** Solo es posible si la categoría **NO es de sistema** y está **completamente vacía** (0 productos). Si contiene productos, el sistema muestra un modal de error indicando cuántos productos deben moverse primero.
+Las etiquetas de las categorías en la interfaz principal presentan un diseño limpio optimizado para **Drag & Drop**, mostrando un único botón de opciones (✏️) para evitar clics accidentales en operaciones destructivas. 
+
+Al hacer clic en este botón, se abre el modal centralizado de **Opciones de Categoría**, desde donde se gestionan las siguientes operaciones:
+
+- **Renombrar:** El nombre se actualiza (siempre en MAYÚSCULAS) y se sincronizan automáticamente los productos que lo contenían.
+- **Visibilidad POS:** Un control interactivo (`vision_enabled`) permite ocultar o mostrar la categoría en el Punto de Venta. Las categorías ocultas se muestran desaturadas y con opacidad reducida en el gestor.
+- **Eliminar:** Permite la eliminación de la categoría. Solo es posible si la categoría **NO es de sistema** y está **completamente vacía** (0 productos). Si contiene productos, el sistema bloquea la acción mostrando un modal de error indicando cuántos productos deben moverse primero.
+
+*Otras operaciones:*
+- **Crear:** Se gestiona mediante el botón "+" al final de la lista de categorías. El nombre se convierte automáticamente a MAYÚSCULAS.
+- **Reordenar:** Mediante Drag & Drop directamente sobre las etiquetas de categorías en la barra superior. El nuevo orden se persiste en la base de datos (`position`).
 
 ### Categoría Especial: DESCONTINUADOS
 

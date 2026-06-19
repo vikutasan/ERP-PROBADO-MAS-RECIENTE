@@ -38,6 +38,7 @@ export const PerfilesAccessSuite = ({ onClose, onPermissionsUpdate }) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [statusModal, setStatusModal] = useState(null); // { type: 'success' | 'error' | 'confirm', title, message, onConfirm? }
+    const [promptModal, setPromptModal] = useState(null); // { isOpen: boolean, value: string }
     
     // Estado de edición
     const [editData, setEditData] = useState({
@@ -152,16 +153,20 @@ export const PerfilesAccessSuite = ({ onClose, onPermissionsUpdate }) => {
         }
     };
 
-    const handleCreateNew = async () => {
-        const name = prompt("Nombre del nuevo perfil:");
-        if (!name) return;
+    const handleCreateNew = () => {
+        setPromptModal({ isOpen: true, value: '' });
+    };
+
+    const confirmCreateNew = async (name) => {
+        setPromptModal(null);
+        if (!name || !name.trim()) return;
         
         try {
             const resp = await fetch(`${API_BASE}/security/profiles`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: name.toUpperCase(),
+                    name: name.trim().toUpperCase(),
                     description: 'Nuevo perfil personalizado',
                     permissions: {}
                 })
@@ -400,6 +405,42 @@ export const PerfilesAccessSuite = ({ onClose, onPermissionsUpdate }) => {
                     </footer>
                 </main>
             </div>
+
+            {/* Input Prompt Modal Premium */}
+            {promptModal?.isOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setPromptModal(null)}></div>
+                    <div className="relative bg-[#0a0a0a] border border-white/10 p-8 rounded-[30px] shadow-2xl max-w-sm w-full animate-in zoom-in-95 duration-500">
+                        <h2 className="text-xl font-black uppercase italic tracking-tighter text-white mb-2">Nuevo Perfil</h2>
+                        <p className="text-[10px] text-white/40 uppercase tracking-widest mb-6">Ingrese el nombre del nuevo perfil de seguridad</p>
+                        
+                        <input
+                            type="text"
+                            autoFocus
+                            value={promptModal.value}
+                            onChange={(e) => setPromptModal({ ...promptModal, value: e.target.value })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') confirmCreateNew(promptModal.value); if (e.key === 'Escape') setPromptModal(null); }}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white uppercase font-bold tracking-widest outline-none focus:border-[#c1d72e] transition-colors mb-8"
+                            placeholder="EJ: SUPERVISOR"
+                        />
+                        
+                        <div className="flex gap-3 justify-end">
+                            <button 
+                                onClick={() => setPromptModal(null)}
+                                className="px-6 py-2 rounded-full border border-white/10 text-white/40 font-black uppercase tracking-widest text-[9px] hover:bg-white/5 transition-all"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={() => confirmCreateNew(promptModal.value)}
+                                className="px-8 py-2 rounded-full bg-[#c1d72e] text-black font-black uppercase tracking-widest text-[9px] hover:scale-105 transition-all shadow-lg shadow-[#c1d72e]/20"
+                            >
+                                Crear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Status Modal Premium */}
             {statusModal && (
