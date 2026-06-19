@@ -226,7 +226,101 @@ Para mantener el sistema mantenible, las siguientes tecnologías quedan **explí
 
 ---
 
-### 3.4 Event Sourcing (Inventario y Mermas)
+## 3.4 ARQUITECTURA DE DESPLIEGUE — DOCKER Y SEPARACIÓN DE DATOS
+
+Esta sección define cómo se despliega el sistema en cada Servidor Local de Sucursal. Es una **decisión de diseño crítica** que garantiza la seguridad de los datos ante actualizaciones, reinstalaciones o fallos del código.
+
+### 3.4.1 Principio Fundamental: Código y Datos Viven Separados
+
+El sistema se divide físicamente en **dos carpetas hermanas e independientes**:
+
+```text
+C:\Users\servidor1\.gemini\antigravity\scratch\
+│
+├── ERP-R-DE-RICO\              ← 🔧 CÓDIGO FUENTE (reemplazable)
+│   ├── apps\                   → Frontend (React/Vite) + Backend (FastAPI)
+│   ├── dist\                   → Build de producción del frontend
+│   ├── docker-compose.yml      → Orquestador de contenedores
+│   ├── Dockerfile.dev          → Imagen del POS (frontend)
+│   ├── packages\               → Módulos compartidos
+│   └── ...
+│
+└── ERP-R-DE-RICO-DATA\         ← 💾 DATOS DE NEGOCIO (intocable)
+    ├── postgres_data\          → Base de datos PostgreSQL completa
+    ├── catalogos\              → Catálogos de productos (JSON/CSV)
+    ├── images\                 → Fotografías de productos
+    └── config\                 → Configuración de terminales
+```
+
+**Regla inquebrantable:** La carpeta `ERP-R-DE-RICO` (código) puede ser eliminada, reemplazada o actualizada vía `git pull` sin afectar **absolutamente nada** de la operación, ventas, inventario, imágenes o configuración del negocio. Toda la data vive en `ERP-R-DE-RICO-DATA`.
+
+### 3.4.2 Contenedores Docker — Servicios en Producción
+
+El sistema corre sobre **tres contenedores Docker** orquestados por `docker-compose.yml`:
+
+| Contenedor | Imagen | Puerto Interno → Externo | Función |
+|---|---|---|---|
+| `rderico-db-dev` | `postgres:15-alpine` | `5432 → 5433` | Base de datos PostgreSQL (fuente de verdad) |
+| `rderico-api-dev` | Build local (`apps/api/Dockerfile`) | `3001 → 5001` | API REST (FastAPI/Python) |
+| `rderico-pos-dev` | Build local (`Dockerfile.dev`) | `3000 → 5000` | Frontend POS (React/Vite dev server) |
+
+Los tres contenedores tienen política `restart: always`, lo que significa que se reinician automáticamente si el servidor se apaga y enciende.
+
+### 3.4.3 Volúmenes Montados (Bind Mounts) — Mapeo Exacto
+
+Los volúmenes son la conexión entre los contenedores Docker y los archivos reales en disco. Están definidos en `docker-compose.yml` usando **Bind Mounts externos** (no volúmenes internos de Docker), lo que permite acceso directo para backups y migración.
+
+**Contenedor `db` (PostgreSQL):**
+```yaml
+volumes:
+  - ../ERP-R-DE-RICO-DATA/postgres_data:/var/lib/postgresql/data
+```
+→ La base de datos completa vive **fuera** del contenedor, en disco local.
+
+**Contenedor `api` (FastAPI):**
+```yaml
+volumes:
+  - ./apps/api:/app                                              # Código del API
+  - ../ERP-R-DE-RICO-DATA/catalogos:/app/static/catalog          # Catálogos
+  - ../ERP-R-DE-RICO-DATA/images:/app/static/images              # Imágenes de productos
+  - ../ERP-R-DE-RICO-DATA/config/terminal_status.json:/app/terminal_status.json  # Config
+```
+
+**Contenedor `pos` (Frontend React):**
+```yaml
+volumes:
+  - .:/app                    # Código fuente del frontend
+  - /app/node_modules         # node_modules aislados dentro del contenedor
+```
+
+### 3.4.4 Procedimiento Seguro de Actualización Remota
+
+Gracias a esta separación, una actualización del sistema sigue este flujo seguro:
+
+1. **Hacer `git pull`** en la carpeta `ERP-R-DE-RICO` para traer el código nuevo.
+2. **Reconstruir contenedores** con `docker compose up -d --build` (si cambió un Dockerfile).
+3. **Los datos no se tocan.** PostgreSQL, catálogos, imágenes y configuración permanecen intactos en `ERP-R-DE-RICO-DATA`.
+
+> ⚠️ **ADVERTENCIA CRÍTICA:** Nunca mover, renombrar ni eliminar la carpeta `ERP-R-DE-RICO-DATA`. Es el corazón del negocio. Si se pierde esta carpeta, se pierden **todas** las ventas, productos, imágenes y configuración de la sucursal.
+
+### 3.4.5 URLs de Acceso por Terminal
+
+Todas las terminales acceden al POS a través del Servidor Local de Sucursal:
+
+| Terminal | URL de Acceso | Dispositivo |
+|---|---|---|
+| T6 (Servidor) | `http://192.168.1.117:5000/?terminal=T6` | Esta máquina (servidor + terminal) |
+| T5 | `http://192.168.1.117:5000/?terminal=T5` | Tablet |
+| T4 | `http://192.168.1.117:5000/?terminal=T4` | Tablet |
+| T3 | `http://192.168.1.117:5000/?terminal=T3` | Tablet |
+| T2 | `http://192.168.1.117:5000/?terminal=T2` | Tablet |
+| T1 (CAJA) | `http://192.168.1.117:5000/?terminal=CAJA` | Punto de cobro principal |
+
+**Nota:** La IP `192.168.1.117` corresponde al Servidor Local de Sucursal. Si cambia la IP del servidor (por DHCP o reconfiguración de red), estas URLs deberán actualizarse en los accesos directos de cada tablet.
+
+---
+
+### 3.5 Event Sourcing (Inventario y Mermas)
 
 El inventario es un **libro contable inmutable**, no un campo sobreescribible.
 Nunca ejecutes: `UPDATE productos SET stock = stock - 5`

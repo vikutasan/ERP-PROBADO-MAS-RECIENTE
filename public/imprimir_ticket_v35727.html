@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reimprimir Ticket v35727 — Letra Grande</title>
+    <style>
+        /* --- Pantalla: solo muestra un botón --- */
+        body { font-family: Arial, sans-serif; background: #111; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        #pantalla { text-align: center; }
+        #pantalla h1 { font-size: 24px; margin-bottom: 8px; }
+        #pantalla p { font-size: 14px; color: #888; margin-bottom: 24px; }
+        #pantalla button { background: #c1d72e; color: #000; border: none; padding: 16px 40px; border-radius: 12px; font-size: 18px; font-weight: 900; cursor: pointer; text-transform: uppercase; }
+        #pantalla button:hover { transform: scale(1.05); }
+        #error { color: #f44; margin-top: 16px; font-size: 14px; display: none; }
+
+        /* --- Impresión: formato ticket térmico --- */
+        @media print {
+            body { background: #fff; }
+            #pantalla { display: none !important; }
+            #ticket { display: block !important; }
+        }
+
+        #ticket {
+            display: none;
+            font-family: 'Courier New', Courier, monospace;
+            width: 76mm;
+            padding: 0mm 1mm;
+            font-size: 8pt;
+            line-height: 1.15;
+            color: #000;
+            background: #fff;
+            font-weight: bold;
+        }
+
+        @page { size: 80mm auto; margin: 0; }
+
+        #ticket .line { border-top: 1px dashed #000; margin: 2px 0; }
+        #ticket .row { display: flex; justify-content: space-between; align-items: center; }
+        #ticket .center { text-align: center; }
+        #ticket .small { font-size: 7pt; }
+        #ticket .xsmall { font-size: 6.5pt; }
+
+        /* ========================================
+           AQUÍ ESTÁ LA MAGIA: ARTÍCULOS MÁS GRANDES
+           ======================================== */
+        #ticket table.items-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13pt;  /* <-- ERA 8pt, AHORA 13pt */
+            font-weight: 900;
+        }
+        #ticket table.items-table td {
+            padding: 3px 0;
+            vertical-align: top;
+        }
+        #ticket table.items-table .item-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13pt;
+            font-weight: 900;
+        }
+        #ticket table.items-table .item-price-unit {
+            font-size: 9pt;
+            color: #000;
+        }
+
+        #ticket .audit { font-size: 7pt; text-transform: uppercase; margin-top: 3px; padding-top: 2px; border-top: 1px dashed #000; }
+    </style>
+</head>
+<body>
+    <!-- Pantalla visible (no se imprime) -->
+    <div id="pantalla">
+        <h1>🖨️ Reimprimir Ticket v35727</h1>
+        <p>Versión con tipografía grande en artículos.<br>Archivo desechable — no modifica el ERP.</p>
+        <button onclick="cargarEImprimir()">Cargar e Imprimir</button>
+        <div id="error"></div>
+    </div>
+
+    <!-- Ticket (solo visible al imprimir) -->
+    <div id="ticket"></div>
+
+    <script>
+        const API_BASE = 'http://192.168.1.117:5001/api/v1/pos';
+        const ACCOUNT_NUM = 'V35727';
+
+        async function cargarEImprimir() {
+            const errorDiv = document.getElementById('error');
+            errorDiv.style.display = 'none';
+
+            try {
+                const res = await fetch(`${API_BASE}/tickets/by-account/${ACCOUNT_NUM}`);
+                if (!res.ok) {
+                    throw new Error(`Error ${res.status}: No se encontró el ticket ${ACCOUNT_NUM}`);
+                }
+                const ticketData = await res.json();
+                renderTicket(ticketData);
+
+                // Pequeña pausa para que el DOM se pinte antes de abrir diálogo de impresión
+                setTimeout(() => window.print(), 300);
+            } catch (err) {
+                errorDiv.textContent = `❌ ${err.message}`;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        function renderTicket(data) {
+            const items = data.items || [];
+            const payments = data.payment_details || [];
+
+            let dateObj = new Date();
+            if (data.created_at) {
+                dateObj = new Date(String(data.created_at).endsWith('Z') ? data.created_at : data.created_at + 'Z');
+            }
+            const printDate = dateObj.toLocaleDateString();
+            const printTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            const capturedBy = data.captured_by_name || data.captured_by?.name || 'SISTEMA';
+            const cashedBy = data.cashed_by_name || data.cashed_by?.name || 'SISTEMA/AUTO';
+
+            let totalQty = 0;
+            let itemsHtml = '';
+            items.forEach(item => {
+                const name = item.product?.name || item.name || 'Articulo';
+                const qty = item.quantity || 1;
+                totalQty += qty;
+                const price = item.unit_price || item.price || 0;
+                itemsHtml += `
+                    <tr>
+                        <td style="width: 32px;">${qty}x</td>
+                        <td style="max-width: 44mm;">
+                            <div class="item-name">${name}</div>
+                            <div class="item-price-unit">$${price.toFixed(2)} c/u</div>
+                        </td>
+                        <td style="text-align: right; white-space: nowrap;">$${(price * qty).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+
+            let paymentsHtml = '';
+            payments.forEach(p => {
+                if (p.method === 'EFECTIVO' && p.received != null) {
+                    paymentsHtml += `
+                        <div style="margin-bottom: 2px;">
+                            <div style="font-weight: bold;">${p.method}</div>
+                            <div style="display: flex; justify-content: space-between; padding-left: 8px;"><span>Recibido:</span><span>$${(p.received || 0).toFixed(2)}</span></div>
+                            <div style="display: flex; justify-content: space-between; padding-left: 8px;"><span>Abonado:</span><span>$${(p.amount || 0).toFixed(2)}</span></div>
+                            <div style="display: flex; justify-content: space-between; padding-left: 8px;"><span>Cambio:</span><span>$${(p.cambio || 0).toFixed(2)}</span></div>
+                        </div>
+                    `;
+                } else {
+                    paymentsHtml += `
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>${p.method}</span><span>$${(p.amount || 0).toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+            });
+
+            document.getElementById('ticket').innerHTML = `
+                <div style="display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 1px; margin-bottom: 2px;">
+                    <div style="font-size: 12pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">R DE RICO</div>
+                </div>
+
+                <div style="text-align: center; font-weight: bold; margin-bottom: 2px;">
+                    <div>CTA: ${data.account_num || '---'}</div>
+                    <div style="margin-top: 1px;">${printDate} ${printTime}</div>
+                </div>
+
+                <div class="line"></div>
+
+                <table class="items-table" style="margin: 2px 0;">
+                    <tbody>${itemsHtml}</tbody>
+                </table>
+
+                <div class="line"></div>
+
+                <div class="row" style="margin: 2px 0;">
+                    <span>TOTAL DE ARTICULOS:</span>
+                    <span>${totalQty}</span>
+                </div>
+
+                <div class="line"></div>
+
+                <div class="row" style="font-size: 10pt; margin: 2px 0;">
+                    <span>TOTAL</span>
+                    <span>$${(data.total || 0).toFixed(2)}</span>
+                </div>
+
+                <div style="margin: 3px 0;">${paymentsHtml}</div>
+
+                <div class="audit">
+                    <div class="row"><span>CAPTURÓ:</span><span>${capturedBy}</span></div>
+                    <div class="row"><span>COBRÓ:</span><span>${cashedBy}</span></div>
+                    <div class="row xsmall"><span>Terminal:</span><span>${data.terminal_id || 'T6'}</span></div>
+                </div>
+
+                <div class="center xsmall" style="margin-top: 4px; padding-top: 2px; border-top: 1px solid #ccc; font-weight: bold; line-height: 1.2;">
+                    Cuenta con 3 dias a partir de la fecha de compra para realizar cualquier aclaracion
+                </div>
+                <div class="center xsmall" style="margin-top: 2px; font-weight: bold;">
+                    ¡¡¡Gracias por su compra, disfrute su pan!!!
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

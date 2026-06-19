@@ -184,6 +184,21 @@ T=32s+  Yami cambia a otra cuenta → la cuenta de $453 se pierde
 2. El `terminal_id` solo se asigna en `_initialize_new_ticket` y **jamás cambia**.
 3. Las métricas del cobrador se mantienen a salvo porque se utilizan `cashed_by_id` y `cash_session_id`.
 
+### Incidente Bucle de Destrucción de T2 y T4 (18/Junio/2026)
+
+**Terminal afectada:** T2 y T4.
+**Síntoma:** Las terminales eran expulsadas silenciosamente de la sesión y recibían errores HTTP 404 de "No active lock found" constantemente en bucle, impidiendo el uso del sistema.
+
+**Causa raíz (Error Clásico de SQLAlchemy):**
+1. La migración que movió los candados de la RAM a la base de datos (PostgreSQL) usaba `await db.flush()` en la lógica interna (`occupancy.py`).
+2. Sin embargo, los endpoints en `router.py` (`take_terminal_lock`, `release_terminal_lock`, `heartbeat_terminal_lock`) **olvidaron incluir el `await db.commit()`** antes de retornar el HTTP 200.
+3. Al no haber `commit()`, los cambios jamás se guardaban físicamente. Los tiempos de `locked_at` se congelaron con fechas de hacía 3 meses.
+4. Cuando el frontend enviaba un `heartbeat`, el backend veía la fecha vieja, borraba el candado (por limpieza de inactividad) pero como no lo guardaba, al segundo siguiente intentaba renovarlo, no lo encontraba en su transacción local y respondía `404`.
+
+**Solución implementada (vigente hoy):**
+1. Se añadieron estrictamente los comandos `await db.commit()` antes de cada `return` en los 3 endpoints de `router.py` relacionados a los candados de terminal.
+2. **⚠️ REGLA PARA FUTURAS IAs:** NUNCA asumir que `db.flush()` guarda en la base de datos de forma persistente. Siempre verificar que el router que ejecuta la llamada asíncrona posea un `await db.commit()`.
+
 ---
 
 ## 4. LAS REGLAS DE ORO SUPERVIVIENTES (v6.0)

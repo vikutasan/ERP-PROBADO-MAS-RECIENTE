@@ -458,6 +458,7 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
             if (res.ok) {
                 const updated = await res.json();
                 setCategories(categories.map(c => c.id === cat.id ? updated : c));
+                setRenamingCategory(prev => prev && prev.id === cat.id ? updated : prev);
             }
         } catch (err) {
             console.error("Toggle visibility error:", err);
@@ -608,14 +609,14 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                 document.body
             )}
 
-            {/* Modal de Renombrar Categoría (Sistema) */}
+            {/* Modal de Opciones de Categoría */}
             {renamingCategory && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
                     <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setRenamingCategory(null)} />
                     <div className="relative w-full max-w-md bg-gray-900 border border-indigo-900/30 rounded-[40px] p-10 shadow-2xl">
-                        <h3 className="text-3xl font-black uppercase italic tracking-tighter text-indigo-400 mb-2 text-center">Editar Categoría</h3>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-10 text-center">
-                            Modifica el nombre y el icono identificador.
+                        <h3 className="text-3xl font-black uppercase italic tracking-tighter text-indigo-400 mb-2 text-center">Opciones de Categoría</h3>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-8 text-center">
+                            Modifica el nombre, visibilidad o elimina la categoría.
                         </p>
                         
                         <div className="space-y-6 mb-10">
@@ -628,20 +629,51 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                                     autoFocus
                                 />
                             </div>
+                            
+                            <div className="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-2xl">
+                                <div>
+                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Visibilidad en POS</h4>
+                                    <p className="text-[8px] font-bold text-gray-500 uppercase mt-1">
+                                        {renamingCategory.vision_enabled ? 'Actualmente visible' : 'Actualmente oculta'}
+                                    </p>
+                                </div>
+                                <button 
+                                    onClick={() => handleToggleCategoryVisibility(renamingCategory)}
+                                    className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${
+                                        renamingCategory.vision_enabled 
+                                            ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-600 hover:text-white' 
+                                            : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {renamingCategory.vision_enabled ? '👁️ Visible' : '🕶️ Oculta'}
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="flex gap-4">
+                        <div className="flex flex-col gap-4">
+                            <div className="flex gap-4">
+                                <button 
+                                    onClick={() => setRenamingCategory(null)}
+                                    className="flex-1 py-4 bg-gray-800 rounded-2xl text-[10px] font-black uppercase hover:bg-gray-700 transition-all font-bold"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={handleRenameCategory}
+                                    className="flex-1 py-4 bg-indigo-600 rounded-2xl text-[10px] font-black uppercase hover:scale-105 active:scale-95 transition-all font-bold shadow-xl shadow-indigo-600/20"
+                                >
+                                    Guardar Cambios
+                                </button>
+                            </div>
+                            
                             <button 
-                                onClick={() => setRenamingCategory(null)}
-                                className="flex-1 py-4 bg-gray-800 rounded-2xl text-[10px] font-black uppercase hover:bg-gray-700 transition-all font-bold"
+                                onClick={() => {
+                                    setCategoryToDelete(renamingCategory.name);
+                                    setRenamingCategory(null);
+                                }}
+                                className="w-full py-4 bg-red-900/20 border border-red-500/20 text-red-500 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-2"
                             >
-                                Cancelar
-                            </button>
-                            <button 
-                                onClick={handleRenameCategory}
-                                className="flex-1 py-4 bg-indigo-600 rounded-2xl text-[10px] font-black uppercase hover:scale-105 active:scale-95 transition-all font-bold shadow-xl shadow-indigo-600/20"
-                            >
-                                Guardar Cambios
+                                <span>✕</span> Eliminar Categoría Permanentemente
                             </button>
                         </div>
                     </div>
@@ -1264,18 +1296,8 @@ export const ProductMasterUI = ({ userPermissions = {} }) => {
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleOpenRenameModal(cat); }}
                                         className="hover:text-yellow-400 transition-colors"
-                                        title="Editar Nombre"
+                                        title="Opciones de Categoría"
                                     >✏️</button>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleToggleCategoryVisibility(cat); }}
-                                        className={`transition-colors ${cat.vision_enabled ? 'hover:text-indigo-400' : 'text-red-500 hover:text-red-400'}`}
-                                        title={cat.vision_enabled ? "Ocultar" : "Mostrar"}
-                                    >{cat.vision_enabled ? '👁️' : '🕶️'}</button>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); setCategoryToDelete(cat.name); }}
-                                        className="hover:text-red-500 transition-colors ml-1"
-                                        title="Eliminar"
-                                    >✕</button>
                                 </div>
                             )}
                         </div>

@@ -294,6 +294,7 @@ async def take_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSessio
     success = await lock_terminal(db, tid, req.occupier_id, req.occupier_name, ttl_minutes=ttl)
     if not success:
         raise HTTPException(status_code=400, detail="Terminal ocupada por otra persona.")
+    await db.commit()
     return {"status": "locked", "terminal_id": tid}
 
 @router.post("/terminals/{terminal_id}/unlock")
@@ -302,6 +303,7 @@ async def release_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncSes
     success = await unlock_terminal(db, tid, req.occupier_id)
     if not success:
         raise HTTPException(status_code=403, detail="No tienes permiso para liberar esta terminal.")
+    await db.commit()
     return {"status": "unlocked", "terminal_id": tid}
 
 @router.post("/terminals/{terminal_id}/force_unlock")
@@ -407,6 +409,7 @@ async def heartbeat_terminal_lock(terminal_id: str, req: LockRequest, db: AsyncS
     success = await heartbeat(db, tid, req.occupier_id, ttl_minutes=ttl)
     if not success:
         raise HTTPException(status_code=404, detail="No active lock found for this terminal/user.")
+    await db.commit()
     return {"status": "alive", "terminal_id": terminal_id}
 
 @router.post("/tickets/emergency-save")
