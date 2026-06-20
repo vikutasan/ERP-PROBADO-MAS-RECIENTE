@@ -272,14 +272,16 @@ Aplica seguridad en 4 capas redundantes obligatorias:
 
 ## 5. GESTIÓN DE BASE DE DATOS Y MIGRACIONES
 
-### 5.1 Migraciones con Alembic (OBLIGATORIO)
-**Nunca modifiques el schema manualmente.** Toda modificación debe ser una migración de Alembic.
+### 5.1 Migraciones con Alembic (OBLIGATORIO — YA ACTIVO)
+**Alembic está inicializado y operativo** en `apps/api/migrations/`. La base de datos ya tiene 6 migraciones históricas aplicadas. **Nunca modifiques el schema manualmente.** Toda modificación debe ser una migración de Alembic:
 ```bash
+# Ejecutar dentro del contenedor: docker exec -w /app rderico-api-dev
 alembic revision --autogenerate -m "feat: agrega campo unidad_produccion"
 alembic upgrade head
 ```
 - Cada migración debe ser reversible (incluir `upgrade` y `downgrade`).
 - Nombres de migración describen el negocio (`agrega_costo_merma`), no la técnica.
+- **PROHIBIDO** crear scripts de migración sueltos (`migrate_*.py`, `fix_*.py`) en la raíz de `apps/api/`. Los scripts legacy ya aplicados están archivados en `apps/api/migrations_applied/`.
 
 ### 5.2 Integridad Referencial
 - Toda relación tiene su `FOREIGN KEY` con `ON DELETE` explícito.
@@ -387,6 +389,8 @@ Implementa la Pirámide de Testing.
 
 ### 9.1 Variables de Entorno (OBLIGATORIO)
 **Ninguna credencial o API key va en el código fuente.** Usa un `.env` local.
+
+**Estado actual:** Las credenciales de PostgreSQL (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`) se leen desde el archivo `.env` en la raíz del proyecto. El `docker-compose.yml` usa variables de sustitución (`${POSTGRES_PASSWORD}`) en lugar de valores directos. El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio público**. Una copia de respaldo se guarda automáticamente en el repositorio privado de respaldos (`credenciales.env`).
 ### 9.2 Configuración Centralizada
 Usa `config/settings.py` (backend) y `config/env.js` (frontend) para centralizar la lectura de `.env`.
 ### 9.3 Configuración de Negocio
