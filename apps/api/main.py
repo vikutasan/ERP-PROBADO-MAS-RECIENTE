@@ -13,7 +13,7 @@ from modules.analytics.router import router as analytics_router
 from modules.network.router import router as network_router
 from modules.grandeza.router import router as grandeza_router
 from core.database import AsyncSessionLocal, engine, Base
-from modules.catalog.models import Category
+from modules.catalog.models import Category, Product, ProductTechnicalSheet
 from modules.security.models import SecurityProfile, Employee
 from sqlalchemy import select
 from modules.settings.service import seed_settings as seed_system_settings
