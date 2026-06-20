@@ -290,6 +290,38 @@ alembic upgrade head
 - Índices: `idx_[tabla]_[columna(s)]`.
 - Foráneas: `fk_[tabla_origen]_[tabla_destino]`.
 
+### 5.4 Respaldos Automáticos de Base de Datos (OBLIGATORIO)
+
+El sistema cuenta con un respaldo automático diario de la base de datos PostgreSQL que se ejecuta sin intervención humana.
+
+**Repositorio de respaldos:** `vikutasan/RESPALDO-ERP-R-DE-RICO-DEL-SERVIDOR` (PRIVADO)
+**Ruta local del script:** `C:\Users\servidor1\.gemini\antigravity-ide\scratch\RESPALDO-ERP-R-DE-RICO-DEL-SERVIDOR\backup_diario.ps1`
+
+#### Funcionamiento
+1. El **Programador de Tareas de Windows** ejecuta el script `backup_diario.ps1` todos los días a las **12:00 PM** (mediodía), hora en la que el servidor siempre está encendido y hay baja actividad.
+2. El script ejecuta `pg_dump` dentro del contenedor Docker de PostgreSQL (`rderico-db-dev`), generando un archivo `respaldo_YYYY-MM-DD.sql`.
+3. El archivo se sube automáticamente al repositorio privado de GitHub mediante `git add`, `git commit` y `git push`.
+4. Se conservan los últimos **7 respaldos**. Los más antiguos se eliminan automáticamente del disco local.
+5. Si el push a GitHub falla (por ejemplo, sin Internet), el respaldo queda guardado localmente y se reintentará con el siguiente ciclo.
+6. Toda la actividad queda registrada en `backup_log.txt` dentro del mismo repositorio.
+
+#### Restauración en caso de emergencia
+```bash
+# Desde la línea de comandos del servidor:
+docker exec -i rderico-db-dev psql -U user -d rderico < respaldo_YYYY-MM-DD.sql
+```
+
+#### Tarea programada en Windows
+- **Nombre:** `RdeRico-BackupDiario`
+- **Verificar estado:** `schtasks /Query /TN "RdeRico-BackupDiario"`
+- **Ejecutar manualmente:** `schtasks /Run /TN "RdeRico-BackupDiario"`
+- **Eliminar:** `schtasks /Delete /TN "RdeRico-BackupDiario" /F`
+
+#### Reglas
+- **PROHIBIDO** apagar el servidor antes de las 12:15 PM sin verificar que el respaldo del día se haya ejecutado.
+- **PROHIBIDO** eliminar el repositorio de respaldos ni cambiar su visibilidad a público.
+- **OBLIGATORIO** verificar periódicamente que los respaldos aparecen en GitHub. Si se detectan días faltantes, investigar el `backup_log.txt`.
+
 ---
 
 ## 6. DISEÑO DE API (CONTRATOS FRONTEND ↔ BACKEND)
