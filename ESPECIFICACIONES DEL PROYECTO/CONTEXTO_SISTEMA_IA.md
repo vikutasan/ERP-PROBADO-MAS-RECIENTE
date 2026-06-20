@@ -536,6 +536,18 @@ if (newHash !== lastHashRef.current) {
 - **OBLIGATORIO** que todo script de migración valide la existencia de las tablas que pretende modificar antes de ejecutar sentencias DDL (`ALTER TABLE`, `DROP CONSTRAINT`, etc.). Un script de migración **nunca** debe ser capaz de tirar el servidor entero.
 - **PRECAUCIÓN** con `restart: always` en Docker Compose: esta política, combinada con una excepción fatal en el arranque del contenedor, genera un crash loop que puede dañar el hardware por sobrecalentamiento. Considerar `restart: on-failure` con `max_retries` como alternativa más segura para servicios críticos.
 
+### 16.4 Bloqueo de Router y Riesgos de IP Estática en Windows
+**Incidente:** Al intentar resolver el problema de IPs dinámicas (el servidor perdió la IP `192.168.1.117` debido a la conexión de un teléfono móvil), se intentó fijar la IP directamente en la tarjeta de red de Windows.
+**Resultado:** Al configurar la IP estática desde Windows, el sistema operativo detectó un conflicto de IP (Duplicate Address Detection) ya que el router aún mantenía la asignación al teléfono. Windows bloqueó inmediatamente la conexión IPv4, cayendo a una IP nula (APIPA `169.254.x.x`) y aislando al servidor (cayó RustDesk y el acceso al POS).
+
+**Hallazgos de Infraestructura:**
+- El router ZTE F6201B proporcionado por Megacable tiene **bloqueada/oculta** la interfaz de "Reserva DHCP" (Address Reservation) para el usuario administrador estándar (`Mega_C00F`). No es posible fijar IPs desde el panel del router.
+- Forzar una IP que ya está en conflicto usando Windows rompe completamente la red por las medidas de seguridad del propio sistema operativo.
+
+**Lección y Solución Futura:**
+- La única forma segura de asignar una IP fija al servidor es utilizar una dirección **fuera del rango habitual** de asignación DHCP (ej. `192.168.1.250`) que no tenga riesgo de conflicto con teléfonos o laptops transitorias.
+- **Requiere Planificación:** Cambiar la IP del servidor implica actualizar la variable `VITE_API_URL` en el código frontend, reconstruir la imagen de Docker del POS, y reconfigurar físicamente cualquier cliente o terminal que apunte a la IP actual.
+
 ---
 
 ## 17. TU COMPORTAMIENTO ESPERADO COMO IA
