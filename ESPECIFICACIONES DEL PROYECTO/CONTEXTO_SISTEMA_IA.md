@@ -570,6 +570,30 @@ if (newHash !== lastHashRef.current) {
 }
 ```
 
+### 16.3 Crash Loop por Tabla Faltante y Sobrecalentamiento del Servidor (Junio 2026)
+**Contexto del Problema:** El servidor local (Terminal 6) sufrió un sobrecalentamiento que provocó un apagado de emergencia por protección térmica del hardware. La máquina estaba físicamente caliente y las terminales POS quedaron sin servicio durante ~30 minutos.
+
+**Diagnóstico — Triple Causa Raíz Encadenada:**
+1. **Conflicto de IP en la red local:** Un dispositivo móvil se conectó vía Wi-Fi al router de la sucursal y obtuvo por DHCP la misma dirección IP (`192.168.1.117`) que el servidor. Windows detectó el conflicto y desconectó repetidamente la interfaz de red del servidor, provocando cortes intermitentes de conectividad.
+2. **Modelo SQLAlchemy no importado en `main.py`:** El modelo `ProductTechnicalSheet` existía en `modules/catalog/models.py` pero **nunca fue importado** en la sección "Importar TODOS los modelos" de `main.py`. Debido a esto, la función `Base.metadata.create_all()` del evento `startup` no detectaba la tabla `product_technical_sheets` y nunca la creaba en PostgreSQL.
+3. **Script de migración sin validación defensiva:** El archivo `migrate_technical_sheets.py` ejecutaba directamente `ALTER TABLE product_technical_sheets ADD COLUMN ...` sin verificar primero si la tabla existía. Al no encontrarla, lanzaba `asyncpg.exceptions.UndefinedTableError`, una excepción fatal que mataba el proceso del backend.
+
+**La Reacción en Cadena:**
+- Docker Compose tenía configurado `restart: always` en el servicio `api`.
+- Cada vez que el backend moría por la excepción, Docker lo reiniciaba inmediatamente.
+- El backend volvía a arrancar, volvía a ejecutar la migración, volvía a fallar → **crash loop infinito**.
+- Cientos de ciclos de arranque/muerte por segundo saturaron el CPU al 100% durante ~26 minutos.
+- A las 06:58 a.m., Windows ejecutó un apagado térmico de emergencia para proteger el hardware.
+
+**Solución Aplicada:**
+- Se agregaron `Product` y `ProductTechnicalSheet` a la línea de importación en `main.py`, garantizando que `create_all()` detecte y cree la tabla automáticamente en cada arranque.
+- Se agregó una consulta previa a `information_schema.tables` en `migrate_technical_sheets.py` que verifica la existencia de la tabla antes de intentar alterarla. Si no existe, el script termina limpiamente con un mensaje informativo.
+
+**Reglas Arquitectónicas Derivadas:**
+- **OBLIGATORIO** importar todo modelo SQLAlchemy nuevo en la sección de imports de `main.py` inmediatamente después de crearlo. Si `Base.metadata` no conoce el modelo, la tabla jamás se auto-creará y cualquier referencia posterior provocará un error fatal.
+- **OBLIGATORIO** que todo script de migración valide la existencia de las tablas que pretende modificar antes de ejecutar sentencias DDL (`ALTER TABLE`, `DROP CONSTRAINT`, etc.). Un script de migración **nunca** debe ser capaz de tirar el servidor entero.
+- **PRECAUCIÓN** con `restart: always` en Docker Compose: esta política, combinada con una excepción fatal en el arranque del contenedor, genera un crash loop que puede dañar el hardware por sobrecalentamiento. Considerar `restart: on-failure` con `max_retries` como alternativa más segura para servicios críticos.
+
 ---
 
 ## 17. TU COMPORTAMIENTO ESPERADO COMO IA
