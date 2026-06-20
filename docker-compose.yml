@@ -4,9 +4,9 @@ services:
     container_name: rderico-db-dev
     restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: rderico
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5433:5432"
     volumes:
@@ -26,7 +26,7 @@ services:
       - ../ERP-R-DE-RICO-DATA/images:/app/static/images
       - ../ERP-R-DE-RICO-DATA/config/terminal_status.json:/app/terminal_status.json
     environment:
-      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/rderico
+      - DATABASE_URL=${DATABASE_URL}
       - PORT=3001
     depends_on:
       - db
