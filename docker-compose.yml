@@ -17,7 +17,7 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     container_name: rderico-api-dev
-    restart: always
+    restart: on-failure:5
     ports:
       - "5001:3001"
     volumes:
