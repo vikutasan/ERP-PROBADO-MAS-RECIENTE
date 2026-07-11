@@ -84,6 +84,16 @@ class TicketResponse(TicketBase):
     items: List[TicketItemResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
+class TicketLightResponse(BaseModel):
+    """Respuesta mínima para operaciones atómicas de items (add/update/remove).
+    El frontend solo necesita version y total tras cada operación.
+    Evita el SELECT con 5 JOINs de _get_full_ticket que degradaba rendimiento en hora rush."""
+    id: int
+    account_num: str
+    version: int
+    total: float
+    status: str
+
 # --- Terminal Session ---
 class TerminalSessionBase(BaseModel):
     terminal_id: str

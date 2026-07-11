@@ -47,7 +47,7 @@ async def create_ticket(ticket: schemas.TicketCreate, request: Request, db: Asyn
     return result
 
 # ── FASE 2: Endpoints Atómicos de Items (Persistencia Inmediata) ────────
-@router.post("/tickets/items/add", response_model=schemas.TicketResponse)
+@router.post("/tickets/items/add", response_model=schemas.TicketLightResponse)
 async def add_item_to_ticket(payload: schemas.TicketItemAdd, request: Request, db: AsyncSession = Depends(get_db)):
     """Agrega un producto al ticket. Si ya existe, incrementa cantidad."""
     result = await pos_service.add_item_to_ticket(db, payload)
@@ -56,7 +56,7 @@ async def add_item_to_ticket(payload: schemas.TicketItemAdd, request: Request, d
     }, 200)
     return result
 
-@router.put("/tickets/items/update", response_model=schemas.TicketResponse)
+@router.put("/tickets/items/update", response_model=schemas.TicketLightResponse)
 async def update_item_quantity(payload: schemas.TicketItemUpdate, request: Request, db: AsyncSession = Depends(get_db)):
     """Actualiza la cantidad de un item existente."""
     result = await pos_service.update_item_quantity(db, payload)
@@ -65,7 +65,7 @@ async def update_item_quantity(payload: schemas.TicketItemUpdate, request: Reque
     }, 200)
     return result
 
-@router.delete("/tickets/items/remove", response_model=schemas.TicketResponse)
+@router.delete("/tickets/items/remove", response_model=schemas.TicketLightResponse)
 async def remove_item_from_ticket(payload: schemas.TicketItemRemove, request: Request, db: AsyncSession = Depends(get_db)):
     """Elimina un producto del ticket."""
     result = await pos_service.remove_item_from_ticket(db, payload)
