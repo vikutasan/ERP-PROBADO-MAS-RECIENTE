@@ -47,12 +47,19 @@ class POSService:
         return await self._get_full_ticket(db, db_ticket.id)
 
     async def _get_items_and_total(self, db: AsyncSession, items: List[schemas.TicketItemCreate]):
-        """Valida stock/existencia y calcula el valor total del carrito."""
+        """Valida stock/existencia y calcula el valor total del carrito.
+        v7.0: Batch query — un solo SELECT para todos los productos en vez de N consultas individuales."""
         from decimal import Decimal
+        product_ids = [item.product_id for item in items]
+        result = await db.execute(
+            select(Product).where(Product.id.in_(product_ids))
+        )
+        products_map = {p.id: p for p in result.scalars().all()}
+
         total = Decimal(0)
         db_items = []
         for item in items:
-            product = await db.get(Product, item.product_id)
+            product = products_map.get(item.product_id)
             if not product:
                 raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
             if not product.active:
@@ -230,12 +237,12 @@ class POSService:
                 await db.delete(old_item)
 
     async def _get_full_ticket(self, db: AsyncSession, ticket_id: int):
-        """Recupera un ticket con CARGA ANSIOSA de todas las relaciones para evitar MissingGreenlet."""
+        """Recupera un ticket con CARGA ANSIOSA de todas las relaciones para evitar MissingGreenlet.
+        v7.0: Se eliminó selectinload(Product.technical_sheet) — no se usa en operaciones de POS."""
         result = await db.execute(
             select(models.Ticket)
             .options(
                 selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
@@ -244,6 +251,28 @@ class POSService:
         )
         ticket_obj = result.scalar_one()
         return self._populate_flat_fields(ticket_obj)
+
+    async def _get_lightweight_response(self, db: AsyncSession, ticket_id: int):
+        """Respuesta mínima para operaciones atómicas de items.
+        v7.0: El frontend solo necesita version y total tras agregar/modificar/eliminar un item.
+        Evita el SELECT con JOINs de _get_full_ticket que degradaba rendimiento en hora rush."""
+        result = await db.execute(
+            select(
+                models.Ticket.id,
+                models.Ticket.account_num,
+                models.Ticket.version,
+                models.Ticket.total,
+                models.Ticket.status
+            ).where(models.Ticket.id == ticket_id)
+        )
+        row = result.one()
+        return {
+            "id": row.id,
+            "account_num": row.account_num,
+            "version": row.version,
+            "total": float(row.total),
+            "status": row.status
+        }
 
     def _populate_flat_fields(self, ticket_obj: models.Ticket):
         """Puebla campos calculados o nombres planos para el frontend."""
@@ -395,7 +424,7 @@ class POSService:
         ticket_id = db_ticket.id
         await db.commit()
         db.expire_all()
-        return await self._get_full_ticket(db, ticket_id)
+        return await self._get_lightweight_response(db, ticket_id)
 
     async def update_item_quantity(self, db: AsyncSession, payload):
         """Actualiza la cantidad de un item existente de forma atómica."""
@@ -441,7 +470,7 @@ class POSService:
         ticket_id = db_ticket.id
         await db.commit()
         db.expire_all()
-        return await self._get_full_ticket(db, ticket_id)
+        return await self._get_lightweight_response(db, ticket_id)
 
     async def remove_item_from_ticket(self, db: AsyncSession, payload):
         """Elimina un producto del ticket de forma atómica."""
@@ -486,7 +515,7 @@ class POSService:
         ticket_id = db_ticket.id
         await db.commit()
         db.expire_all()
-        return await self._get_full_ticket(db, ticket_id)
+        return await self._get_lightweight_response(db, ticket_id)
 
 
 
@@ -497,7 +526,6 @@ class POSService:
             select(models.Ticket)
             .options(
                 selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
@@ -517,7 +545,6 @@ class POSService:
         """
         query = select(models.Ticket).options(
             selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
-            selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
             selectinload(models.Ticket.session),
             selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
             selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
@@ -558,7 +585,6 @@ class POSService:
             select(models.Ticket)
             .options(
                 selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
@@ -888,7 +914,6 @@ class POSService:
             select(models.Ticket)
             .options(
                 selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.category),
-                selectinload(models.Ticket.items).selectinload(models.TicketItem.product).selectinload(Product.technical_sheet),
                 selectinload(models.Ticket.session),
                 selectinload(models.Ticket.captured_by).selectinload(Employee.profile),
                 selectinload(models.Ticket.cashed_by).selectinload(Employee.profile)
