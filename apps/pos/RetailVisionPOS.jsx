@@ -304,46 +304,63 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
     };
 
     // --- FASE 2: Wrappers con persistencia inmediata ---
+    // v7.0: Retries simétricos — las 3 operaciones atómicas usan el mismo patrón (3 intentos, backoff 1s/2s/3s)
+    const MAX_RETRIES = 3;
+
     const handleUpdateQuantity = async (productId, newQuantity) => {
         updateQuantity(productId, newQuantity); // UI instantánea
         if (!accountNumRef.current) return;
-        try {
-            const result = await posService.updateItemQuantity({
-                account_num: accountNumRef.current,
-                product_id: productId,
-                new_quantity: newQuantity,
-                version: ticketVersionRef.current
-            });
-            if (result?.version) {
-                ticketVersionRef.current = result.version;
-                setTicketVersion(result.version);
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const result = await posService.updateItemQuantity({
+                    account_num: accountNumRef.current,
+                    product_id: productId,
+                    new_quantity: newQuantity,
+                    version: ticketVersionRef.current
+                });
+                if (result?.version) {
+                    ticketVersionRef.current = result.version;
+                    setTicketVersion(result.version);
+                }
+                setLastSaveStatus('saved');
+                setLastSaveTime(new Date());
+                return; // Éxito — salir del loop
+            } catch (e) {
+                console.warn(`⚠️ Update quantity falló (intento ${attempt}/${MAX_RETRIES}):`, e);
+                if (attempt < MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 1000 * attempt));
+                } else {
+                    setLastSaveStatus('failed');
+                }
             }
-            setLastSaveStatus('saved');
-            setLastSaveTime(new Date());
-        } catch (e) {
-            console.warn('Update quantity persistence failed:', e);
-            setLastSaveStatus('failed');
         }
     };
 
     const handleRemoveFromCart = async (productId) => {
         removeFromCart(productId); // UI instantánea
         if (!accountNumRef.current) return;
-        try {
-            const result = await posService.removeItemFromTicket({
-                account_num: accountNumRef.current,
-                product_id: productId,
-                version: ticketVersionRef.current
-            });
-            if (result?.version) {
-                ticketVersionRef.current = result.version;
-                setTicketVersion(result.version);
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const result = await posService.removeItemFromTicket({
+                    account_num: accountNumRef.current,
+                    product_id: productId,
+                    version: ticketVersionRef.current
+                });
+                if (result?.version) {
+                    ticketVersionRef.current = result.version;
+                    setTicketVersion(result.version);
+                }
+                setLastSaveStatus('saved');
+                setLastSaveTime(new Date());
+                return; // Éxito — salir del loop
+            } catch (e) {
+                console.warn(`⚠️ Remove item falló (intento ${attempt}/${MAX_RETRIES}):`, e);
+                if (attempt < MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 1000 * attempt));
+                } else {
+                    setLastSaveStatus('failed');
+                }
             }
-            setLastSaveStatus('saved');
-            setLastSaveTime(new Date());
-        } catch (e) {
-            console.warn('Remove item persistence failed:', e);
-            setLastSaveStatus('failed');
         }
     };
 
