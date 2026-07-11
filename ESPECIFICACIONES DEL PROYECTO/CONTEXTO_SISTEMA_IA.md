@@ -132,11 +132,11 @@ Esta sección define la arquitectura de red y sincronización del sistema. Es un
  │  PostgreSQL local    │               │  PostgreSQL local    │
  │  FUENTE DE VERDAD    │               │  FUENTE DE VERDAD    │
  └──┬──────────┬────────┘               └──────────────────────┘
-    │ LAN      │ WiFi
-┌───▼───┐  ┌───▼──────────────┐
-│Cajero │  │ Tablets en tienda│
-│ (POS) │  │(producción, POS) │
-└───────┘  └──────────────────┘
+    │ LAN      │ LAN (cable Ethernet)
+┌───▼───┐  ┌───▼───────────────────┐
+│ CAJA  │  │ T2-T6: Mini PCs con  │
+│ (POS) │  │ monitor táctil (POS) │
+└───────┘  └───────────────────────┘
                   ↑ WiFi al regresar a sucursal
                   │
        ┌──────────▼───────────┐
@@ -155,13 +155,14 @@ Esta sección define la arquitectura de red y sincronización del sistema. Es un
 El sistema opera en tres niveles. El código que generes **debe manejar los tres** sin intervención del usuario.
 
 #### NIVEL 1 — Operación Normal
-- **Condición:** Terminal o tablet con conexión LAN/WiFi al servidor local de sucursal.
+- **Condición:** Terminal (Mini PC con monitor táctil) conectada vía **cable Ethernet (LAN)** al servidor local de sucursal.
 - **Comportamiento:** Todas las operaciones en tiempo real contra PostgreSQL local.
 - **Indicador en UI:** `● Conectado` (verde).
+- **Nota:** Todas las terminales del POS (T1-T6) usan conexión LAN por cable, lo que elimina prácticamente el riesgo de desconexión por interferencia WiFi. El único escenario de pérdida de conectividad es un fallo de hardware (cable, switch) o apagado del servidor.
 
 #### NIVEL 2 — Operación Degradada (sin servidor local)
-- **Condición:** La tablet perdió WiFi (fuera de rango, router caído).
-- **Comportamiento:** Opera 100% desde IndexedDB local. Cada operación se guarda en una **cola de sincronización** con UUID propio y timestamp. Al recuperar WiFi, la cola se sincroniza automáticamente con el servidor local.
+- **Condición:** El servidor local está caído (apagón, fallo de hardware, crash de Docker) o el cable de red se desconectó.
+- **Comportamiento:** Opera 100% desde IndexedDB local. Cada operación se guarda en una **cola de sincronización** con UUID propio y timestamp. Al recuperar conexión, la cola se sincroniza automáticamente con el servidor local.
 - **Indicador en UI:** `● Offline — 12 operaciones pendientes` (amarillo).
 - **Restricciones:** No consulta precios actualizados (usa los últimos conocidos). No permite devoluciones que requieran validar stock central.
 
@@ -309,14 +310,14 @@ Todas las terminales acceden al POS a través del Servidor Local de Sucursal:
 
 | Terminal | URL de Acceso | Dispositivo |
 |---|---|---|
-| T6 (Servidor) | `http://192.168.1.117:5000/?terminal=T6` | Esta máquina (servidor + terminal) |
-| T5 | `http://192.168.1.117:5000/?terminal=T5` | Tablet |
-| T4 | `http://192.168.1.117:5000/?terminal=T4` | Tablet |
-| T3 | `http://192.168.1.117:5000/?terminal=T3` | Tablet |
-| T2 | `http://192.168.1.117:5000/?terminal=T2` | Tablet |
-| T1 (CAJA) | `http://192.168.1.117:5000/?terminal=CAJA` | Punto de cobro principal |
+| T6 (Servidor) | `http://192.168.1.117:5000/?terminal=T6` | Mini PC servidor + monitor táctil (servidor y terminal) |
+| T5 | `http://192.168.1.117:5000/?terminal=T5` | Mini PC + monitor táctil (LAN) |
+| T4 | `http://192.168.1.117:5000/?terminal=T4` | Mini PC + monitor táctil (LAN) |
+| T3 | `http://192.168.1.117:5000/?terminal=T3` | Mini PC + monitor táctil (LAN) |
+| T2 | `http://192.168.1.117:5000/?terminal=T2` | Mini PC + monitor táctil (LAN) |
+| T1 (CAJA) | `http://192.168.1.117:5000/?terminal=CAJA` | Punto de cobro principal (LAN) |
 
-**Nota:** La IP `192.168.1.117` corresponde al Servidor Local de Sucursal. Si cambia la IP del servidor (por DHCP o reconfiguración de red), estas URLs deberán actualizarse en los accesos directos de cada tablet.
+**Nota:** La IP `192.168.1.117` corresponde al Servidor Local de Sucursal. Si cambia la IP del servidor (por DHCP o reconfiguración de red), estas URLs deberán actualizarse en los accesos directos de cada terminal.
 
 ---
 
