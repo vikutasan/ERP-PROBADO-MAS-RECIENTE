@@ -84,6 +84,7 @@ Para evitar que futuras IAs intenten reimplementar arquitecturas pasadas que fra
 - **Solución (v7.0):** Se creó `_get_lightweight_response()`: un SELECT de 5 columnas escalares **sin ningún JOIN**. Las 3 operaciones atómicas ahora devuelven esta respuesta ligera. El checkout (`createTicket`) sigue usando `_get_full_ticket()` porque necesita el ticket completo para impresión.
 - **Adicionalmente:** Se eliminó `selectinload(Product.technical_sheet)` de todas las consultas POS (nunca se usaba), y se batcheó el N+1 en `_get_items_and_total()` (1 query `WHERE id IN(...)` en vez de N queries individuales).
 - **Impacto medido:** ~80% menos carga de DB por producto escaneado. Zero cambios en frontend.
+- **Adicionalmente (v7.0.1):** Se detectó que `handleUpdateQuantity` y `handleRemoveFromCart` (en `RetailVisionPOS.jsx`) **no tenían retries** — fallaban al primer intento y marcaban `lastSaveStatus = 'failed'` inmediatamente, mientras que `handleAddToCart` (en `useTicketActions.js`) ya tenía 3 intentos con backoff. Esta asimetría significaba que cambiar una cantidad o borrar un producto era más frágil que agregarlo. Se corrigió igualando el patrón: las 3 operaciones ahora usan `MAX_RETRIES = 3` con backoff progresivo (1s, 2s, 3s).
 
 ---
 
@@ -292,6 +293,20 @@ Las operaciones atómicas de items (`addItemToTicket`, `updateItemQuantity`, `re
 
 **¿Por qué?** Con 4-6 terminales escaneando rápido, cada `_get_full_ticket()` ejecutaba un SELECT con 5 JOINs anidados que el frontend descartaba — solo leía `.version`. Multiplicado por decenas de operaciones por segundo, esto saturaba PostgreSQL y causaba lentitud perceptible en el cobro.
 
+### ⚡ REGLA 16: Retries Simétricos en Operaciones Atómicas (v7.0.1)
+Las **tres** operaciones atómicas del POS (`handleAddToCart`, `handleUpdateQuantity`, `handleRemoveFromCart`) **deben** tener el mismo patrón de reintento: 3 intentos con backoff progresivo (1s, 2s, 3s).
+- ⛔ PROHIBIDO: Que una operación atómica tenga retries y otra no. Esto crea una asimetría donde agregar un producto es resiliente pero cambiar su cantidad no lo es.
+- ⛔ PROHIBIDO: Que cualquiera de las 3 operaciones marque `lastSaveStatus = 'failed'` al primer intento sin reintentar.
+- ✅ OBLIGATORIO: Loop `for (attempt = 1..3)` con `await new Promise(r => setTimeout(r, 1000 * attempt))` entre intentos.
+- ✅ OBLIGATORIO: Solo marcar `'failed'` después de agotar los 3 intentos.
+
+**¿Por qué?** Sin retries simétricos, un micro-corte de red de 500ms durante hora pico causa que el cajero cambie una cantidad o borre un producto y el POS marque error inmediato (banner rojo + botón bloqueado), aunque la red se recupere 1 segundo después. Con retries, el sistema absorbe la interrupción silenciosamente.
+
+**Archivos involucrados:**
+- `handleAddToCart` → `useTicketActions.js` (ya tenía retries desde v6.0)
+- `handleUpdateQuantity` → `RetailVisionPOS.jsx` (corregido en v7.0.1)
+- `handleRemoveFromCart` → `RetailVisionPOS.jsx` (corregido en v7.0.1)
+
 ---
 
 ## 5. LÓGICA DE TERMINALES Y OCUPACIÓN
@@ -396,6 +411,7 @@ Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, veri
 - [ ] ¿Las operaciones atómicas (add/update/remove item) devuelven `TicketLightResponse` y NO `TicketResponse`? (v7.0)
 - [ ] ¿Las consultas del módulo POS NO cargan `Product.technical_sheet`? (v7.0)
 - [ ] ¿`_get_items_and_total` usa batch query `WHERE id IN(...)` y NO un loop de `db.get()` individual? (v7.0)
+- [ ] ¿Las 3 operaciones atómicas (add/update/remove) tienen retries simétricos (3 intentos, backoff 1s/2s/3s)? (v7.0.1)
 
 ---
 
@@ -417,8 +433,8 @@ Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, veri
 
 ---
 
-> **Esta es la FUENTE ÚNICA DE VERDAD de la v7.0.**
+> **Esta es la FUENTE ÚNICA DE VERDAD de la v7.0.1.**
 > El POS de R de Rico es un monumento a la evolución: construimos sistemas complejos para sobrevivir, aprendimos que la complejidad causaba errores, y los sustituimos por simplicidad atómica robusta.
-> La v6.1 agregó verificación post-envío y bloqueo visual sin conexión. La v7.0 optimizó el rendimiento eliminando JOINs innecesarios en operaciones de alta frecuencia.
+> La v6.1 agregó verificación post-envío y bloqueo visual sin conexión. La v7.0 optimizó el rendimiento eliminando JOINs innecesarios en operaciones de alta frecuencia. La v7.0.1 igualó la resiliencia de las 3 operaciones atómicas con retries simétricos.
 >
 > *Tu trabajo como IA no es reintroducir la complejidad antigua, sino proteger y expandir esta simplicidad.*
