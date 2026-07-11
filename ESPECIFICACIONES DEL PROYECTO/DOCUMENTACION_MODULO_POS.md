@@ -3,7 +3,7 @@
 > **⚠️ LECTURA OBLIGATORIA.** Cualquier IA o desarrollador que necesite modificar o auditar CUALQUIER aspecto del Punto de Venta (POS) de R de Rico **DEBE leer este documento completo primero.**
 >
 > **Última actualización:** 2026-07-11
-> **Versión de arquitectura POS:** v7.0 (Modelo SaaS — Persistencia Atómica + Respuesta Ligera + Verificación Post-Envío)
+> **Versión de arquitectura POS:** v7.0.2 (Modelo SaaS — Persistencia Atómica + Respuesta Ligera + Verificación Post-Envío + Auto-Reconciliación)
 > **Archivos gobernados:** `apps/pos/`, `apps/api/modules/pos/`, `apps/api/modules/cash/`
 
 ---
@@ -85,6 +85,11 @@ Para evitar que futuras IAs intenten reimplementar arquitecturas pasadas que fra
 - **Adicionalmente:** Se eliminó `selectinload(Product.technical_sheet)` de todas las consultas POS (nunca se usaba), y se batcheó el N+1 en `_get_items_and_total()` (1 query `WHERE id IN(...)` en vez de N queries individuales).
 - **Impacto medido:** ~80% menos carga de DB por producto escaneado. Zero cambios en frontend.
 - **Adicionalmente (v7.0.1):** Se detectó que `handleUpdateQuantity` y `handleRemoveFromCart` (en `RetailVisionPOS.jsx`) **no tenían retries** — fallaban al primer intento y marcaban `lastSaveStatus = 'failed'` inmediatamente, mientras que `handleAddToCart` (en `useTicketActions.js`) ya tenía 3 intentos con backoff. Esta asimetría significaba que cambiar una cantidad o borrar un producto era más frágil que agregarlo. Se corrigió igualando el patrón: las 3 operaciones ahora usan `MAX_RETRIES = 3` con backoff progresivo (1s, 2s, 3s).
+- **v7.0.2 — Hardening de Resiliencia (Julio 2026):** Auditoría de robustez identificó 4 vulnerabilidades remanentes:
+  1. **Estado `failed` atrapado:** Si la red se recuperaba, el banner rojo permanecía indefinidamente porque nada reseteaba `lastSaveStatus`. **Fix:** Auto-reconciliación con timer de 10s que verifica el servidor y sincroniza el carrito.
+  2. **Divergencia UI ↔ Servidor:** Optimistic updates de cantidad/borrado podían divergir del servidor tras retries fallidos. **Fix:** Al reconciliar, el servidor gana (fuente de verdad) y el carrito local se actualiza.
+  3. **Retries duplicados en 2 archivos:** La lógica de retry estaba en `useTicketActions.js` (addToCart) y `RetailVisionPOS.jsx` (update/remove), lo que causó la asimetría original. **Fix:** Se creó `withRetries.js` como utilidad centralizada DRY.
+  4. **Checkout sin retries:** `createTicket` (cobro/pizarrón) fallaba al primer intento de red sin reintentar, mientras que agregar un producto tenía 3 intentos. **Fix:** `createTicket` ahora usa `withRetries` con `shouldRetry` que excluye errores de negocio (409, folio pagado).
 
 ---
 
@@ -306,6 +311,26 @@ Las **tres** operaciones atómicas del POS (`handleAddToCart`, `handleUpdateQuan
 - `handleAddToCart` → `useTicketActions.js` (ya tenía retries desde v6.0)
 - `handleUpdateQuantity` → `RetailVisionPOS.jsx` (corregido en v7.0.1)
 - `handleRemoveFromCart` → `RetailVisionPOS.jsx` (corregido en v7.0.1)
+- **`withRetries.js`** → `apps/pos/utils/withRetries.js` (centralizado en v7.0.2)
+
+### ⚡ REGLA 17: Auto-Reconciliación Post-Fallo (v7.0.2)
+Cuando `lastSaveStatus === 'failed'`, el POS **debe** intentar reconciliar automáticamente el carrito local con el servidor después de un retraso de 10 segundos.
+- ✅ OBLIGATORIO: Timer de 10s que primero verifica si el servidor responde (`/settings`), y si responde, descarga el ticket real vía `getTicketByAccountNum` y sobrescribe el carrito local.
+- ✅ OBLIGATORIO: Si el ticket no existe en el servidor (items nunca persistidos), resetear `lastSaveStatus` a `'idle'` y notificar al cajero.
+- ✅ OBLIGATORIO: Seguir la regla `cartRef.current = recovered` ANTES de `setCart(recovered)` (Regla 9).
+- ⛔ PROHIBIDO: Hacer polling continuo para reconciliar. El timer se dispara UNA vez y se re-programa solo cuando `netStatus` cambia.
+- ⛔ PROHIBIDO: Confundir esto con auto-save. Esto es RECOVERY post-fallo, no persistencia periódica.
+
+**¿Por qué?** Sin reconciliación, el estado `'failed'` se queda atrapado indefinidamente: el banner rojo permanece, el botón de Pizarrón queda bloqueado, y el cajero tiene que agregar otro producto para “desbloquearse”. Además, las cantidades en pantalla pueden divergir del servidor si un `updateQuantity` falló tras los retries.
+
+### ⚡ REGLA 18: Retries en Checkout con Filtro de Errores de Negocio (v7.0.2)
+El checkout (`createTicket`) **debe** tener retries para errores de red, pero **NO debe** reintentar errores de lógica de negocio.
+- ✅ OBLIGATORIO: Usar `withRetries` con `shouldRetry` que retorna `false` para errores que contengan `"ya ha sido pagado"` o `"Conflicto de versión"`.
+- ✅ OBLIGATORIO: Los handlers de errores de negocio (auto-heal 409, folio pagado) permanecen intactos fuera del loop de retries.
+- ⛔ PROHIBIDO: Reintentar un error 409 (Conflicto de versión) — el auto-heal ya lo maneja descargando datos frescos.
+- ⛔ PROHIBIDO: Reintentar “ya ha sido pagado” — es una condición terminal legítima.
+
+**¿Por qué?** Sin retries en checkout, agregar una Concha de $8 tiene 3 intentos pero cobrar una cuenta de $2,000 es todo-o-nada al primer intento. Un micro-corte de LAN de 500ms durante el cobro obliga al cajero a presionar “Cobrar” de nuevo manualmente.
 
 ---
 
@@ -412,6 +437,10 @@ Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, veri
 - [ ] ¿Las consultas del módulo POS NO cargan `Product.technical_sheet`? (v7.0)
 - [ ] ¿`_get_items_and_total` usa batch query `WHERE id IN(...)` y NO un loop de `db.get()` individual? (v7.0)
 - [ ] ¿Las 3 operaciones atómicas (add/update/remove) tienen retries simétricos (3 intentos, backoff 1s/2s/3s)? (v7.0.1)
+- [ ] ¿Todas las operaciones atómicas usan `withRetries()` de `apps/pos/utils/withRetries.js` en vez de loops inline? (v7.0.2)
+- [ ] ¿El checkout (`createTicket`) tiene retries con `shouldRetry` que excluye errores de negocio? (v7.0.2)
+- [ ] ¿Existe auto-reconciliación que resetea `lastSaveStatus` cuando la red se recupera? (v7.0.2)
+- [ ] ¿La reconciliación descarga el ticket del servidor y sobrescribe el carrito local (servidor gana)? (v7.0.2)
 
 ---
 
@@ -433,8 +462,8 @@ Antes de aprobar cualquier cambio que toque terminales, sesiones o tickets, veri
 
 ---
 
-> **Esta es la FUENTE ÚNICA DE VERDAD de la v7.0.1.**
+> **Esta es la FUENTE ÚNICA DE VERDAD de la v7.0.2.**
 > El POS de R de Rico es un monumento a la evolución: construimos sistemas complejos para sobrevivir, aprendimos que la complejidad causaba errores, y los sustituimos por simplicidad atómica robusta.
-> La v6.1 agregó verificación post-envío y bloqueo visual sin conexión. La v7.0 optimizó el rendimiento eliminando JOINs innecesarios en operaciones de alta frecuencia. La v7.0.1 igualó la resiliencia de las 3 operaciones atómicas con retries simétricos.
+> La v6.1 agregó verificación post-envío y bloqueo visual sin conexión. La v7.0 optimizó el rendimiento eliminando JOINs innecesarios en operaciones de alta frecuencia. La v7.0.1 igualó la resiliencia de las 3 operaciones atómicas con retries simétricos. La v7.0.2 cerró las últimas vulnerabilidades: auto-reconciliación post-fallo, `withRetries` DRY centralizado, y retries inteligentes en el checkout.
 >
 > *Tu trabajo como IA no es reintroducir la complejidad antigua, sino proteger y expandir esta simplicidad.*
