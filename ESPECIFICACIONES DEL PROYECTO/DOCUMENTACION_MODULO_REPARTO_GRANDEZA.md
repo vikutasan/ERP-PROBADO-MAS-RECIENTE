@@ -138,6 +138,14 @@ stmt = (
 **Diagnóstico:** El `useEffect` de auto-rellenado verificaba si la fecha/hora capturada era "demasiado temprana" y la sobreescribía con la mínima calculada, sin informar al usuario.
 **Solución:** El auto-rellenado ahora SOLO actúa si el campo de fecha está completamente vacío. Si el usuario ya capturó algo, el sistema lo respeta y simplemente bloquea el envío al intentar guardar, mostrando un toast de error claro.
 
+### Error F: "Failed to fetch" al abrir nueva jornada (Columna de base de datos faltante)
+**Síntoma:** Al intentar "ABRIR JORNADA DE HOY" desde la interfaz, el frontend lanzaba inmediatamente un `Error de red: Failed to fetch`.
+**Diagnóstico:** 
+1. Como se vio en el Error B, un "Failed to fetch" suele ocultar un Error 500 del backend sin cabeceras CORS.
+2. Al revisar la tabla `grandeza_journeys` en PostgreSQL y compararla con `models.py`, el modelo en Python definía el campo `dispatched_at` (añadido recientemente para rastrear la hora de despacho de ruta), pero la tabla física en la base de datos carecía de esta columna.
+3. El script inicial (`auto_seed_on_first_boot`) usa `Base.metadata.create_all`, el cual **no realiza migraciones** en tablas ya existentes. Por tanto, SQLAlchemy fallaba silenciosamente al hacer el `INSERT`.
+**Solución:** Se añadió la columna faltante directamente en la base de datos mediante SQL (`ALTER TABLE grandeza_journeys ADD COLUMN dispatched_at TIMESTAMP WITHOUT TIME ZONE;`).
+
 ---
 
 ## 7. Directivas Generales para Modificar este Módulo
@@ -147,4 +155,59 @@ stmt = (
 4. **Respetar la captura del usuario:** Nunca sobreescribir silenciosamente datos que el usuario ya capturó (fechas, horas, montos). Si hay un problema de validación, bloquearlo al intentar guardar con un mensaje claro, no modificar el dato a sus espaldas.
 5. **Status de producción ≠ Status de pago:** El campo `status` es el flujo de producción (TENTATIVO, EN_PREPARACION, etc.). El campo `payment_status` es el estado financiero (PAGADO, ANTICIPO, PENDIENTE). Nunca mezclarlos.
 6. **Eager loading obligatorio en SQLAlchemy Async:** Cualquier relación ORM que se acceda dentro de un bucle de serialización DEBE precargarse con `selectinload()` en la consulta inicial. De lo contrario, FastAPI dispara un error 500 silencioso que el frontend reporta como "Failed to fetch".
+7. **Sincronización de Base de Datos (Migraciones):** Ya que el sistema usa `create_all` al arrancar, este no altera tablas existentes. Si agregas columnas a los modelos de SQLAlchemy, DEBES ejecutar el `ALTER TABLE` correspondiente en la base de datos; de lo contrario, provocarás caídas silenciosas (Error 500).
+8. **No instalar Service Workers ni PWA plugins globales:** El frontend del POS y Grandeza comparten el mismo Vite build. Registrar un Service Worker global interceptaría las peticiones del POS. La funcionalidad offline se resuelve exclusivamente con IndexedDB dentro de `GrandezaDriverUI.jsx`.
+
+---
+
+## 8. Arquitectura Offline-First (Modo Sin Conexión)
+
+La herramienta del repartidor (`GrandezaDriverUI.jsx`) está diseñada para funcionar en zonas sin cobertura celular.
+
+### Archivos Involucrados
+- `apps/pos/services/offlineStore.js`: Capa de persistencia local usando IndexedDB nativo (sin librerías externas).
+- `apps/pos/services/networkMonitor.js`: Monitor de conectividad con doble verificación (eventos del navegador + heartbeat al endpoint `/health`).
+
+### Flujo Offline
+1. **Al cargar con internet (mañana en la panadería):** `loadAll()` descarga toda la información (jornada, productos, clientes, inventario, ruta) y la guarda en IndexedDB (`cacheRouteData()`).
+2. **Al perder señal:** Un banner discreto ámbar aparece: "📡 Sin conexión — Modo local activo". La app sigue funcionando normalmente.
+3. **Al registrar una visita sin red:** El `saveVisit()` detecta el error de red y en lugar de mostrar "Error de red", encola la operación en `sync_queue` de IndexedDB. La visita se muestra optimistamente en la UI.
+4. **GPS sin red:** Las coordenadas no se descartan (antes `.catch(() => {})`). Se guardan en `gps_buffer` de IndexedDB.
+5. **Al recuperar señal:** El monitor de red detecta conectividad real (heartbeat exitoso a `/health`), procesa la cola automáticamente (`processQueue()`), envía el GPS buffereado (`flushGPSBuffer()`), y recarga datos frescos del servidor.
+
+### IndexedDB: 3 Object Stores
+| Store | Propósito | Clave |
+|---|---|---|
+| `cached_data` | Snapshot de jornada, productos, clientes, inventario, ruta | `key` (string) |
+| `sync_queue` | Cola de operaciones HTTP pendientes | Auto-increment `id` |
+| `gps_buffer` | Coordenadas GPS capturadas sin internet | Auto-increment `id` |
+
+### Resolución de Conflictos al Sincronizar
+- **HTTP 200/201:** Exitoso → eliminar de la cola
+- **HTTP 409/422/404:** Conflicto (jornada cerrada, duplicado) → eliminar de cola + notificar al repartidor
+- **HTTP 500:** Error del servidor → reintentar en el siguiente ciclo
+
+### Por qué NO se usa Service Worker
+El POS y Grandeza comparten el mismo dominio y build de Vite. Un Service Worker registrado globalmente interceptaría las peticiones del POS, arriesgando cachear datos obsoletos o bloquear actualizaciones críticas del punto de venta. La solución con IndexedDB es más segura porque actúa solo a nivel de componente React, no a nivel de navegador.
+
+---
+
+## 9. Integración WhatsApp (Deep Links)
+
+La función `sendWhatsApp()` en `GrandezaDriverUI.jsx` genera una nota de venta formateada y la envía al cliente vía WhatsApp usando enlaces profundos (`wa.me`).
+
+### Flujo
+1. El repartidor captura la venta (productos, cantidades, pago).
+2. Presiona "Enviar ticket por WhatsApp".
+3. Se genera un mensaje con formato Markdown de WhatsApp: productos, cantidades, importes netos, total, cambio.
+4. Se abre `https://wa.me/52XXXXXXXXXX?text=...` que dispara la app de WhatsApp con el mensaje pre-escrito.
+
+### Validación de Teléfono
+- Se limpian caracteres no numéricos (`replace(/\D/g, '')`)
+- Se valida longitud de 10 dígitos (formato México)
+- Si el teléfono tiene más de 10 dígitos, se toman los últimos 10
+- Si no hay teléfono registrado, se abre WhatsApp sin destinatario para que el repartidor elija el contacto manualmente
+
+### Costo
+Gratuito. No requiere API de WhatsApp Business ni aprobación de Meta. Usa el número del celular del repartidor.
 

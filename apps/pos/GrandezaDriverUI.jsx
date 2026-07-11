@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { cacheRouteData, getCachedRouteData, updateCachedVisits, enqueueOperation, processQueue, getPendingCount, bufferGPSPoint, flushGPSBuffer } from './services/offlineStore';
+import { createNetworkMonitor } from './services/networkMonitor';
 
 const DriverBackground = () => (
     <>
@@ -36,6 +38,10 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const [saving, setSaving] = useState(false);
     const [view, setView] = useState('route'); // route | visit | summary | order
     const [editingClient, setEditingClient] = useState(null);
+    const [isOnline, setIsOnline] = useState(true);
+    const [pendingSyncCount, setPendingSyncCount] = useState(0);
+    const [lastVisitResult, setLastVisitResult] = useState(null); // Para modal post-visita
+    const networkMonitorRef = useRef(null);
     const canEditClients = userPermissions.all === 'full' || userPermissions.grandeza_edit_clients === 'full';
 
     const todayStr = () => {
@@ -99,16 +105,55 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     // ─── Load ───
     useEffect(() => { loadAll(); }, []);
 
+    // ─── Monitor de Red + Auto-Sync ───
+    useEffect(() => {
+        const apiHost = `http://${window.location.hostname}:5001`;
+        const monitor = createNetworkMonitor(apiHost);
+        networkMonitorRef.current = monitor;
+        setIsOnline(monitor.isOnline());
+
+        monitor.onStatusChange(async (online) => {
+            setIsOnline(online);
+            if (online) {
+                // Sincronizar cola de operaciones pendientes
+                const result = await processQueue();
+                if (result.synced > 0) {
+                    showToast(`✅ ${result.synced} operación(es) sincronizada(s)`);
+                    await loadAll();
+                }
+                if (result.conflicts.length > 0) {
+                    result.conflicts.forEach(c => {
+                        showToast(`⚠️ ${c.label}: No se pudo sincronizar`, 'error');
+                    });
+                }
+                // Enviar GPS buffereado
+                const gpsSent = await flushGPSBuffer(API);
+                if (gpsSent > 0) console.log(`GPS: ${gpsSent} puntos sincronizados`);
+                // Actualizar contador
+                setPendingSyncCount(await getPendingCount());
+            }
+        });
+
+        // Cargar contador inicial de pendientes
+        getPendingCount().then(setPendingSyncCount);
+
+        return () => monitor.destroy();
+    }, []);
+
     // ─── GPS cada 60 seg ───
     useEffect(() => {
         if (!journey || journey.status !== 'EN_RUTA') return;
         const sendGPS = () => {
             if (!navigator.geolocation) return;
             navigator.geolocation.getCurrentPosition(pos => {
+                const { latitude: lat, longitude: lng, accuracy } = pos.coords;
                 fetch(`${API}/grandeza/journeys/${journey.id}/location`, {
                     method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
-                }).catch(() => {});
+                    body: JSON.stringify({ lat, lng, accuracy })
+                }).catch(() => {
+                    // Sin red: guardar en buffer local para enviar después
+                    bufferGPSPoint({ journey_id: journey.id, lat, lng, accuracy });
+                });
             }, () => {}, { enableHighAccuracy: false, maximumAge: 30000 });
         };
         sendGPS();
@@ -116,43 +161,55 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         return () => clearInterval(interval);
     }, [journey]);
 
-    const [debugInfo, setDebugInfo] = useState('');
 
     const loadAll = async () => {
         setLoading(true);
-        let step = 'products';
         try {
             const prodRes = await fetch(`${API}/grandeza/products`);
-            if (prodRes.ok) setGrandezaProducts((await prodRes.json()).filter(p => p.is_enabled));
+            const prods = prodRes.ok ? (await prodRes.json()).filter(p => p.is_enabled) : [];
+            setGrandezaProducts(prods);
 
-            step = 'journeys';
             const jRes = await fetch(`${API}/grandeza/journeys/${todayStr()}`);
             
-            step = 'clients';
             const cliRes = await fetch(`${API}/grandeza/clients`);
-            if (cliRes.ok) setClients(await cliRes.json());
+            const clis = cliRes.ok ? await cliRes.json() : [];
+            setClients(clis);
 
-            step = 'routes';
             const routeRes = await fetch(`${API}/grandeza/routes/${todayDay}`);
-            if (routeRes.ok) setRouteSlots(await routeRes.json());
+            const rSlots = routeRes.ok ? await routeRes.json() : [];
+            setRouteSlots(rSlots);
 
+            let j = null, inv = [], vis = [];
             if (jRes.ok) {
-                const j = await jRes.json();
+                j = await jRes.json();
                 setJourney(j);
-                setDebugInfo(`jRes OK`);
-                step = 'inventory';
                 const invRes = await fetch(`${API}/grandeza/journeys/${j.id}/inventory?inventory_type=INITIAL`);
-                if (invRes.ok) setInitialInventory(await invRes.json());
+                if (invRes.ok) inv = await invRes.json();
+                setInitialInventory(inv);
                 
-                step = 'visits';
                 const visRes = await fetch(`${API}/grandeza/journeys/${j.id}/visits`);
-                if (visRes.ok) setVisits(await visRes.json());
-            } else {
-                setDebugInfo(`jRes FAIL: ${jRes.status} ${jRes.statusText}`);
+                if (visRes.ok) vis = await visRes.json();
+                setVisits(vis);
             }
-        } catch(e) { 
-            console.error(e); 
-            setDebugInfo(`FETCH ERR en ${step}: ${e.message}`);
+
+            // Cachear todo en IndexedDB para uso offline
+            await cacheRouteData({ journey: j, products: prods, clients: clis, inventory: inv, routeSlots: rSlots, visits: vis });
+            setPendingSyncCount(await getPendingCount());
+        } catch(e) {
+            console.error('Red no disponible, intentando caché local:', e.message);
+            // Fallback: leer datos cacheados de IndexedDB
+            const cached = await getCachedRouteData();
+            if (cached) {
+                setJourney(cached.journey);
+                setGrandezaProducts(cached.products || []);
+                setClients(cached.clients || []);
+                setInitialInventory(cached.inventory || []);
+                setRouteSlots(cached.routeSlots || []);
+                setVisits(cached.visits || []);
+                showToast('📡 Cargado desde caché local', 'warning');
+            } else {
+                showToast('❌ Sin conexión y sin datos locales', 'error');
+            }
         }
         finally { setLoading(false); }
     };
@@ -230,64 +287,82 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         ));
     };
 
-    // ─── Visita: Guardar (persiste en API) ───
+    // ─── Visita: Guardar (persiste en API o encola offline) ───
     const saveVisit = async () => {
         setSaving(true);
+        const payload = {
+            client_id: activeVisit.client_id,
+            visit_order: activeVisit.visit_order,
+            visit_type: activeVisit.visit_type,
+            ext_client_name: activeVisit.visit_type === 'EXTEMPORANEA' ? extClientName : null,
+            items: visitItems.filter(it => it.exchange_qty > 0 || it.actual_fresh_qty > 0).map(it => ({
+                product_id: it.product_id, exchange_qty: it.exchange_qty,
+                suggested_fresh_qty: it.suggested_fresh_qty, actual_fresh_qty: it.actual_fresh_qty,
+                missing_qty: it.missing_qty, unit_price: it.b2b_price,
+            })),
+            sale_amount: visitCalc.saleAmount,
+            payment_received: parseFloat(paymentReceived) || 0,
+            change_given: Math.max(0, visitCalc.change),
+            total_exchange_amount: visitCalc.exchangeTotal,
+            total_fresh_amount: visitCalc.freshTotal,
+            incident_notes: incidentNotes || null,
+        };
+        const clientLabel = activeVisit.client?.name || extClientName || 'Cliente';
         try {
-            const payload = {
-                client_id: activeVisit.client_id,
-                visit_order: activeVisit.visit_order,
-                visit_type: activeVisit.visit_type,
-                ext_client_name: activeVisit.visit_type === 'EXTEMPORANEA' ? extClientName : null,
-                items: visitItems.filter(it => it.exchange_qty > 0 || it.actual_fresh_qty > 0).map(it => ({
-                    product_id: it.product_id, exchange_qty: it.exchange_qty,
-                    suggested_fresh_qty: it.suggested_fresh_qty, actual_fresh_qty: it.actual_fresh_qty,
-                    missing_qty: it.missing_qty, unit_price: it.b2b_price,
-                })),
-                sale_amount: visitCalc.saleAmount,
-                payment_received: parseFloat(paymentReceived) || 0,
-                change_given: Math.max(0, visitCalc.change),
-                total_exchange_amount: visitCalc.exchangeTotal,
-                total_fresh_amount: visitCalc.freshTotal,
-                incident_notes: incidentNotes || null,
-            };
             const res = await fetch(`${API}/grandeza/journeys/${journey.id}/visits`, {
                 method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
             });
             if (res.ok) {
-                // Recargar visitas desde API
                 const visRes = await fetch(`${API}/grandeza/journeys/${journey.id}/visits`);
                 if (visRes.ok) setVisits(await visRes.json());
+                setLastVisitResult({ clientLabel, saleAmount: visitCalc.saleAmount, wasOffline: false,
+                    whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
+                });
                 showToast(`✅ Visita registrada — Venta: $${visitCalc.saleAmount.toFixed(2)}`);
                 setView('route'); setActiveVisit(null);
             } else { showToast('❌ Error del servidor', 'error'); }
         } catch(e) {
-            showToast('❌ Error de red', 'error');
+            // Sin red: encolar para sincronizar después
+            await enqueueOperation({
+                method: 'POST',
+                url: `${API}/grandeza/journeys/${journey.id}/visits`,
+                body: payload,
+                label: `Visita a ${clientLabel}`,
+            });
+            // Actualizar estado local optimistamente
+            const localVisit = {
+                ...payload, id: `local_${Date.now()}`, status: 'COMPLETADA',
+                client_name: clientLabel, arrived_at: new Date().toISOString(),
+                completed_at: new Date().toISOString(),
+            };
+            setVisits(prev => [...prev, localVisit]);
+            await updateCachedVisits(localVisit);
+            setPendingSyncCount(await getPendingCount());
+            setLastVisitResult({ clientLabel, saleAmount: visitCalc.saleAmount, wasOffline: true,
+                whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
+            });
+            showToast('📡 Visita guardada localmente. Se enviará al recuperar señal.', 'warning');
+            setView('route'); setActiveVisit(null);
         } finally { setSaving(false); }
     };
 
-    // ─── WhatsApp Súper Detallado ───
-    const sendWhatsApp = () => {
-        const client = activeVisit?.client;
+    // ─── WhatsApp: Generar URL con datos de la visita ───
+    const buildWhatsAppURL = ({ client, clientName, items, saleAmount, paymentRec, change, notes }) => {
         const phone = client?.phone?.replace(/\D/g, '');
-        // Si no hay teléfono, abrimos WhatsApp vacío para que el conductor elija el contacto
+        const phoneClean = phone && phone.length === 10 ? phone : (phone && phone.length > 10 ? phone.slice(-10) : null);
 
         let msg = `🍞 *NOTA DE VENTA — PAN GRANDEZA*\n`;
         msg += `📅 ${todayStr()}\n`;
-        msg += `👤 *Cliente:* ${client?.business_name || client?.name || extClientName || 'Cliente de Ruta'}\n`;
+        msg += `👤 *Cliente:* ${client?.business_name || client?.name || clientName || 'Cliente de Ruta'}\n`;
         msg += `────────────────\n`;
 
-        const activeItems = visitItems.filter(it => it.actual_fresh_qty > 0 || it.exchange_qty > 0);
-        
-        if (activeItems.length === 0) {
-            showToast('⚠️ No hay productos en la cuenta', 'error'); return;
-        }
+        const activeItems = items.filter(it => it.actual_fresh_qty > 0 || it.exchange_qty > 0);
+        if (activeItems.length === 0) return null;
 
         activeItems.forEach(it => {
             const exAmount = (it.exchange_qty || 0) * (it.b2b_price || 0);
             const frAmount = (it.actual_fresh_qty || 0) * (it.b2b_price || 0);
             const netAmount = frAmount - exAmount;
-
             msg += `\n📦 *${it.product_name}* ($${it.b2b_price.toFixed(2)} c/u)\n`;
             if (it.actual_fresh_qty > 0) msg += `   🍞 Entregadas: ${it.actual_fresh_qty} pzas (+$${frAmount.toFixed(2)})\n`;
             if (it.exchange_qty > 0) msg += `   🔄 Cambios: ${it.exchange_qty} pzas (-$${exAmount.toFixed(2)})\n`;
@@ -295,26 +370,30 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         });
 
         msg += `\n────────────────\n`;
-        msg += `💰 *TOTAL DE LA VENTA: $${visitCalc.saleAmount.toFixed(2)}*\n`;
-        
-        const rec = parseFloat(paymentReceived) || 0;
-        if (rec > 0) {
-            msg += `💵 Dinero Recibido: $${rec.toFixed(2)}\n`;
-            if (visitCalc.change > 0) {
-                msg += `🔙 Su Cambio: $${visitCalc.change.toFixed(2)}\n`;
-            } else if (visitCalc.change < 0) {
-                msg += `⚠️ Saldo Pendiente: $${Math.abs(visitCalc.change).toFixed(2)}\n`;
-            }
+        msg += `💰 *TOTAL DE LA VENTA: $${saleAmount.toFixed(2)}*\n`;
+        if (paymentRec > 0) {
+            msg += `💵 Dinero Recibido: $${paymentRec.toFixed(2)}\n`;
+            if (change > 0) msg += `🔙 Su Cambio: $${change.toFixed(2)}\n`;
+            else if (change < 0) msg += `⚠️ Saldo Pendiente: $${Math.abs(change).toFixed(2)}\n`;
         }
-        
-        if (incidentNotes) {
-            msg += `\n📝 *Nota:* ${incidentNotes}\n`;
-        }
-
+        if (notes) msg += `\n📝 *Nota:* ${notes}\n`;
         msg += `\n_¡Gracias por su preferencia!_\n_R de Rico • Pan Grandeza_`;
 
-        // Si tiene teléfono lo mandamos directo, si no, abrimos el selector de contactos
-        const url = phone ? `https://wa.me/52${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+        return phoneClean ? `https://wa.me/52${phoneClean}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    };
+
+    /** Enviar WhatsApp desde la vista de visita activa (antes de guardar) */
+    const sendWhatsApp = () => {
+        const url = buildWhatsAppURL({
+            client: activeVisit?.client,
+            clientName: extClientName,
+            items: visitItems,
+            saleAmount: visitCalc.saleAmount,
+            paymentRec: parseFloat(paymentReceived) || 0,
+            change: visitCalc.change,
+            notes: incidentNotes,
+        });
+        if (!url) { showToast('⚠️ No hay productos en la cuenta', 'error'); return; }
         window.open(url, '_blank');
     };
 
@@ -331,10 +410,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         <div className="h-screen flex flex-col text-white relative" style={{ backgroundColor: '#3a2e1e' }}>
             <DriverBackground />
             
-            {/* DEBUG BANNER TEMPORAL */}
-            <div className="absolute top-0 inset-x-0 bg-red-600 text-white text-[10px] p-2 z-[999] font-mono break-words">
-                DEBUG INFO: todayStr={todayStr()} | {debugInfo}
-            </div>
+
 
             <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
                 <div className="flex items-center justify-between">
@@ -598,6 +674,19 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     return (
         <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
             <DriverBackground />
+
+            {/* Banner discreto de estado offline */}
+            {!isOnline && (
+                <div className="fixed top-0 left-0 right-0 z-[200] bg-amber-600/90 text-black text-[10px] font-black uppercase tracking-widest text-center py-1.5 flex items-center justify-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-black animate-pulse" />
+                    📡 Sin conexión — Modo local activo
+                </div>
+            )}
+            {isOnline && pendingSyncCount > 0 && (
+                <div className="fixed top-0 left-0 right-0 z-[200] bg-blue-600/90 text-white text-[10px] font-black uppercase tracking-widest text-center py-1.5">
+                    ⏳ Sincronizando {pendingSyncCount} operación(es) pendiente(s)...
+                </div>
+            )}
             {/* Header */}
             <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
                 <div className="flex items-center justify-between mb-3">
@@ -679,8 +768,43 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 </button>
             </div>
 
+            {/* Modal Post-Visita (WhatsApp + Confirmación) */}
+            {lastVisitResult && (
+                <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setLastVisitResult(null)}>
+                    <div className="bg-[#1a1510] border border-amber-500/20 rounded-3xl p-6 w-full max-w-md shadow-2xl mb-16 space-y-4" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <div className="text-4xl mb-2">{lastVisitResult.wasOffline ? '📡' : '✅'}</div>
+                            <h3 className="text-lg font-black uppercase tracking-tighter text-white">
+                                {lastVisitResult.wasOffline ? 'Guardada Localmente' : 'Visita Completada'}
+                            </h3>
+                            <p className="text-sm text-amber-200/70 font-medium mt-1">
+                                {lastVisitResult.clientLabel} — <span className="text-emerald-400 font-black">${lastVisitResult.saleAmount.toFixed(2)}</span>
+                            </p>
+                            {lastVisitResult.wasOffline && (
+                                <p className="text-xs text-amber-400/60 mt-1">Se sincronizará al recuperar señal</p>
+                            )}
+                        </div>
+                        {lastVisitResult.whatsappURL && (
+                            <button
+                                onClick={() => { window.open(lastVisitResult.whatsappURL, '_blank'); setLastVisitResult(null); }}
+                                className="w-full py-4 bg-[#128C7E] rounded-2xl text-sm font-black text-white uppercase tracking-widest active:scale-95 transition-all flex justify-center items-center gap-3 shadow-[0_0_20px_rgba(18,140,126,0.3)] border border-[#075E54]"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12.031 0C5.385 0 0 5.385 0 12.031c0 2.128.547 4.204 1.587 6.035L.057 24l6.104-1.602c1.782.99 3.79 1.512 5.87 1.512 6.645 0 12.03-5.385 12.03-12.03S18.676 0 12.031 0zM12.03 21.905c-1.802 0-3.57-.484-5.118-1.403l-.367-.217-3.805.998 1.015-3.708-.238-.378c-.987-1.564-1.507-3.376-1.507-5.234 0-5.54 4.51-10.05 10.05-10.05 5.54 0 10.05 4.51 10.05 10.05 0 5.54-4.51 10.05-10.05 10.05z"/></svg>
+                                Enviar Ticket por WhatsApp
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setLastVisitResult(null)}
+                            className="w-full py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-gray-400 uppercase tracking-widest"
+                        >
+                            Continuar sin enviar
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Toast */}
-            {toast && <div className={`fixed top-4 left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
+            {toast && <div className={`fixed ${!isOnline ? 'top-10' : 'top-4'} left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white': toast.type==='warning'?'bg-amber-500 text-black':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
         </div>
     );
 };
