@@ -1,0 +1,22 @@
+{
+    "name": "Pan Grandeza — Repartidor",
+    "short_name": "Grandeza",
+    "description": "Herramienta de reparto Pan Grandeza — R de Rico",
+    "start_url": "/?terminal=DRIVER",
+    "display": "standalone",
+    "background_color": "#3a2e1e",
+    "theme_color": "#f59e0b",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "/assets/grandeza_icon_192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/assets/grandeza_icon_512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
