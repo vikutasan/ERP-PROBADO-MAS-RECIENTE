@@ -24,6 +24,7 @@ import { POSHeader } from './components/POSHeader';
 import { cashService } from './services/cashService';
 
 import { generateTicketHTML } from './utils/ticketGenerator';
+import { withRetries } from './utils/withRetries';
 
 export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }) => {
     // --- Estado ---
@@ -94,6 +95,80 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
     React.useEffect(() => { accountNumRef.current = currentAccountNum; }, [currentAccountNum]);
     React.useEffect(() => { originalCapturerRef.current = originalCapturer; }, [originalCapturer]);
     React.useEffect(() => { ticketVersionRef.current = ticketVersion; }, [ticketVersion]);
+
+    // --- v7.0.2: Auto-reconciliación al recuperar conexión (fix V1 + V2) ---
+    // Cuando lastSaveStatus es 'failed', espera 10s y luego intenta reconciliar el carrito
+    // con la fuente de verdad del servidor. Se re-programa con cada cambio de netStatus.
+    // NO es un timer de auto-save (prohibido) — es un mecanismo de RECOVERY post-fallo.
+    const reconciliationTimerRef = useRef(null);
+    useEffect(() => {
+        if (lastSaveStatus !== 'failed') {
+            if (reconciliationTimerRef.current) {
+                clearTimeout(reconciliationTimerRef.current);
+                reconciliationTimerRef.current = null;
+            }
+            return;
+        }
+
+        if (reconciliationTimerRef.current) clearTimeout(reconciliationTimerRef.current);
+
+        reconciliationTimerRef.current = setTimeout(async () => {
+            // 1. Verificar que el servidor responde antes de reconciliar
+            try {
+                await fetch(`${CONFIG.API_BASE_URL}/settings`, {
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(3000)
+                });
+            } catch {
+                return; // Servidor aún no disponible — esperar al siguiente ciclo de netStatus
+            }
+
+            // 2. Sin cuenta activa → solo resetear estado
+            if (!accountNumRef.current) {
+                setLastSaveStatus('idle');
+                return;
+            }
+
+            // 3. Reconciliar: el servidor es la fuente de verdad (filosofía Hub & Spoke)
+            try {
+                const liveTicket = await posService.getTicketByAccountNum(accountNumRef.current);
+                if (liveTicket && liveTicket.items) {
+                    const recovered = liveTicket.items.map(i => {
+                        const originalProd = initialProducts.find(p => p.id === i.product.id) || {};
+                        return {
+                            id: i.product.id,
+                            name: i.product.name,
+                            price: i.product.price,
+                            quantity: i.quantity,
+                            category: i.product.category?.name || 'OTROS',
+                            nature: i.product.nature || originalProd.nature || 'PRODUCTO'
+                        };
+                    });
+                    cartRef.current = recovered;
+                    setCart(recovered);
+                    ticketVersionRef.current = liveTicket.version;
+                    setTicketVersion(liveTicket.version);
+                    setLastSaveStatus('saved');
+                    setLastSaveTime(new Date());
+                    setToastMessage('🔄 Conexión recuperada. Carrito sincronizado con el servidor.');
+                } else {
+                    // Ticket no existe en servidor — los items nunca se persistieron
+                    setLastSaveStatus('idle');
+                    setToastMessage('🔄 Conexión recuperada. Los cambios previos no llegaron al servidor — reintente.');
+                }
+                setTimeout(() => setToastMessage(null), 5000);
+            } catch (e) {
+                console.warn('⚠️ Reconciliación post-reconexión falló:', e);
+            }
+        }, 10000);
+
+        return () => {
+            if (reconciliationTimerRef.current) {
+                clearTimeout(reconciliationTimerRef.current);
+                reconciliationTimerRef.current = null;
+            }
+        };
+    }, [lastSaveStatus, netStatus]);
 
     // --- Persistencia de Metadatos de Sesión ---
     useEffect(() => {
@@ -304,63 +379,52 @@ export const RetailVisionPOS = ({ currentUser, onForceLogout, assignedTerminal }
     };
 
     // --- FASE 2: Wrappers con persistencia inmediata ---
-    // v7.0: Retries simétricos — las 3 operaciones atómicas usan el mismo patrón (3 intentos, backoff 1s/2s/3s)
-    const MAX_RETRIES = 3;
+    // v7.0.2: withRetries centralizado — las 3 operaciones usan la misma utilidad DRY
 
     const handleUpdateQuantity = async (productId, newQuantity) => {
         updateQuantity(productId, newQuantity); // UI instantánea
         if (!accountNumRef.current) return;
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                const result = await posService.updateItemQuantity({
+        try {
+            const result = await withRetries(
+                () => posService.updateItemQuantity({
                     account_num: accountNumRef.current,
                     product_id: productId,
                     new_quantity: newQuantity,
                     version: ticketVersionRef.current
-                });
-                if (result?.version) {
-                    ticketVersionRef.current = result.version;
-                    setTicketVersion(result.version);
-                }
-                setLastSaveStatus('saved');
-                setLastSaveTime(new Date());
-                return; // Éxito — salir del loop
-            } catch (e) {
-                console.warn(`⚠️ Update quantity falló (intento ${attempt}/${MAX_RETRIES}):`, e);
-                if (attempt < MAX_RETRIES) {
-                    await new Promise(r => setTimeout(r, 1000 * attempt));
-                } else {
-                    setLastSaveStatus('failed');
-                }
+                }),
+                { label: 'updateQuantity' }
+            );
+            if (result?.version) {
+                ticketVersionRef.current = result.version;
+                setTicketVersion(result.version);
             }
+            setLastSaveStatus('saved');
+            setLastSaveTime(new Date());
+        } catch (e) {
+            setLastSaveStatus('failed');
         }
     };
 
     const handleRemoveFromCart = async (productId) => {
         removeFromCart(productId); // UI instantánea
         if (!accountNumRef.current) return;
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                const result = await posService.removeItemFromTicket({
+        try {
+            const result = await withRetries(
+                () => posService.removeItemFromTicket({
                     account_num: accountNumRef.current,
                     product_id: productId,
                     version: ticketVersionRef.current
-                });
-                if (result?.version) {
-                    ticketVersionRef.current = result.version;
-                    setTicketVersion(result.version);
-                }
-                setLastSaveStatus('saved');
-                setLastSaveTime(new Date());
-                return; // Éxito — salir del loop
-            } catch (e) {
-                console.warn(`⚠️ Remove item falló (intento ${attempt}/${MAX_RETRIES}):`, e);
-                if (attempt < MAX_RETRIES) {
-                    await new Promise(r => setTimeout(r, 1000 * attempt));
-                } else {
-                    setLastSaveStatus('failed');
-                }
+                }),
+                { label: 'removeItem' }
+            );
+            if (result?.version) {
+                ticketVersionRef.current = result.version;
+                setTicketVersion(result.version);
             }
+            setLastSaveStatus('saved');
+            setLastSaveTime(new Date());
+        } catch (e) {
+            setLastSaveStatus('failed');
         }
     };
 
