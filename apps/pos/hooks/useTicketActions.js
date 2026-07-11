@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { posService } from '../services/POSService';
 import { generateTicketHTML, combineOrderTicketsForPrint } from '../utils/ticketGenerator';
+import { withRetries } from '../utils/withRetries';
 
 /**
  * Hook: useTicketActions
@@ -172,8 +173,20 @@ export const useTicketActions = ({
                 }
 
                 let savedTicket = null;
+                // v7.0.2: Retries para errores de red. Errores de negocio (409, folio pagado) NO se reintentan.
+                const isBusinessError = (err) => {
+                    const msg = err?.message || '';
+                    return msg.includes('ya ha sido pagado') || msg.includes('Conflicto de versión');
+                };
                 try {
-                    savedTicket = await posService.createTicket(payload);
+                    savedTicket = await withRetries(
+                        () => posService.createTicket(payload),
+                        {
+                            maxRetries: 3,
+                            shouldRetry: (err) => !isBusinessError(err),
+                            label: status === 'PAID' ? 'Cobro' : 'Envío a Pizarrón',
+                        }
+                    );
                 } catch (err) {
                     const errorMessage = err.message || "";
 
@@ -322,15 +335,14 @@ export const useTicketActions = ({
 
         if (!targetAccount) return;
 
-        // Reintento automático simple (max 3 intentos, backoff 1s)
-        const MAX_RETRIES = 3;
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            try {
+        // v7.0.2: withRetries centralizado (misma utilidad que update/remove)
+        try {
+            const result = await withRetries(async () => {
                 const terminalId = selectedTerminal || 'T1';
                 let session = await posService.getActiveSession(terminalId);
                 if (!session) session = await posService.createSession(terminalId);
 
-                const result = await posService.addItemToTicket({
+                return await posService.addItemToTicket({
                     account_num: targetAccount,
                     product_id: product.id,
                     quantity: product.quantity || 1,
@@ -339,25 +351,19 @@ export const useTicketActions = ({
                     captured_by_id: originalCapturerRef.current?.id || currentUser?.id,
                     version: ticketVersionRef.current
                 });
+            }, { label: 'addItem' });
 
-                // Sincronizar versión del servidor
-                if (result?.version) {
-                    ticketVersionRef.current = result.version;
-                    setTicketVersion(result.version);
-                }
-                setLastSaveStatus('saved');
-                setLastSaveTime(new Date());
-                return; // Éxito — salir del loop
-            } catch (e) {
-                console.warn(`⚠️ Persistencia inmediata falló (intento ${attempt}/${MAX_RETRIES}):`, e);
-                if (attempt < MAX_RETRIES) {
-                    await new Promise(r => setTimeout(r, 1000 * attempt)); // Backoff: 1s, 2s, 3s
-                } else {
-                    setLastSaveStatus('failed');
-                    setToastMessage('⚠️ No se pudo guardar el último producto. Verifique la conexión.');
-                    setTimeout(() => setToastMessage(null), 5000);
-                }
+            // Sincronizar versión del servidor
+            if (result?.version) {
+                ticketVersionRef.current = result.version;
+                setTicketVersion(result.version);
             }
+            setLastSaveStatus('saved');
+            setLastSaveTime(new Date());
+        } catch (e) {
+            setLastSaveStatus('failed');
+            setToastMessage('⚠️ No se pudo guardar el último producto. Verifique la conexión.');
+            setTimeout(() => setToastMessage(null), 5000);
         }
     };
 
