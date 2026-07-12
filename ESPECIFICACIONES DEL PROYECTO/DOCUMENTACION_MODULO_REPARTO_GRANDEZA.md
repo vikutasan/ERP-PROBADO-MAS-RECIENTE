@@ -211,3 +211,23 @@ La función `sendWhatsApp()` en `GrandezaDriverUI.jsx` genera una nota de venta 
 ### Costo
 Gratuito. No requiere API de WhatsApp Business ni aprobación de Meta. Usa el número del celular del repartidor.
 
+---
+
+## 10. Despliegue en Internet (Cloudflare Tunnels)
+
+Aunque el módulo cuenta con una arquitectura Offline-First para lidiar con pérdida de señal, el objetivo principal es que el repartidor opere en **tiempo real** desde la calle usando sus datos móviles.
+
+Para lograr esto de forma segura sin exponer el servidor local (abrir puertos en el router), se implementa **Cloudflare Tunnels** (`cloudflared` como servicio de Windows/Linux).
+
+### Enrutamiento de Subdominios (Public Hostnames)
+El túnel conecta la red privada hacia la red global de Cloudflare mediante dos reglas:
+1. **Frontend:** `reparto.tudominio.com` → `http://localhost:5000`
+2. **Backend (API):** `api.tudominio.com` → `http://localhost:5001`
+
+### Resolución Dinámica de API (config.js)
+El archivo `apps/pos/config.js` está diseñado para manejar conexiones híbridas. Evalúa `window.location.hostname` al arrancar:
+- **Si es Local/LAN (ej. `192.168.1.124` o `localhost`):** Dirige el tráfico de red directamente al puerto `5001`.
+- **Si es Público (ej. `reparto.rdericotoluca.com`):** Sustituye el subdominio por `api` (ej. `api.rdericotoluca.com`) y dirige el tráfico usando el puerto por defecto de HTTPS (443), saltándose el puerto local 5001 que no está expuesto a internet.
+
+**Instalación PWA (Progressive Web App)**
+Se recomienda que el repartidor abra el enlace (`reparto.rdericotoluca.com/?terminal=DRIVER`) en Google Chrome o Safari y utilice la opción "Agregar a la pantalla principal". Esto oculta la barra de navegación del navegador y permite que el sistema opere a pantalla completa como una aplicación nativa.
