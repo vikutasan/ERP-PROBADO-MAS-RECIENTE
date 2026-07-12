@@ -57,15 +57,19 @@ const INITIAL_CATEGORIES = [
 ];
 
 export const ExperimentCenterUI = () => {
+    const initialTerminal = new URLSearchParams(window.location.search).get('terminal');
+    const defaultModule = initialTerminal === 'DRIVER' ? 'reparto_grandeza' : 'overview';
+    const defaultSidebar = initialTerminal === 'DRIVER' || window.innerWidth < 768;
+
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [categories, setCategories] = useState(INITIAL_CATEGORIES);
     const [userRole, setUserRole] = useState('ADMIN'); 
     const [userName, setUserName] = useState('');
     const [userId, setUserId] = useState(null);
-    const [activeModule, setActiveModule] = useState('overview');
+    const [activeModule, setActiveModule] = useState(defaultModule);
     const [userPermissions, setUserPermissions] = useState({});
     const [userProfileId, setUserProfileId] = useState(null);
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(defaultSidebar);
 
     const handleLogin = (user) => {
         setUserRole(user.role);
@@ -107,7 +111,7 @@ export const ExperimentCenterUI = () => {
         { id: 'auditoria', name: 'Auditoría y Control', color: 'bg-slate-900', icon: '📋', access: ['ADMIN', 'MANAGER'] },
         { id: 'settings', name: 'Ajustes del Sistema', color: 'bg-red-900', icon: '⚙️', access: ['ADMIN'] },
         { id: 'network_monitor', name: 'Monitoreo de Red', color: 'bg-cyan-900', icon: '📡', access: ['ADMIN', 'MANAGER'] },
-        { id: 'reparto_grandeza', name: 'Reparto Pan Grandeza', color: 'bg-amber-700', icon: `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`, access: ['ADMIN', 'MANAGER', 'LOGISTICS'] },
+        { id: 'reparto_grandeza', name: 'Reparto Pan Grandeza', color: 'bg-amber-700', icon: `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`, access: ['ADMIN', 'MANAGER', 'LOGISTICS', 'DRIVER'] },
     ];
 
 
