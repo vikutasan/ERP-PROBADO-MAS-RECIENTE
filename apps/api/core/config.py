@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     def ASYNC_DATABASE_URL(self) -> str:
         if self.DATABASE_URL:
             url = str(self.DATABASE_URL)
+            if "?schema=" in url:
+                url = url.split("?")[0]
             if url.startswith("postgresql://"):
                 return url.replace("postgresql://", "postgresql+asyncpg://")
             return url
