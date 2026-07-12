@@ -11,7 +11,7 @@ export default defineConfig({
         },
     },
     server: {
-        allowedHosts: true,
+        allowedHosts: ['reparto.rdericotoluca.com', 'api.rdericotoluca.com'],
         port: 5173,
         open: false,
         watch: {
