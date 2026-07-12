@@ -1,8 +1,13 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
-from modules.catalog.schemas import ProductResponse
+from modules.catalog.schemas import ProductBase, CategoryResponse
 from modules.security.schemas import EmployeeResponse
+
+class ProductLightResponse(ProductBase):
+    id: int
+    category: Optional[CategoryResponse] = None
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Atomic Item Operations (Fase 2: Persistencia Inmediata) ---
 class TicketItemAdd(BaseModel):
@@ -40,7 +45,7 @@ class TicketItemResponse(TicketItemBase):
     id: int
     unit_price: float
     subtotal: float
-    product: Optional[ProductResponse] = None
+    product: Optional[ProductLightResponse] = None
     model_config = ConfigDict(from_attributes=True)
 
 # --- Ticket ---

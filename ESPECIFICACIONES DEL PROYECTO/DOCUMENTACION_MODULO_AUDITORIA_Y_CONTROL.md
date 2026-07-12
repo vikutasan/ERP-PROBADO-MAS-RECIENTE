@@ -67,3 +67,20 @@ Al entrar a la pestaña de "Cortes de Caja", la interfaz aparecía **completamen
 
 **Solución Implementada:**
 - En `apps/api/modules/cash/service.py` -> `calcular_resumen`, se forzó el cast seguro a `float()` en todos los campos provenientes de la base de datos (`opening_float`, `m.amount`) antes de mezclarlos con los diccionarios de ventas y construir la respuesta Pydantic final. Esto estabilizó la API y los cortes volvieron a aparecer de inmediato.
+
+---
+
+### 🐛 BUG 4: Pestaña en Blanco por Lazy Loading de SQLAlchemy (El Bloqueo de AsyncPG)
+
+**El Síntoma:**
+Al intentar entrar al módulo de Auditoría, la pantalla se mostraba completamente en blanco (sin tickets) a pesar de que en la base de datos existían miles de registros. Ocurría un Internal Server Error 500 silencioso al llamar a `/pos/tickets`.
+
+**Causa Raíz:**
+1. Al configurar la seguridad de PostgreSQL y forzar el uso estricto del driver asíncrono (`asyncpg`), SQLAlchemy bloqueó de inmediato todas las lecturas "Lazy Load" (lecturas bajo demanda a la base de datos fuera de una consulta asíncrona explícita).
+2. La API para obtener los tickets retornaba los items del carrito. En el esquema Pydantic (`ProductResponse`), se pedía serializar el campo `technical_sheet` (Ficha técnica del producto).
+3. Como el backend fue optimizado en versiones pasadas para NO incluir `technical_sheet` en los JOINs iniciales (ahorrando memoria), SQLAlchemy intentaba descargarlo de la DB en pleno vuelo (Lazy Load). Al estar en un contexto asíncrono estricto, esto detonaba una excepción fatal: `MissingGreenlet`.
+
+**Solución Implementada:**
+- Se creó un nuevo esquema `ProductLightResponse` en `apps/api/modules/pos/schemas.py` exclusivo para las respuestas del POS y Auditoría.
+- Este esquema **omite** explícitamente atributos pesados como `technical_sheet`.
+- **Regla de Oro:** Nunca agregar relaciones profundas a los esquemas de respuesta Pydantic (como `ProductResponse`) sin asegurar que la consulta de base de datos correspondiente incluya el `selectinload()` para precargarlos. Para consultas masivas, es mandatorio usar esquemas *Lightweight*.
