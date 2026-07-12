@@ -12,13 +12,21 @@ import { GrandezaDriverUI } from './GrandezaDriverUI';
  * - Gestión Diaria (Gerente) — grandeza_daily
  * - Herramienta Repartidor (Repartidor) — grandeza_driver
  */
-export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
-    const [activeSuite, setActiveSuite] = useState(null);
+export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {}, userRole = '' }) => {
+    const isDriverTerminal = new URLSearchParams(window.location.search).get('terminal') === 'DRIVER';
+    const initialSuite = (userRole === 'DRIVER' || isDriverTerminal) ? 'driver' : null;
+    
+    const [activeSuite, setActiveSuite] = useState(initialSuite);
     const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
 
-    // Helper: verificar permiso (Master Access o permiso específico)
+    // Helper: verificar permiso (Master Access o permiso específico o Rol legado)
     const hasPermission = (permId) => {
-        return userPermissions.all === 'full' || userPermissions[permId] === 'full';
+        if (userRole === 'ADMIN') return true;
+        if (userRole === 'DRIVER' && permId === 'grandeza_driver') return true;
+        if (userPermissions && Object.keys(userPermissions).length > 0) {
+            return userPermissions.all === 'full' || userPermissions[permId] === 'full';
+        }
+        return false;
     };
 
     // Definición de las 3 sub-suites
@@ -75,26 +83,26 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
         return (
             <div className="h-full flex flex-col bg-gradient-to-br from-[#0a0a0a] via-[#111] to-[#0a0a0a] text-white overflow-hidden">
                 {/* Header de sub-suite */}
-                <div className="p-8 pb-4">
+                <div className="p-4 md:p-8 pb-4">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-6">
-                            <div className={`w-16 h-16 bg-gradient-to-br ${suite.color} rounded-3xl flex items-center justify-center text-3xl shadow-2xl ${suite.shadow}`}>
+                        <div className="flex items-center gap-4 md:gap-6">
+                            <div className={`w-12 h-12 md:w-16 md:h-16 bg-gradient-to-br ${suite.color} rounded-2xl md:rounded-3xl flex items-center justify-center text-xl md:text-3xl shadow-2xl ${suite.shadow}`}>
                                 {suite.icon}
                             </div>
                             <div>
-                                <h1 className="text-3xl font-black uppercase tracking-tighter text-white leading-none">
+                                <h1 className="text-xl md:text-3xl font-black uppercase tracking-tighter text-white leading-none">
                                     {suite.title}
                                 </h1>
-                                <p className={`text-sm font-bold uppercase tracking-widest mt-1 ${suite.accent}`}>
+                                <p className={`text-[10px] md:text-sm font-bold uppercase tracking-widest mt-1 ${suite.accent}`}>
                                     {suite.subtitle}
                                 </p>
                             </div>
                         </div>
                         <button
                             onClick={() => setActiveSuite(null)}
-                            className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                            className="px-4 py-2 md:px-6 md:py-3 bg-white/5 border border-white/10 rounded-xl md:rounded-2xl text-[10px] md:text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all"
                         >
-                            ← Volver al Módulo
+                            ← Volver
                         </button>
                     </div>
                 </div>
@@ -102,16 +110,16 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
                 {/* Contenido de la sub-suite — Placeholder (se llena en fases 1-5) */}
                 <div className="flex-1 flex items-center justify-center p-8">
                     <div className="text-center space-y-6">
-                        <div className="text-7xl">{suite.icon}</div>
-                        <h2 className={`text-2xl font-black uppercase tracking-tighter ${suite.accent}`}>
+                        <div className="text-5xl md:text-7xl">{suite.icon}</div>
+                        <h2 className={`text-xl md:text-2xl font-black uppercase tracking-tighter ${suite.accent}`}>
                             {suite.title}
                         </h2>
-                        <p className="text-gray-500 text-base font-medium max-w-md mx-auto">
+                        <p className="text-gray-500 text-xs md:text-base font-medium max-w-md mx-auto">
                             Suite en preparación. La infraestructura de datos ya está lista.
                         </p>
                         <div className="flex items-center justify-center gap-2 mt-4">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                            <span className="text-xs font-bold text-emerald-500/60 uppercase tracking-widest">Backend Conectado</span>
+                            <span className="text-[10px] md:text-xs font-bold text-emerald-500/60 uppercase tracking-widest">Backend Conectado</span>
                         </div>
                     </div>
                 </div>
@@ -121,16 +129,16 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
 
     // Landing Page — 3 botones
     return (
-        <div className="h-full flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+        <div className="h-full flex flex-col text-white overflow-y-auto overflow-x-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
             {/* Header */}
-            <div className="relative z-20 pt-8 pb-2 px-10 bg-black border-b border-white/10 shadow-2xl">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-8">
-                        <div className="w-40 h-40 rounded-[48px] overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center">
+            <div className="relative z-20 pt-4 pb-2 px-4 md:pt-8 md:px-10 bg-black border-b border-white/10 shadow-2xl">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 md:gap-8">
+                        <div className="w-16 h-16 md:w-40 md:h-40 shrink-0 rounded-2xl md:rounded-[48px] overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center">
                             <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                         </div>
                         <div>
-                            <h1 className="text-6xl font-black uppercase tracking-tighter text-white leading-none">
+                            <h1 className="text-2xl md:text-6xl font-black uppercase tracking-tighter text-white leading-none">
                                 Reparto <span className="text-amber-400">Pan Grandeza</span>
                             </h1>
                         </div>
@@ -138,7 +146,7 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {} }) => {
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-base font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                            className="w-full md:w-auto px-6 py-3 md:px-8 md:py-4 bg-white/5 border border-white/10 rounded-xl md:rounded-2xl text-xs md:text-base font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all"
                         >
                             ← Volver
                         </button>

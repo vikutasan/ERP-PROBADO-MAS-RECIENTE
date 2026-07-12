@@ -327,7 +327,7 @@ export const ExperimentCenterUI = () => {
                         {activeModule === 'auditoria' && <AuditoriaControlUI />}
                         {activeModule === 'settings' && <SystemSettingsUI />}
                         {activeModule === 'network_monitor' && <NetworkMonitorUI />}
-                        {activeModule === 'reparto_grandeza' && <RepartoPanGrandezaUI onBack={() => setActiveModule('overview')} userPermissions={userPermissions} />}
+                        {activeModule === 'reparto_grandeza' && <RepartoPanGrandezaUI onBack={() => setActiveModule('overview')} userPermissions={userPermissions} userRole={userRole} />}
                     </div>
 
                 </div>
