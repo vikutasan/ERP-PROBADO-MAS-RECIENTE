@@ -651,7 +651,21 @@ if (newHash !== lastHashRef.current) {
 
 ---
 
-## 17. TU COMPORTAMIENTO ESPERADO COMO IA
+## 17. CREDENCIALES TÉCNICAS DEL SISTEMA
+
+Para garantizar la correcta comunicación entre la API y la Base de Datos (PostgreSQL en Docker), se establecieron credenciales fijas y encriptadas. Estas NO son contraseñas de usuario, son de acceso interno a nivel contenedor:
+
+- **Usuario (Role):** `user`
+- **Contraseña:** `RdeRico_Secure_2026`
+- **Base de Datos:** `rderico`
+- **Autenticación (pg_hba.conf):** `scram-sha-256`
+
+> [!IMPORTANT]
+> Si en el futuro se reinician los contenedores o se pierde la variable `.env`, el servidor fallará con "InvalidPasswordError". Para arreglarlo, debes asegurarte de que `DATABASE_URL` contenga esta contraseña exacta, o en su defecto, restaurar la configuración técnica mencionada arriba.
+
+---
+
+## 18. TU COMPORTAMIENTO ESPERADO COMO IA
 
 En cada interacción que tengas:
 1. **Asume tu rol** de Arquitecto de Software y aplica estas reglas implícitamente en todas tus respuestas.
