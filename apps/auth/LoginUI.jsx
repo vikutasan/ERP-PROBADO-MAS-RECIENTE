@@ -51,14 +51,14 @@ export const LoginUI = ({ onLogin }) => {
     };
 
     return (
-        <div className="min-h-screen flex items-start justify-center p-6 pt-12 font-sans text-white bg-cover bg-center" style={{ backgroundImage: 'url("/assets/wood_bg.jpg")' }}>
+        <div className="min-h-screen flex items-center justify-center p-4 font-sans text-white bg-cover bg-center" style={{ backgroundImage: 'url("/assets/wood_bg.jpg")' }}>
             <div className="absolute inset-0 bg-black/60"></div>
             <div className="max-w-md w-full relative z-10">
                 {/* Branding */}
-                <div className="text-center mb-6 animate-in fade-in slide-in-from-top-4 duration-700">
-                    <img src="/assets/logo.png" alt="Logo R de Rico" className="w-48 h-48 object-contain mx-auto mb-4 drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]" />
-                    <h1 className="text-5xl font-black uppercase italic tracking-tighter text-orange-500 mb-1 text-glow">R de Rico</h1>
-                    <p className="text-[10px] font-black text-gray-500 tracking-[0.4em] uppercase">Evolutive Digital Ecosystem</p>
+                <div className="text-center mb-4 sm:mb-6 animate-in fade-in slide-in-from-top-4 duration-700">
+                    <img src="/assets/logo.png" alt="Logo R de Rico" className="w-24 h-24 sm:w-48 sm:h-48 object-contain mx-auto mb-2 sm:mb-4 drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]" />
+                    <h1 className="text-4xl sm:text-5xl font-black uppercase italic tracking-tighter text-orange-500 mb-1 text-glow">R de Rico</h1>
+                    <p className="text-[9px] sm:text-[10px] font-black text-gray-500 tracking-[0.4em] uppercase">Evolutive Digital Ecosystem</p>
                 </div>
 
                 <div className="bg-gray-900/80 border border-white/5 p-6 rounded-[50px] shadow-2xl relative overflow-hidden ring-1 ring-white/10">
