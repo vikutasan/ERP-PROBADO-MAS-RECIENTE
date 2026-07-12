@@ -16,16 +16,9 @@ class Settings(BaseSettings):
     # Si se provee DATABASE_URL en el entorno (Docker), se usará esta directamente.
     # De lo contrario se construirá con la property de abajo.
     DATABASE_URL: Optional[str] = None
-    
     @property
     def ASYNC_DATABASE_URL(self) -> str:
-        if self.DATABASE_URL:
-            url = str(self.DATABASE_URL)
-            if "?schema=" in url:
-                url = url.split("?")[0]
-            if url.startswith("postgresql://"):
-                return url.replace("postgresql://", "postgresql+asyncpg://")
-            return url
+        # Siempre construir la URL con las variables para asegurar que se use POSTGRES_SERVER ('db') en Docker
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="ignore")
