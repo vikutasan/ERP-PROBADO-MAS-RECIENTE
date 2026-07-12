@@ -212,6 +212,22 @@ T=32s+  Yami cambia a otra cuenta → la cuenta de $453 se pierde
 1. Se añadieron estrictamente los comandos `await db.commit()` antes de cada `return` en los 3 endpoints de `router.py` relacionados a los candados de terminal.
 2. **⚠️ REGLA PARA FUTURAS IAs:** NUNCA asumir que `db.flush()` guarda en la base de datos de forma persistente. Siempre verificar que el router que ejecuta la llamada asíncrona posea un `await db.commit()`.
 
+### Incidente Error 500 Silencioso por Schema Incongruente (12/Julio/2026)
+
+**Módulos afectados:** POS Checkout, Auditoría y Control.
+**Síntoma:** Al blindar la base de datos forzando el driver estricto `asyncpg`, la obtención de tickets devolvía *Internal Server Error 500* y la pantalla se mostraba en blanco a pesar de existir miles de registros.
+
+**Causa raíz:**
+1. En la v7.0, se optimizaron las consultas de DB eliminando explícitamente `selectinload(Product.technical_sheet)` para ahorrar memoria.
+2. Sin embargo, se **olvidó** quitar el atributo `technical_sheet` del esquema Pydantic original (`ProductResponse`).
+3. Al construir el JSON de respuesta, Pydantic intentaba leer `technical_sheet` forzando una lectura perezosa (Lazy Load) a la DB.
+4. El entorno estricto asíncrono prohíbe el Lazy Load, detonando una excepción fatal `MissingGreenlet` y rompiendo la API.
+
+**Solución implementada (vigente hoy):**
+1. Se creó un esquema ultraligero `ProductLightResponse` en `apps/api/modules/pos/schemas.py` que **omite** explícitamente atributos como `technical_sheet`.
+2. Las respuestas del POS consumen ahora este esquema, eliminando el fallo y mejorando el rendimiento.
+3. **⚠️ REGLA PARA FUTURAS IAs:** Los esquemas de respuesta Pydantic DEBEN estar perfectamente alineados con los `selectinload()` de SQLAlchemy. No dejar atributos residuales en esquemas de respuesta masiva.
+
 ---
 
 ## 4. LAS REGLAS DE ORO SUPERVIVIENTES (v6.0)
