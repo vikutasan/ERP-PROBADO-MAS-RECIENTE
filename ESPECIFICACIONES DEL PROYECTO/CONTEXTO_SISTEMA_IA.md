@@ -214,8 +214,14 @@ La regla es simple: **el servidor de sucursal gana sobre su propio dominio.**
 ---
 
 ### 3.3.6 Infraestructura del Servidor Local
-**Hardware mínimo recomendado por sucursal:** Mini PC (Intel NUC), 8 GB RAM, SSD 256 GB, Ubuntu Server LTS. UPS de 30 min. Conexión LAN física.
-**Acceso remoto:** Cloudflare Tunnel.
+**Hardware mínimo recomendado por sucursal:** Mini PC (Intel NUC), 8 GB RAM, SSD 256 GB, Windows/Ubuntu. UPS de 30 min. Conexión LAN física.
+**Acceso remoto (Cloudflare Tunnels):** 
+Para exponer el sistema a internet de forma segura sin abrir puertos en el router, se utiliza el agente `cloudflared` instalado como servicio de sistema.
+El túnel enruta dos dominios públicos hacia los contenedores locales:
+- `reparto.rdericotoluca.com` → `localhost:5000` (Frontend - React/Vite)
+- `api.rdericotoluca.com` → `localhost:5001` (Backend - FastAPI)
+
+*Nota de Arquitectura:* El archivo `apps/pos/config.js` está programado dinámicamente. Si detecta acceso vía localhost/LAN, enruta las llamadas de red al puerto `5001`. Si detecta acceso desde internet, cambia la base de la URL automáticamente hacia el subdominio `api.*`, previniendo errores de CORS o puertos cerrados.
 
 ---
 
