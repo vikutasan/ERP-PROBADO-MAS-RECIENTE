@@ -4,7 +4,7 @@ from core.config import settings
 
 # Crear motor de base de datos asíncrono
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    settings.ASYNC_DATABASE_URL,
     echo=True, # Muestra logs SQL en desarrollo
     future=True
 )
