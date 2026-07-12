@@ -60,10 +60,11 @@ async def get_product_rankings(db: AsyncSession, start_date: date, end_date: dat
 
     rankings = []
     for row in rows:
-        price = row.price or 0.0
-        cost = row.cost or 0.0
+        from decimal import Decimal
+        price = Decimal(str(row.price)) if row.price is not None else Decimal("0.0")
+        cost = Decimal(str(row.cost)) if row.cost is not None else Decimal("0.0")
         margin_abs = price - cost
-        margin_perc = (margin_abs / price * 100) if price > 0 else 0.0
+        margin_perc = (margin_abs / price * Decimal("100")) if price > 0 else Decimal("0.0")
         
         rankings.append({
             "product_id": row.product_id,
