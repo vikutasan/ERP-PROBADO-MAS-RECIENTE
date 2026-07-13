@@ -260,6 +260,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 product_sku: gp.product_sku, b2b_price: gp.b2b_price,
                 exchange_qty: 0,
                 suggested_fresh_qty: sg ? sg.suggested_qty : 0,
+                last_fresh_qty: sg ? (sg.last_fresh_qty || 0) : 0, // Frescas dejadas la visita anterior
                 actual_fresh_qty: 0, missing_qty: 0,
             };
         });
@@ -386,10 +387,10 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         const phone = client?.phone?.replace(/\D/g, '');
         const phoneClean = phone && phone.length === 10 ? phone : (phone && phone.length > 10 ? phone.slice(-10) : null);
 
-        let msg = `🍞 *NOTA DE VENTA — PAN GRANDEZA*\n`;
-        msg += `📅 ${todayStr()}\n`;
-        msg += `👤 *Cliente:* ${client?.business_name || client?.name || clientName || 'Cliente de Ruta'}\n`;
+        let msg = `*NOTA DE VENTA*\n`;
+        msg += `📅 ${todayStr()} | Cliente: *${client?.business_name || client?.name || clientName || 'General'}*\n`;
         msg += `────────────────\n`;
+        msg += `*PRODUCTOS:*\n`;
 
         const activeItems = items.filter(it => it.actual_fresh_qty > 0 || it.exchange_qty > 0);
         if (activeItems.length === 0) return null;
@@ -398,21 +399,25 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             const exAmount = (it.exchange_qty || 0) * (it.b2b_price || 0);
             const frAmount = (it.actual_fresh_qty || 0) * (it.b2b_price || 0);
             const netAmount = frAmount - exAmount;
-            msg += `\n📦 *${it.product_name}* ($${it.b2b_price.toFixed(2)} c/u)\n`;
-            if (it.actual_fresh_qty > 0) msg += `   🍞 Entregadas: ${it.actual_fresh_qty} pzas (+$${frAmount.toFixed(2)})\n`;
-            if (it.exchange_qty > 0) msg += `   🔄 Cambios: ${it.exchange_qty} pzas (-$${exAmount.toFixed(2)})\n`;
-            msg += `   👉 *Neto por producto:* $${netAmount.toFixed(2)}\n`;
+            
+            msg += `• *${it.product_name}* ($${it.b2b_price.toFixed(2)})\n  `;
+            let details = [];
+            if (it.actual_fresh_qty > 0) details.push(`+${it.actual_fresh_qty} entregas`);
+            if (it.exchange_qty > 0) details.push(`-${it.exchange_qty} cambios`);
+            details.push(`Neto: $${netAmount.toFixed(2)}`);
+            
+            msg += details.join(' | ') + `\n`;
         });
 
-        msg += `\n────────────────\n`;
-        msg += `💰 *TOTAL DE LA VENTA: $${saleAmount.toFixed(2)}*\n`;
+        msg += `────────────────\n`;
+        msg += `*TOTAL A PAGAR: $${saleAmount.toFixed(2)}*\n`;
         if (paymentRec > 0) {
-            msg += `💵 Dinero Recibido: $${paymentRec.toFixed(2)}\n`;
-            if (change > 0) msg += `🔙 Su Cambio: $${change.toFixed(2)}\n`;
-            else if (change < 0) msg += `⚠️ Saldo Pendiente: $${Math.abs(change).toFixed(2)}\n`;
+            msg += `Recibido: $${paymentRec.toFixed(2)}\n`;
+            if (change > 0) msg += `Cambio: $${change.toFixed(2)}\n`;
+            else if (change < 0) msg += `Pendiente: $${Math.abs(change).toFixed(2)}\n`;
         }
-        if (notes) msg += `\n📝 *Nota:* ${notes}\n`;
-        msg += `\n_¡Gracias por su preferencia!_\n_R de Rico • Pan Grandeza_`;
+        if (notes) msg += `\nNota: ${notes}\n`;
+        msg += `\n_¡Gracias por su preferencia!_\n📞 Servicio al cliente: 7226101395`;
 
         return phoneClean ? `https://wa.me/52${phoneClean}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
     };
@@ -655,7 +660,20 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                                         <div className="font-black text-sm uppercase text-amber-400 truncate pr-2 leading-none">{it.product_name}</div>
                                         <div className="flex gap-3 text-xs font-bold text-gray-300 shrink-0 leading-none">
                                             <span>${it.b2b_price?.toFixed(2)}</span>
-                                            <span className="text-blue-400 border-l border-white/10 pl-3">Sugerido: {it.suggested_fresh_qty}</span>
+                                            {(() => {
+                                                // Sugerencia dinámica: si hay cambios ingresados Y datos de la visita anterior,
+                                                // recalcular basado en lo que el cliente realmente vendió
+                                                const hasDynamic = it.last_fresh_qty > 0 && it.exchange_qty > 0;
+                                                const dynamicSuggestion = hasDynamic 
+                                                    ? Math.max(0, it.last_fresh_qty - it.exchange_qty)
+                                                    : it.suggested_fresh_qty;
+                                                const isDynamic = hasDynamic && dynamicSuggestion !== it.suggested_fresh_qty;
+                                                return (
+                                                    <span className={`border-l border-white/10 pl-3 ${isDynamic ? 'text-cyan-400' : 'text-blue-400'}`}>
+                                                        {isDynamic ? '⚡' : ''} Sugerido: {dynamicSuggestion}
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                     {/* Renglón 2: Controles y Total */}

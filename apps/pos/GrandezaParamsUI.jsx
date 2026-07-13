@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { CONFIG } from './config';
 
-const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
+const API_BASE = CONFIG.API_BASE_URL;
 
 const B2BProductCard = ({ p, b2bPrice }) => {
     const [imgStatus, setImgStatus] = useState('TRY_PNG');
@@ -8,10 +9,10 @@ const B2BProductCard = ({ p, b2bPrice }) => {
     const resolveUrl = (url) => {
         if (!url) return null;
         if (url.startsWith('http')) return url;
-        return `http://${window.location.hostname}:5001${url.startsWith('/') ? '' : '/'}${url}`;
+        return `${CONFIG.API_BASE_URL.replace('/api/v1', '')}${url.startsWith('/') ? '' : '/'}${url}`;
     };
 
-    const baseStaticUrl = `http://${window.location.hostname}:5001/static/catalog`;
+    const baseStaticUrl = `${CONFIG.API_BASE_URL.replace('/api/v1', '')}/static/catalog`;
     
     const IMG_CHAIN = [
         { key: 'API_IMG',    src: resolveUrl(p.image), next: 'TRY_PNG' },
@@ -74,6 +75,12 @@ export const GrandezaParamsUI = ({ onBack }) => {
     const [clients, setClients] = useState([]);
     const [editingClient, setEditingClient] = useState(null);
 
+    // Estadísticas por Cliente
+    const [statsClient, setStatsClient] = useState(null);
+    const [statsData, setStatsData] = useState(null);
+    const [statsFilter, setStatsFilter] = useState('ALL');
+    const [statsLoading, setStatsLoading] = useState(false);
+
     // Tab: Rutas
     const [selectedDay, setSelectedDay] = useState('LUNES');
     const [routeSlots, setRouteSlots] = useState([]);
@@ -120,6 +127,21 @@ export const GrandezaParamsUI = ({ onBack }) => {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchClientStats = async (client) => {
+        setStatsClient(client);
+        setStatsData(null);
+        setStatsFilter('ALL');
+        setStatsLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/grandeza/clients/${client.id}/statistics`);
+            if (res.ok) setStatsData(await res.json());
+        } catch (e) {
+            console.error('Error fetching stats:', e);
+        } finally {
+            setStatsLoading(false);
         }
     };
 
@@ -277,8 +299,8 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     </button>
                 </div>
 
-                <div className="bg-black/70 rounded-[24px] border border-white/5 overflow-hidden">
-                    <table className="w-full text-left">
+                <div className="bg-black/70 rounded-[24px] border border-white/5 overflow-x-auto">
+                    <table className="w-full min-w-[800px] text-left">
                         <thead className="bg-black/40 text-xs font-bold text-amber-400 uppercase tracking-widest border-b border-white/5">
                             <tr>
                                 <th className="p-4">Cliente / Negocio</th>
@@ -310,12 +332,20 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                         </span>
                                     </td>
                                     <td className="p-4 text-right">
-                                        <button 
-                                            onClick={() => setEditingClient(c)}
-                                            className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-white transition-all"
-                                        >
-                                            Editar
-                                        </button>
+                                        <div className="flex gap-2 justify-end">
+                                            <button 
+                                                onClick={() => fetchClientStats(c)}
+                                                className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-xs font-bold text-cyan-400 transition-all"
+                                            >
+                                                📊
+                                            </button>
+                                            <button 
+                                                onClick={() => setEditingClient(c)}
+                                                className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-white transition-all"
+                                            >
+                                                Editar
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -332,7 +362,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                 {editingClient.id ? 'Editar Cliente' : 'Nuevo Cliente'}
                             </h2>
                             <form onSubmit={handleSaveClient} className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Nombre del Cliente *</label>
                                         <input required name="name" defaultValue={editingClient.name} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500" />
@@ -373,6 +403,104 @@ export const GrandezaParamsUI = ({ onBack }) => {
                         </div>
                     </div>
                 )}
+
+                {/* Modal de Estadísticas del Cliente */}
+                {statsClient && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4">
+                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setStatsClient(null)}></div>
+                        <div className="relative bg-[#111] border border-white/10 rounded-[24px] md:rounded-[32px] p-4 md:p-8 max-w-4xl w-full shadow-2xl animate-in zoom-in-95 max-h-[90vh] flex flex-col">
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-4 md:mb-6">
+                                <div>
+                                    <h2 className="text-lg md:text-2xl font-black uppercase tracking-tighter text-white">
+                                        📊 Estadísticas
+                                    </h2>
+                                    <p className="text-xs md:text-sm text-amber-400 font-bold">{statsClient.name} — {statsClient.business_name || 'Sin negocio'}</p>
+                                </div>
+                                <button onClick={() => setStatsClient(null)} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center text-lg transition-all">✕</button>
+                            </div>
+
+                            {statsLoading ? (
+                                <div className="flex items-center justify-center py-20">
+                                    <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            ) : !statsData || statsData.visits.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                                    <span className="text-4xl mb-3">📭</span>
+                                    <p className="font-bold">Sin historial de visitas</p>
+                                    <p className="text-xs mt-1">Este cliente aún no tiene visitas completadas.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Filtro por producto */}
+                                    <div className="mb-4">
+                                        <select 
+                                            value={statsFilter} 
+                                            onChange={e => setStatsFilter(e.target.value)}
+                                            className="w-full md:w-auto bg-black/40 border border-white/10 rounded-xl p-2 md:p-3 text-white text-xs md:text-sm outline-none focus:border-cyan-500 appearance-none"
+                                        >
+                                            <option value="ALL">Todos los productos</option>
+                                            {Object.values(statsData.summary).map(s => (
+                                                <option key={s.product_id} value={s.product_id}>{s.product_name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Resumen por producto */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4">
+                                        {Object.values(statsData.summary)
+                                            .filter(s => statsFilter === 'ALL' || String(s.product_id) === statsFilter)
+                                            .map(s => (
+                                            <div key={s.product_id} className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                                <div className="text-[10px] md:text-xs font-black text-amber-400 uppercase truncate mb-2">{s.product_name}</div>
+                                                <div className="space-y-1 text-[10px] md:text-xs">
+                                                    <div className="flex justify-between"><span className="text-gray-500">Visitas:</span><span className="text-white font-bold">{s.total_visits}</span></div>
+                                                    <div className="flex justify-between"><span className="text-emerald-500">Prom. Frescas:</span><span className="text-emerald-400 font-bold">{s.avg_fresh}</span></div>
+                                                    <div className="flex justify-between"><span className="text-red-500">Prom. Cambios:</span><span className="text-red-400 font-bold">{s.avg_exchange}</span></div>
+                                                    <div className="flex justify-between border-t border-white/10 pt-1 mt-1"><span className="text-cyan-500 font-bold">Prom. Capitalizadas:</span><span className="text-cyan-400 font-black">{s.avg_capitalized}</span></div>
+                                                    <div className="flex justify-between"><span className="text-blue-500">Sugerido:</span><span className="text-blue-400 font-black">{s.suggested_qty}</span></div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Tabla de historial */}
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                        <table className="w-full text-xs">
+                                            <thead className="sticky top-0 bg-[#111] z-10">
+                                                <tr className="border-b border-white/10">
+                                                    <th className="p-2 text-left text-gray-500 font-black uppercase tracking-widest">Fecha</th>
+                                                    <th className="p-2 text-left text-gray-500 font-black uppercase tracking-widest">Producto</th>
+                                                    <th className="p-2 text-center text-emerald-500 font-black uppercase tracking-widest">Frescas</th>
+                                                    <th className="p-2 text-center text-red-500 font-black uppercase tracking-widest">Cambios</th>
+                                                    <th className="p-2 text-center text-cyan-500 font-black uppercase tracking-widest">Capitaliz.</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-white/5">
+                                                {statsData.visits.map((v, vi) => 
+                                                    v.items
+                                                        .filter(item => statsFilter === 'ALL' || String(item.product_id) === statsFilter)
+                                                        .map((item, ii) => (
+                                                        <tr key={`${vi}-${ii}`} className={`hover:bg-white/5 transition-colors ${vi < 3 ? 'bg-cyan-500/5' : ''}`}>
+                                                            <td className="p-2 text-gray-400">{ii === 0 ? v.date : ''}</td>
+                                                            <td className="p-2 text-amber-400 font-bold">{item.product_name}</td>
+                                                            <td className="p-2 text-center text-emerald-400 font-bold">{item.fresh_qty}</td>
+                                                            <td className="p-2 text-center text-red-400 font-bold">{item.exchange_qty}</td>
+                                                            <td className="p-2 text-center text-cyan-400 font-black">{item.capitalized}</td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                        {statsData.visits.length > 3 && (
+                                            <p className="text-[10px] text-cyan-500/60 text-center mt-2 italic">Las 3 primeras filas (resaltadas) son las que el sistema usa para calcular la sugerencia</p>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
@@ -381,12 +509,12 @@ export const GrandezaParamsUI = ({ onBack }) => {
         return (
             <div className="space-y-6 animate-in fade-in duration-500">
                 {/* Días de la Semana */}
-                <div className="flex gap-2 p-2 bg-black/40 rounded-2xl border border-white/5">
+                <div className="flex flex-wrap md:flex-nowrap gap-2 p-2 bg-black/40 rounded-2xl border border-white/5">
                     {DAYS.map(day => (
                         <button
                             key={day}
                             onClick={() => setSelectedDay(day)}
-                            className={`flex-1 py-3 px-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all ${
+                            className={`flex-1 min-w-[100px] py-3 px-2 md:px-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all ${
                                 selectedDay === day 
                                 ? 'bg-orange-600 text-white shadow-lg shadow-orange-500/20 scale-[1.02]' 
                                 : 'text-white hover:bg-white/5 hover:text-white'
@@ -397,9 +525,9 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     ))}
                 </div>
 
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Lista de la ruta del día */}
-                    <div className="col-span-2 bg-black/70 p-6 rounded-[24px] border border-white/5 min-h-[500px]">
+                    <div className="col-span-1 lg:col-span-2 bg-black/70 p-4 md:p-6 rounded-[24px] border border-white/5 min-h-[300px] md:min-h-[500px]">
                         <h3 className="text-xl font-black uppercase tracking-tighter text-white mb-1">Ruta: {selectedDay}</h3>
                         <p className="text-sm text-white mb-6">{routeSlots.length} clientes programados para visitar.</p>
                         
@@ -440,7 +568,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     </div>
 
                     {/* Agregar a la ruta */}
-                    <div className="bg-black/70 p-6 rounded-[24px] border border-white/5 h-fit sticky top-6">
+                    <div className="bg-black/70 p-4 md:p-6 rounded-[24px] border border-white/5 h-fit lg:sticky top-6">
                         <h3 className="text-sm font-black uppercase tracking-widest text-orange-400 mb-4">Agregar Cliente a {selectedDay}</h3>
                         
                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
@@ -479,17 +607,17 @@ export const GrandezaParamsUI = ({ onBack }) => {
             }} />
 
             {/* Header Global */}
-            <div className="relative z-20 pt-6 px-8 bg-black border-b border-white/10 shadow-2xl">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-6">
-                        <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center shrink-0">
-                            <img src={`http://${window.location.hostname}:5001/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
+            <div className="relative z-20 pt-6 px-4 md:px-8 bg-black border-b border-white/10 shadow-2xl">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-4 md:gap-6">
+                        <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center shrink-0">
+                            <img src={`${CONFIG.API_BASE_URL.replace('/api/v1', '')}/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35] md:scale-[1.35]" />
                         </div>
                         <div>
-                            <h1 className="text-4xl font-black uppercase tracking-tighter text-white leading-none">
+                            <h1 className="text-2xl md:text-4xl font-black uppercase tracking-tighter text-white leading-none">
                                 Parámetros <span className="text-amber-400">Generales</span>
                             </h1>
-                            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">
+                            <p className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">
                                 Reparto Pan Grandeza
                             </p>
                         </div>
@@ -497,7 +625,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all shrink-0"
+                            className="w-full md:w-auto px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/10 transition-all shrink-0"
                         >
                             ← Volver al Menú
                         </button>
@@ -505,7 +633,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                 </div>
 
                 {/* Tabs de Navegación Interna */}
-                <div className="flex gap-8 px-2 mt-4">
+                <div className="flex gap-4 md:gap-8 px-2 mt-4 overflow-x-auto whitespace-nowrap custom-scrollbar pb-2">
                     {[
                         { id: 'products', label: 'Productos Vinculados', icon: '🍞' },
                         { id: 'clients', label: 'Directorio de Clientes', icon: '👥' },
@@ -514,7 +642,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`pb-4 px-2 font-black uppercase tracking-widest text-sm transition-all relative ${
+                            className={`pb-3 px-2 font-black uppercase tracking-widest text-sm transition-all relative shrink-0 ${
                                 activeTab === tab.id 
                                 ? 'text-amber-400' 
                                 : 'text-gray-500 hover:text-gray-300'
@@ -523,7 +651,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                             <span className="mr-2">{tab.icon}</span>
                             {tab.label}
                             {activeTab === tab.id && (
-                                <div className="absolute bottom-0 left-0 w-full h-[3px] bg-amber-400 rounded-t-full shadow-[0_0_10px_rgba(251,191,36,0.8)]"></div>
+                                <div className="absolute bottom-[-8px] left-0 w-full h-[3px] bg-amber-400 rounded-t-full shadow-[0_0_10px_rgba(251,191,36,0.8)]"></div>
                             )}
                         </button>
                     ))}
@@ -538,7 +666,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
             )}
 
             {/* Contenido Dinámico */}
-            <div className="relative z-10 flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <div className="relative z-10 flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
                 <div className="max-w-7xl mx-auto">
                     {activeTab === 'products' && renderProductsTab()}
                     {activeTab === 'clients' && renderClientsTab()}
