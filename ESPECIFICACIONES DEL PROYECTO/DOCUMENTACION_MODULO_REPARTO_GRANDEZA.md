@@ -225,8 +225,9 @@ La función `sendWhatsApp()` en `GrandezaDriverUI.jsx` genera una nota de venta 
 ### Flujo
 1. El repartidor captura la venta (productos, cantidades, pago).
 2. Presiona "Enviar ticket por WhatsApp".
-3. Se genera un mensaje con formato Markdown de WhatsApp: productos, cantidades, importes netos, total, cambio.
-4. Se abre `https://wa.me/52XXXXXXXXXX?text=...` que dispara la app de WhatsApp con el mensaje pre-escrito.
+3. Se genera un mensaje con formato Markdown de WhatsApp: fecha, nombre del cliente, productos, cantidades (entregas y recompras), importes netos, total, cambio y el número de Servicio al Cliente (SAC).
+4. El formato está diseñado para ser profesional, compacto y fácil de leer en un sola pantalla de móvil, omitiendo leyendas promocionales.
+5. Se abre `https://wa.me/52XXXXXXXXXX?text=...` que dispara la app de WhatsApp con el mensaje pre-escrito.
 
 ### Validación de Teléfono
 - Se limpian caracteres no numéricos (`replace(/\D/g, '')`)
@@ -257,3 +258,27 @@ El archivo `apps/pos/config.js` está diseñado para manejar conexiones híbrida
 
 **Instalación PWA (Progressive Web App)**
 Se recomienda que el repartidor abra el enlace (`reparto.rdericotoluca.com/?terminal=DRIVER`) en Google Chrome o Safari y utilice la opción "Agregar a la pantalla principal". Esto oculta la barra de navegación del navegador y permite que el sistema opere a pantalla completa como una aplicación nativa.
+
+---
+
+## 11. Nuevas Funcionalidades y Refinamientos (v7.1.0)
+
+En la versión 7.1.0 se agregaron refinamientos operativos para mejorar la inteligencia y usabilidad del sistema:
+
+### 11.1 Sugerencias Dinámicas (Herramienta Repartidor)
+El sistema ahora recalcula la cantidad "Sugerida" de piezas en **tiempo real** mientras el repartidor ingresa los cambios de mercancía.
+- **Lógica:** `Sugerido = (Frescas dejadas la visita anterior) - (Cambios recogidos hoy)`
+- Esta métrica refleja las piezas que el cliente *efectivamente capitalizó* (vendió), lo cual es más preciso que un simple promedio histórico.
+- **Indicador Visual:** Cuando el sistema realiza este cálculo dinámico, la sugerencia cambia de color azul a **cyan con un icono de rayo (⚡)** para indicar al repartidor que el número está siendo ajustado basándose en los cambios que acaba de ingresar.
+- **Endpoint:** El endpoint `/suggestions` (`service.py`) ahora devuelve `last_fresh_qty` adicional al `suggested_qty` (promedio histórico) para posibilitar este cálculo reactivo en el frontend.
+
+### 11.2 Modal de Estadísticas por Cliente (Herramienta Administrador)
+Se agregó un botón **"📊"** en el directorio de clientes de la suite `GrandezaParamsUI`.
+- Abre un modal detallado que muestra el **historial completo de visitas** del cliente.
+- Incluye un filtro dropdown para ver el rendimiento por producto específico.
+- Muestra tarjetas resumen con promedios de: Visitas, Frescas, Cambios, Capitalizadas y Sugeridas.
+- La tabla de historial resalta las últimas 3 visitas, indicando visualmente que estas son las que el sistema utiliza para calcular la sugerencia de inventario por defecto.
+
+### 11.3 UI y Comunicación
+- **WhatsApp:** El mensaje fue rediseñado para ser más profesional y ocupar menos espacio en pantalla. Se eliminaron los íconos excesivos y las leyendas de la marca ("R DE RICO", "PAN GRANDEZA"). Se agregó el teléfono de Servicio al Cliente (SAC) al final. El término "cambios" fue reemplazado por "recompras" para mayor claridad del cliente.
+- **Sidebar:** El botón flotante de la suite Grandeza en el menú principal (`ExperimentCenterUI`) fue rediseñado de un cuadrado a un medio círculo estilizado, ocupando menos espacio y mejorando la estética.
