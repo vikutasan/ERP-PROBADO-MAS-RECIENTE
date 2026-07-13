@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cacheRouteData, getCachedRouteData, updateCachedVisits, enqueueOperation, processQueue, getPendingCount, bufferGPSPoint, flushGPSBuffer } from './services/offlineStore';
 import { createNetworkMonitor } from './services/networkMonitor';
+import { CONFIG } from './config';
+import { securityService } from './services/securityService';
 
 const DriverBackground = () => (
     <>
@@ -18,8 +20,8 @@ const DriverBackground = () => (
  * UI optimizada para smartphone. El repartidor la usa en ruta.
  */
 export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
-    const API = `http://${window.location.hostname}:5001/api/v1`;
-    const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
+    const API = CONFIG.API_BASE_URL;
+    const LOGO_URL = `${CONFIG.API_BASE_URL.replace('/api/v1', '')}/static/images/grandeza/logo.png`;
 
     // ─── State ───
     const [loading, setLoading] = useState(true);
@@ -41,6 +43,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const [isOnline, setIsOnline] = useState(true);
     const [pendingSyncCount, setPendingSyncCount] = useState(0);
     const [lastVisitResult, setLastVisitResult] = useState(null); // Para modal post-visita
+    const [pinInput, setPinInput] = useState('');
     const networkMonitorRef = useRef(null);
     const canEditClients = userPermissions.all === 'full' || userPermissions.grandeza_edit_clients === 'full';
 
@@ -107,7 +110,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
     // ─── Monitor de Red + Auto-Sync ───
     useEffect(() => {
-        const apiHost = `http://${window.location.hostname}:5001`;
+        const apiHost = CONFIG.API_BASE_URL.replace(/\/api\/v1$/, '');
         const monitor = createNetworkMonitor(apiHost);
         networkMonitorRef.current = monitor;
         setIsOnline(monitor.isOnline());
@@ -287,6 +290,38 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         ));
     };
 
+    // ─── Firma del Repartidor (Cambio de ESPERANDO_FIRMA a EN_RUTA) ───
+    const handleFirmarRuta = async () => {
+        if (!pinInput) {
+            showToast('⚠️ Ingresa tu PIN para firmar', 'error');
+            return;
+        }
+        setSaving(true);
+        try {
+            const validation = await securityService.validatePin(pinInput);
+            if (validation.id !== journey.driver_user_id) {
+                showToast(`❌ El PIN no coincide con el repartidor asignado a esta ruta`, 'error');
+                setSaving(false);
+                return;
+            }
+
+            // Cambiar estado a EN_RUTA
+            await fetch(`${API}/grandeza/journeys/${journey.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'EN_RUTA' })
+            });
+
+            showToast('✅ ¡Ruta aceptada y en curso!');
+            setPinInput('');
+            await loadAll();
+        } catch (e) {
+            showToast(`❌ Error al firmar: ${e.message}`, 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // ─── Visita: Guardar (persiste en API o encola offline) ───
     const saveVisit = async () => {
         setSaving(true);
@@ -405,13 +440,10 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         </div>
     );
 
-    // ─── Render: No journey ───
+    // ─── Render: No journey o PREPARANDO ───
     if (!journey || journey.status === 'PREPARANDO') return (
         <div className="h-screen flex flex-col text-white relative" style={{ backgroundColor: '#3a2e1e' }}>
             <DriverBackground />
-            
-
-
             <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -429,11 +461,116 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 <div className="text-center space-y-4">
                     <div className="text-6xl drop-shadow-2xl">⏳</div>
                     <h2 className="text-xl font-black uppercase tracking-tighter text-amber-400 drop-shadow-lg">Sin ruta activa</h2>
-                    <p className="text-sm text-amber-100/70 font-medium">{journey ? 'La jornada está en preparación. Espera a que el gerente despache la ruta.' : 'No hay jornada abierta para hoy.'}</p>
+                    <p className="text-sm text-amber-100/70 font-medium">{journey ? 'La jornada está en preparación. Espera a que el gerente asigne la ruta.' : 'No hay jornada abierta para hoy.'}</p>
                 </div>
             </div>
         </div>
     );
+
+    // ─── Render: Firma de Repartidor (Nuevo Flujo) ───
+    if (journey.status === 'ESPERANDO_FIRMA') {
+        return (
+            <div className="h-screen flex flex-col text-white relative overflow-hidden" style={{ backgroundColor: '#3a2e1e' }}>
+                <DriverBackground />
+                <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center shrink-0">
+                                <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
+                            </div>
+                            <div>
+                                <h1 className="font-black text-xl uppercase tracking-tighter text-white leading-none">Nueva <span className="text-amber-400">Ruta</span></h1>
+                            </div>
+                        </div>
+                        <button onClick={onBack} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Salir</button>
+                    </div>
+                </div>
+
+                <div className="relative z-10 flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+                    <div className="max-w-md mx-auto space-y-6 pb-8">
+                        <div className="text-center mt-2">
+                            <div className="text-5xl mb-2 animate-bounce">📦</div>
+                            <h2 className="text-xl font-black uppercase tracking-tighter text-amber-400 drop-shadow-lg">Revisar Carga</h2>
+                            <p className="text-sm text-amber-100/70 font-medium mt-1">Verifica lo que estás recibiendo del gerente.</p>
+                        </div>
+
+                        <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-[24px] p-6 space-y-4">
+                            <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                                <span className="text-sm font-black uppercase tracking-widest text-white">💰 Fondo de Caja</span>
+                                <span className="text-xl font-black text-emerald-400">${parseFloat(journey.cash_fund || 0).toFixed(2)}</span>
+                            </div>
+                            
+                            <div>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-amber-400 mb-3">🍞 Inventario Asignado</h3>
+                                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                                    {initialInventory.filter(i => i.fresh_qty > 0).map(item => {
+                                        const prod = getProductInfo(item.product_id);
+                                        return (
+                                            <div key={item.product_id} className="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2 last:border-0 last:pb-0">
+                                                <span className="text-gray-300">{prod.product_name || `Producto #${item.product_id}`}</span>
+                                                <span className="text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">{item.fresh_qty} pz</span>
+                                            </div>
+                                        );
+                                    })}
+                                    {initialInventory.length === 0 && <p className="text-gray-500 text-xs text-center py-2">Sin inventario físico</p>}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-black/90 backdrop-blur-xl border border-amber-500/30 rounded-[24px] p-6 space-y-4 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-amber-400 block text-center">
+                                Ingresa tu PIN para firmar de conformidad
+                            </label>
+                            <div className="bg-black/50 border border-white/10 rounded-2xl h-14 flex items-center justify-center text-2xl font-mono tracking-[0.5em] text-white">
+                                {pinInput.replace(/./g, '•') || <span className="text-white/20">PIN</span>}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(val => (
+                                    <button
+                                        key={val}
+                                        onClick={() => {
+                                            if (val === 'C') setPinInput('');
+                                            else if (val === '←') setPinInput(prev => prev.slice(0, -1));
+                                            else if (pinInput.length < 8) setPinInput(prev => String(prev) + val);
+                                        }}
+                                        className="h-12 bg-white/5 border border-white/10 rounded-xl text-lg font-black text-white hover:bg-white/10 active:scale-95 transition-all"
+                                    >
+                                        {val}
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={handleFirmarRuta}
+                                disabled={saving || !pinInput}
+                                className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl font-black uppercase tracking-widest text-white hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:grayscale mt-2 shadow-xl shadow-amber-500/20"
+                            >
+                                {saving ? 'VERIFICANDO...' : 'FIRMAR Y RECIBIR'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {toast && <div className={`fixed top-4 left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
+
+                {/* Modal Editar Cliente (En vista de Visita) */}
+                {editingClient && (
+                    <EditClientModal 
+                        client={editingClient} 
+                        onClose={() => setEditingClient(null)} 
+                        onSave={(updated) => {
+                            setClients(prev => prev.map(c => c.id === updated.id ? updated : c));
+                            setEditingClient(null);
+                            showToast('✅ Cliente actualizado');
+                            if (activeVisit?.client?.id === updated.id) {
+                                setActiveVisit(prev => ({ ...prev, client: updated }));
+                            }
+                        }}
+                        API={API}
+                    />
+                )}
+            </div>
+        );
+    }
 
     // ─── Render: Vista de Visita Activa ───
     if (view === 'visit' && activeVisit) {
@@ -753,18 +890,18 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             </div>
 
             {/* Barra inferior fija */}
-            <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 flex gap-2 z-50">
+            <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-2 sm:p-3 flex gap-2 z-50">
                 <button onClick={() => openVisit({client_id: null, visit_order: 999}, true)}
-                    className="flex-1 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs font-black text-amber-400 uppercase">
-                    + Venta No Programada
+                    className="flex-1 py-3 px-1 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[10px] sm:text-xs font-black text-amber-400 uppercase leading-tight flex flex-col items-center justify-center text-center">
+                    <span>+ Venta</span><span>Extra</span>
                 </button>
                 <button onClick={() => setView('order')}
-                    className="flex-1 py-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs font-black text-blue-400 uppercase">
-                    📋 Levantar Pedido
+                    className="flex-1 py-3 px-1 bg-blue-500/10 border border-blue-500/30 rounded-xl text-[10px] sm:text-xs font-black text-blue-400 uppercase leading-tight flex flex-col items-center justify-center text-center">
+                    <span>📋</span><span>Pedido</span>
                 </button>
                 <button onClick={() => setView('summary')}
-                    className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-gray-300 uppercase">
-                    📊 Resumen
+                    className="flex-1 py-3 px-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-xs font-black text-gray-300 uppercase leading-tight flex flex-col items-center justify-center text-center">
+                    <span>📊</span><span>Resumen</span>
                 </button>
             </div>
 
@@ -805,13 +942,78 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
             {/* Toast */}
             {toast && <div className={`fixed ${!isOnline ? 'top-10' : 'top-4'} left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white': toast.type==='warning'?'bg-amber-500 text-black':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
+
+            {/* Modal Editar Cliente */}
+            {editingClient && (
+                <EditClientModal 
+                    client={editingClient} 
+                    onClose={() => setEditingClient(null)} 
+                    onSave={(updated) => {
+                        setClients(prev => prev.map(c => c.id === updated.id ? updated : c));
+                        setEditingClient(null);
+                        showToast('✅ Cliente actualizado');
+                    }}
+                    API={API}
+                />
+            )}
+        </div>
+    );
+};
+
+// ─── Sub-Componente: Editar Cliente ──────────────────────────────────────────
+const EditClientModal = ({ client, onClose, onSave, API }) => {
+    const [name, setName] = useState(client.name || '');
+    const [businessName, setBusinessName] = useState(client.business_name || '');
+    const [phone, setPhone] = useState(client.phone || '');
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const res = await fetch(`${API}/grandeza/clients/${client.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, business_name: businessName, phone })
+            });
+            if (!res.ok) throw new Error('Error al guardar');
+            onSave({ ...client, name, business_name: businessName, phone });
+        } catch (e) {
+            alert('Error al guardar: ' + e.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-[#1a1510] border border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl">
+                <h3 className="text-xl font-black text-white uppercase tracking-tighter mb-4">Editar Cliente</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Nombre del Cliente</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-bold outline-none mt-1" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Nombre del Negocio</label>
+                        <input type="text" value={businessName} onChange={e => setBusinessName(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-bold outline-none mt-1" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Teléfono</label>
+                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-bold outline-none mt-1" />
+                    </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                    <button onClick={onClose} className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-gray-400 uppercase tracking-widest">Cancelar</button>
+                    <button onClick={handleSave} disabled={saving} className="flex-1 py-3 bg-amber-500 rounded-xl text-xs font-black text-black uppercase tracking-widest shadow-xl shadow-amber-500/20">{saving ? 'Guardando...' : 'Guardar'}</button>
+                </div>
+            </div>
         </div>
     );
 };
 
 // ─── Sub-Componente: Levantar Pedido ─────────────────────────────────────────
 const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
-    const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
+    const LOGO_URL = `${API.replace('/api/v1', '')}/static/images/grandeza/logo.png`;
     const [selectedClient, setSelectedClient] = useState('');
     const [customClientName, setCustomClientName] = useState('');
     const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price, lead_time_hours: gp.order_lead_time_hours || 0 })));

@@ -146,6 +146,31 @@ stmt = (
 3. El script inicial (`auto_seed_on_first_boot`) usa `Base.metadata.create_all`, el cual **no realiza migraciones** en tablas ya existentes. Por tanto, SQLAlchemy fallaba silenciosamente al hacer el `INSERT`.
 **Solución:** Se añadió la columna faltante directamente en la base de datos mediante SQL (`ALTER TABLE grandeza_journeys ADD COLUMN dispatched_at TIMESTAMP WITHOUT TIME ZONE;`).
 
+### Error G: "SIN CONEXIÓN — MODO LOCAL ACTIVO" falso al acceder desde internet (12/Julio/2026)
+**Síntoma:** El repartidor accedía al sistema desde su celular con datos móviles vía `reparto.rdericotoluca.com`. La interfaz cargaba correctamente (lista de clientes, fondo de caja, inventario), pero el banner ámbar **"📡 Sin conexión — Modo local activo"** permanecía fijo en la parte superior. El repartidor tenía internet funcional.
+**Diagnóstico:**
+1. El frontend se servía correctamente a través del túnel Cloudflare (`reparto.rdericotoluca.com` → `localhost:5000`). Esto confirmaba que el dispositivo sí tenía internet y el túnel del frontend funcionaba.
+2. El banner se activa cuando `isOnline === false`, controlado por `networkMonitor.js`, que hace un heartbeat cada 30s al endpoint `/health` de la API.
+3. **La causa raíz** estaba en `GrandezaDriverUI.jsx` línea 113. El monitor construía la URL de API así:
+   ```javascript
+   // ❌ CÓDIGO VIEJO (roto para acceso por internet)
+   const apiHost = `http://${window.location.hostname}:5001`;
+   ```
+4. Cuando `window.location.hostname` era `reparto.rdericotoluca.com`, la URL resultante era `http://reparto.rdericotoluca.com:5001/health` — un endpoint **inexistente** porque el puerto 5001 no está expuesto a internet (solo el túnel de Cloudflare en `api.rdericotoluca.com` lo enruta).
+5. Mientras tanto, `config.js` (usado por el resto de la app para llamadas de datos) **sí manejaba correctamente** ambos escenarios (LAN vs Internet), por lo que la data sí cargaba. La inconsistencia era exclusiva del monitor de red.
+
+| Escenario | URL generada (viejo) | URL correcta |
+|---|---|---|
+| LAN (`192.168.1.x`) | `http://192.168.1.x:5001/health` ✅ | `http://192.168.1.x:5001/health` ✅ |
+| Internet (`reparto.rdericotoluca.com`) | `http://reparto.rdericotoluca.com:5001/health` ❌ | `https://api.rdericotoluca.com/health` ✅ |
+
+**Solución:** Se reemplazó la construcción manual de la URL por una derivada de `CONFIG.API_BASE_URL` (que ya maneja ambos escenarios):
+```javascript
+// ✅ CÓDIGO CORREGIDO — Reutiliza la lógica de config.js
+const apiHost = CONFIG.API_BASE_URL.replace(/\/api\/v1$/, '');
+```
+**Archivo modificado:** `apps/pos/GrandezaDriverUI.jsx` (línea 113).
+
 ---
 
 ## 7. Directivas Generales para Modificar este Módulo
@@ -157,6 +182,7 @@ stmt = (
 6. **Eager loading obligatorio en SQLAlchemy Async:** Cualquier relación ORM que se acceda dentro de un bucle de serialización DEBE precargarse con `selectinload()` en la consulta inicial. De lo contrario, FastAPI dispara un error 500 silencioso que el frontend reporta como "Failed to fetch".
 7. **Sincronización de Base de Datos (Migraciones):** Ya que el sistema usa `create_all` al arrancar, este no altera tablas existentes. Si agregas columnas a los modelos de SQLAlchemy, DEBES ejecutar el `ALTER TABLE` correspondiente en la base de datos; de lo contrario, provocarás caídas silenciosas (Error 500).
 8. **No instalar Service Workers ni PWA plugins globales:** El frontend del POS y Grandeza comparten el mismo Vite build. Registrar un Service Worker global interceptaría las peticiones del POS. La funcionalidad offline se resuelve exclusivamente con IndexedDB dentro de `GrandezaDriverUI.jsx`.
+9. **Toda URL de API debe derivarse de `CONFIG.API_BASE_URL`:** Nunca construir URLs de API manualmente con `window.location.hostname + ':5001'`. El archivo `config.js` es la **única fuente de verdad** para la base de la URL de API. Cualquier servicio interno (networkMonitor, GPS, sync) debe derivar su URL desde `CONFIG.API_BASE_URL`. Hardcodear puertos causa falsos negativos de conectividad cuando se accede desde internet vía Cloudflare Tunnels (ver Error G).
 
 ---
 

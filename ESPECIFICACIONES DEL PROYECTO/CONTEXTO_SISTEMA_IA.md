@@ -223,6 +223,8 @@ El túnel enruta dos dominios públicos hacia los contenedores locales:
 
 *Nota de Arquitectura:* El archivo `apps/pos/config.js` está programado dinámicamente. Si detecta acceso vía localhost/LAN, enruta las llamadas de red al puerto `5001`. Si detecta acceso desde internet, cambia la base de la URL automáticamente hacia el subdominio `api.*`, previniendo errores de CORS o puertos cerrados.
 
+> ⚠️ **REGLA CRÍTICA:** `config.js` (`CONFIG.API_BASE_URL`) es la **única fuente de verdad** para construir URLs de API en todo el frontend. Cualquier servicio, monitor, utilidad o componente que necesite comunicarse con la API **DEBE** derivar su URL desde `CONFIG.API_BASE_URL`. Está **estrictamente prohibido** construir URLs manualmente con `window.location.hostname + ':5001'` o equivalentes, ya que esto rompe el acceso por internet vía Cloudflare Tunnels (ver Incidente 16.6 — Error G del módulo Grandeza).
+
 ---
 
 ### 3.3.8 Tecnologías Deliberadamente Excluidas
@@ -648,6 +650,137 @@ if (newHash !== lastHashRef.current) {
 **Lección y Solución Futura:**
 - La única forma segura de asignar una IP fija al servidor es utilizar una dirección **fuera del rango habitual** de asignación DHCP (ej. `192.168.1.250`) que no tenga riesgo de conflicto con teléfonos o laptops transitorias.
 - **Requiere Planificación:** Cambiar la IP del servidor implica actualizar la variable `VITE_API_URL` en el código frontend, reconstruir la imagen de Docker del POS, y reconfigurar físicamente cualquier cliente o terminal que apunte a la IP actual.
+
+### 16.5 Sidebar Responsive: Trampas de CSS, DOM y Stacking Contexts en Móvil vs Escritorio
+
+**Archivo afectado:** `apps/ExperimentCenterUI.jsx`
+**Fecha del incidente:** Julio 2026
+
+**Contexto del Problema:**
+El sidebar principal del ERP (`ExperimentCenterUI.jsx`) tiene un botón naranja que permite colapsar/expandir el menú lateral. Al intentar crear comportamientos visuales diferenciados para **móvil** (pestañita flotante tipo tab en el borde izquierdo) y **escritorio** (medio-círculo integrado al borde del sidebar), se desencadenó una cadena de 10+ iteraciones con regresiones constantes donde las correcciones de una versión rompían la otra.
+
+#### Anatomía del Problema (3 Trampas Técnicas Descubiertas)
+
+**Trampa 1: `absolute` vs `fixed` en contenedores Flex con `overflow-hidden`**
+- El sidebar móvil usaba `position: absolute` para deslizarse fuera de la pantalla con `-translate-x-full`. En algunos navegadores móviles (especialmente Safari en iOS y ciertos WebView de Android), un elemento `absolute` dentro de un contenedor `flex` con `overflow-hidden` puede dibujarse con ancho cero o fuera del viewport sin que el usuario lo perciba.
+- **Solución:** En móvil, el sidebar debe usar `position: fixed` (`fixed top-0 left-0`) para desacoplarse completamente del flujo flex del contenedor padre. En escritorio, debe permanecer `md:relative` para integrarse al layout flex normal.
+
+```jsx
+// ✅ CORRECTO: fixed en móvil, relative en escritorio
+<aside className={`
+    fixed top-0 left-0 md:relative ...
+`}>
+```
+
+```jsx
+// ❌ INCORRECTO: absolute causa problemas en móvil
+<aside className={`
+    absolute top-0 left-0 md:relative ...
+`}>
+```
+
+**Trampa 2: Elementos Colapsados con `-translate-x-full` Bloquean Toques Táctiles**
+- Cuando el sidebar se colapsa en móvil con `-translate-x-full`, su caja de `w-80` (320px) se desplaza 320px a la izquierda. Esto coloca su **borde derecho exactamente en `x=0`**, creando una pared invisible que intercepta todos los toques táctiles en la zona `left-0` de la pantalla — justo donde aparece la pestañita flotante para reabrir el menú.
+- **Solución:** Agregar `pointer-events-none` al sidebar colapsado en móvil para que su caja invisible deje pasar los toques, y `pointer-events-auto` al sidebar abierto y a sus botones internos para que estos sigan siendo interactivos.
+
+```jsx
+// ✅ CORRECTO: pointer-events controlados por estado
+${isSidebarCollapsed
+    ? '-translate-x-full ... pointer-events-none md:pointer-events-auto'
+    : 'translate-x-0 ... pointer-events-auto'}
+```
+
+**Trampa 3: Orden del DOM y Stacking Contexts — El `<main>` Tapa Elementos `fixed` Anteriores**
+- Aunque un botón flotante tenga `z-index: 99999` y `position: fixed`, si está colocado **ANTES** del `<main>` en el DOM, y el `<main>` es un flex-item con fondo opaco (imagen de madera) que ocupa `flex-1`, algunos navegadores móviles crean un nuevo stacking context que tapa al botón flotante a pesar de su z-index superior.
+- **Solución:** La pestañita flotante móvil debe colocarse al **FINAL del DOM**, después del cierre de `</main>`, justo antes del cierre de `</div>` principal. Esto garantiza que se dibuje encima de absolutamente todo sin depender de z-index.
+
+```jsx
+// ✅ CORRECTO: Pestañita AL FINAL del DOM
+return (
+    <div className="...">
+        <aside>...</aside>      {/* Sidebar */}
+        <main>...</main>         {/* Contenido principal */}
+
+        {/* Pestañita flotante DESPUÉS de main — siempre visible */}
+        {isSidebarCollapsed && (
+            <button className="md:hidden fixed left-0 top-10 ... z-[99999]">
+                ▶
+            </button>
+        )}
+    </div>
+);
+```
+
+```jsx
+// ❌ INCORRECTO: Pestañita ANTES de main — puede ser tapada
+return (
+    <div className="...">
+        {isSidebarCollapsed && (
+            <button className="md:hidden fixed ...">▶</button>
+        )}
+        <aside>...</aside>
+        <main>...</main>         {/* main tapa al botón */}
+    </div>
+);
+```
+
+#### Diseño Visual del Botón de Escritorio: Efecto "Medio Círculo"
+- El botón de escritorio está diseñado para verse como **medio círculo naranja** (solo la mitad izquierda visible sobre el fondo negro del sidebar, sin derramarse sobre el fondo de madera).
+- Esto se logra con un contenedor `overflow-hidden` de la mitad del ancho del círculo (`w-4` para un botón de `w-8`), que contiene el botón circular completo alineado con `left-0`. El contenedor "corta" visualmente la mitad derecha.
+
+```jsx
+// ✅ Medio-círculo para escritorio
+<div className="hidden md:block absolute right-0 top-10 w-4 h-8 overflow-hidden z-[99999]">
+    <button className="absolute left-0 top-0 w-8 h-8 bg-orange-600 rounded-full ...">
+        {isSidebarCollapsed ? '→' : '←'}
+    </button>
+</div>
+```
+
+#### Reglas Arquitectónicas Derivadas (OBLIGATORIAS para cualquier IA futura)
+
+1. **PROHIBIDO** usar un solo `<button>` con clases responsivas (`md:w-8 w-10`) para combinar comportamientos móvil/escritorio en el sidebar. Deben ser **botones completamente separados en el DOM**: uno con `md:hidden` (solo móvil) y otro con `hidden md:flex` (solo escritorio).
+2. **OBLIGATORIO** que el botón flotante móvil se coloque al **final del DOM** (después de `</main>`), nunca antes del `<aside>` ni entre `</aside>` y `<main>`.
+3. **OBLIGATORIO** agregar `pointer-events-none` al sidebar colapsado en móvil para evitar que su caja invisible bloquee interacciones táctiles.
+4. **PROHIBIDO** usar `position: absolute` para el sidebar en móvil. Siempre usar `position: fixed` con `top-0 left-0` en móvil y `md:relative` en escritorio.
+5. **OBLIGATORIO** usar caracteres de texto plano (`→`, `←`, `▶`) en los botones del sidebar, **nunca** emojis Unicode (`▶️`, `◀️`) que los navegadores pueden renderizar como íconos de colores (azul/morado) no deseados.
+6. **PRECAUCIÓN** con `outline` y `focus rings`: Los navegadores (especialmente Chrome y Safari) agregan automáticamente un anillo azul de enfoque a los botones al hacer clic. Todo botón del sidebar debe incluir `outline-none focus:outline-none` para eliminar este artefacto visual.
+
+### 16.6 Falso Banner "SIN CONEXIÓN" en Módulo Grandeza al Acceder desde Internet (12/Julio/2026)
+
+**Archivo afectado:** `apps/pos/GrandezaDriverUI.jsx` (línea 113)
+**Fecha del incidente:** 12 de Julio de 2026
+
+**Contexto del Problema:**
+El repartidor accedía al módulo Grandeza desde su celular con datos móviles vía `reparto.rdericotoluca.com`. La interfaz cargaba correctamente (lista de clientes, fondo de caja, inventario), pero el banner ámbar **"📡 Sin conexión — Modo local activo"** permanecía fijo en la parte superior, a pesar de que el dispositivo tenía internet funcional y los datos se cargaban normalmente.
+
+**Diagnóstico — Inconsistencia entre `config.js` y `networkMonitor`:**
+1. El frontend se servía correctamente a través del túnel Cloudflare (`reparto.rdericotoluca.com` → `localhost:5000`), confirmando que el dispositivo sí tenía internet.
+2. Los datos (productos, clientes, jornada) cargaban correctamente porque `loadAll()` usaba `CONFIG.API_BASE_URL` (de `config.js`), que resolvía correctamente a `https://api.rdericotoluca.com/api/v1`.
+3. **Sin embargo**, el monitor de red (`networkMonitor.js`) — responsable del banner — construía su propia URL de API **manualmente**, sin usar `config.js`:
+   ```javascript
+   // ❌ CÓDIGO VIEJO — hardcodeaba el puerto 5001
+   const apiHost = `http://${window.location.hostname}:5001`;
+   ```
+4. Cuando `window.location.hostname` era `reparto.rdericotoluca.com`, el heartbeat apuntaba a `http://reparto.rdericotoluca.com:5001/health` — un endpoint **inexistente** (el puerto 5001 no está expuesto a internet, solo el túnel Cloudflare en `api.rdericotoluca.com` lo enruta).
+5. El heartbeat fallaba cada 30 segundos, `networkMonitor` reportaba `isOnline = false`, y el banner se activaba permanentemente.
+
+| Escenario | URL del heartbeat (viejo) | URL del heartbeat (corregido) |
+|---|---|---|
+| LAN (`192.168.1.x`) | `http://192.168.1.x:5001/health` ✅ | `http://192.168.1.x:5001/health` ✅ |
+| Internet (`reparto.rdericotoluca.com`) | `http://reparto.rdericotoluca.com:5001/health` ❌ | `https://api.rdericotoluca.com/health` ✅ |
+
+**Solución Aplicada:**
+Se reemplazó la construcción manual de la URL por una derivada de `CONFIG.API_BASE_URL`:
+```javascript
+// ✅ CÓDIGO CORREGIDO — Reutiliza la lógica de config.js
+const apiHost = CONFIG.API_BASE_URL.replace(/\/api\/v1$/, '');
+```
+
+**Reglas Arquitectónicas Derivadas:**
+- **PROHIBIDO** construir URLs de API manualmente con `window.location.hostname + ':5001'` o cualquier otra combinación de host+puerto. Siempre derivar desde `CONFIG.API_BASE_URL` (de `apps/pos/config.js`).
+- **OBLIGATORIO** que todo servicio auxiliar del frontend (monitores de red, GPS trackers, sincronización offline) derive su URL de API desde la misma fuente de verdad que usa el resto de la aplicación (`CONFIG`).
+- **LECCIÓN:** Cuando una parte de la app funciona (datos cargan) pero otra no (monitor de red dice offline), buscar **inconsistencias en la construcción de URLs** entre los diferentes servicios del frontend. La duplicación de lógica de resolución de URLs es una violación del principio DRY que causa bugs difíciles de diagnosticar.
 
 ---
 
