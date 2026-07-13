@@ -115,6 +115,47 @@ class GrandezaService:
         await db.flush()
         return client
 
+    async def deactivate_client(self, db: AsyncSession, client_id: int):
+        """Soft delete: desactiva el cliente y lo retira de todas las rutas."""
+        client = await self.get_client(db, client_id)
+        if not client:
+            return None
+        client.active = False
+        # Retirar de todas las rutas
+        await db.execute(
+            delete(GrandezaRouteSlot).where(GrandezaRouteSlot.client_id == client_id)
+        )
+        await db.commit()
+        return client
+
+    async def delete_client_permanently(self, db: AsyncSession, client_id: int):
+        """Hard delete: elimina el cliente y TODOS sus registros asociados (visitas, items, rutas)."""
+        client = await self.get_client(db, client_id)
+        if not client:
+            return None
+        # 1. Eliminar visit_items de las visitas de este cliente
+        visit_ids_stmt = select(GrandezaVisit.id).where(GrandezaVisit.client_id == client_id)
+        visit_ids_result = await db.execute(visit_ids_stmt)
+        visit_ids = [row[0] for row in visit_ids_result.all()]
+        if visit_ids:
+            await db.execute(
+                delete(GrandezaVisitItem).where(GrandezaVisitItem.visit_id.in_(visit_ids))
+            )
+        # 2. Eliminar visitas
+        await db.execute(
+            delete(GrandezaVisit).where(GrandezaVisit.client_id == client_id)
+        )
+        # 3. Eliminar route_slots (ya cubierto por cascade, pero explícito por seguridad)
+        await db.execute(
+            delete(GrandezaRouteSlot).where(GrandezaRouteSlot.client_id == client_id)
+        )
+        # 4. Eliminar el cliente
+        await db.execute(
+            delete(GrandezaClient).where(GrandezaClient.id == client_id)
+        )
+        await db.commit()
+        return True
+
     # ─── Route Slots ──────────────────────────────────────────────────────
 
     async def get_route_by_day(self, db: AsyncSession, day_of_week: str):

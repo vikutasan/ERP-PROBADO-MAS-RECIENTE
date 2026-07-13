@@ -81,6 +81,11 @@ export const GrandezaParamsUI = ({ onBack }) => {
     const [statsFilter, setStatsFilter] = useState('ALL');
     const [statsLoading, setStatsLoading] = useState(false);
 
+    // Eliminación de Clientes
+    const [clientTab, setClientTab] = useState('active');
+    const [clientToDelete, setClientToDelete] = useState(null);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
     // Tab: Rutas
     const [selectedDay, setSelectedDay] = useState('LUNES');
     const [routeSlots, setRouteSlots] = useState([]);
@@ -192,6 +197,44 @@ export const GrandezaParamsUI = ({ onBack }) => {
         }
     };
 
+    // ─── Handlers Deactivación / Eliminación Clientes ────────────────────────
+
+    const handleDeactivateClient = async (client) => {
+        try {
+            const res = await fetch(`${API_BASE}/grandeza/clients/${client.id}/deactivate`, { method: 'PATCH' });
+            if (res.ok) {
+                setEditingClient(null);
+                fetchClients();
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const handleReactivateClient = async (client) => {
+        try {
+            const res = await fetch(`${API_BASE}/grandeza/clients/${client.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: true })
+            });
+            if (res.ok) {
+                setEditingClient(null);
+                fetchClients();
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const handlePermanentDeleteClient = async (client) => {
+        try {
+            const res = await fetch(`${API_BASE}/grandeza/clients/${client.id}`, { method: 'DELETE' });
+            if (res.ok) {
+                setShowDeleteConfirm(false);
+                setClientToDelete(null);
+                setEditingClient(null);
+                fetchClients();
+            }
+        } catch (e) { console.error(e); }
+    };
+
     // ─── Handlers Rutas ──────────────────────────────────────────────────────
 
     const handleAddClientToRoute = async (clientId) => {
@@ -284,12 +327,16 @@ export const GrandezaParamsUI = ({ onBack }) => {
     };
 
     const renderClientsTab = () => {
+        const activeClients = clients.filter(c => c.active);
+        const inactiveClients = clients.filter(c => !c.active);
+        const displayedClients = clientTab === 'active' ? activeClients : inactiveClients;
+
         return (
             <div className="space-y-6 animate-in fade-in duration-500">
                 <div className="flex justify-between items-center bg-black/70 p-6 rounded-[24px] border border-white/5">
                     <div>
                         <h3 className="text-xl font-black uppercase tracking-tighter text-white mb-1">Directorio de Clientes</h3>
-                        <p className="text-sm text-white">Gestiona los {clients.length} clientes de la ruta Grandeza.</p>
+                        <p className="text-sm text-white">Gestiona los clientes de la ruta Grandeza.</p>
                     </div>
                     <button 
                         onClick={() => setEditingClient({ active: true })}
@@ -299,7 +346,38 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     </button>
                 </div>
 
+                {/* Sub-pestañas: Activos / Inactivos */}
+                <div className="flex gap-2 bg-black/40 rounded-xl p-1 border border-white/5 w-fit">
+                    <button
+                        onClick={() => setClientTab('active')}
+                        className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                            clientTab === 'active'
+                            ? 'bg-green-600 text-white shadow-lg shadow-green-500/20'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        Activos ({activeClients.length})
+                    </button>
+                    <button
+                        onClick={() => setClientTab('inactive')}
+                        className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                            clientTab === 'inactive'
+                            ? 'bg-red-600 text-white shadow-lg shadow-red-500/20'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        Inactivos ({inactiveClients.length})
+                    </button>
+                </div>
+
                 <div className="bg-black/70 rounded-[24px] border border-white/5 overflow-x-auto">
+                    {displayedClients.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                            <span className="text-3xl mb-3">{clientTab === 'active' ? '👥' : '📭'}</span>
+                            <p className="font-bold">{clientTab === 'active' ? 'No hay clientes activos' : 'No hay clientes inactivos'}</p>
+                            <p className="text-xs mt-1">{clientTab === 'active' ? 'Agrega un nuevo cliente con el botón de arriba.' : 'Los clientes desactivados aparecerán aquí.'}</p>
+                        </div>
+                    ) : (
                     <table className="w-full min-w-[800px] text-left">
                         <thead className="bg-black/40 text-xs font-bold text-amber-400 uppercase tracking-widest border-b border-white/5">
                             <tr>
@@ -311,7 +389,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {clients.map(c => (
+                            {displayedClients.map(c => (
                                 <tr key={c.id} className="hover:bg-white/5 transition-colors">
                                     <td className="p-4">
                                         <div className="font-bold text-amber-400">{c.name}</div>
@@ -351,6 +429,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                             ))}
                         </tbody>
                     </table>
+                    )}
                 </div>
 
                 {/* Modal de Edición de Cliente */}
@@ -395,9 +474,53 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                         <textarea name="notes" defaultValue={editingClient.notes} rows="2" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500"></textarea>
                                     </div>
                                 </div>
-                                <div className="flex justify-end gap-3 mt-8">
-                                    <button type="button" onClick={() => setEditingClient(null)} className="px-6 py-3 border border-white/10 rounded-xl text-sm font-bold text-gray-400 hover:bg-white/5">Cancelar</button>
-                                    <button type="submit" className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-sm rounded-xl transition-all shadow-lg shadow-orange-500/20">Guardar Cliente</button>
+                                <div className="flex justify-between gap-3 mt-8">
+                                    {/* Botón izquierdo: Desactivar o Eliminar según contexto */}
+                                    {editingClient.id && (
+                                        editingClient.active ? (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => handleDeactivateClient(editingClient)}
+                                                className="px-5 py-3 bg-orange-600/10 border border-orange-500/20 text-orange-500 rounded-xl text-[10px] font-black uppercase hover:bg-orange-600 hover:text-white transition-all group relative overflow-hidden"
+                                            >
+                                                <span className="relative z-10 flex items-center gap-2">
+                                                    <span className="text-sm">📥</span> Desactivar Cliente
+                                                </span>
+                                                <div className="absolute inset-0 bg-gradient-to-r from-orange-600 to-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </button>
+                                        ) : (
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => handleReactivateClient(editingClient)}
+                                                    className="px-5 py-3 bg-green-600/10 border border-green-500/20 text-green-500 rounded-xl text-[10px] font-black uppercase hover:bg-green-600 hover:text-white transition-all group relative overflow-hidden"
+                                                >
+                                                    <span className="relative z-10 flex items-center gap-2">
+                                                        <span className="text-sm">♻️</span> Reactivar
+                                                    </span>
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-green-600 to-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </button>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        setClientToDelete(editingClient);
+                                                        setShowDeleteConfirm(true);
+                                                    }}
+                                                    className="px-5 py-3 bg-red-600/10 border border-red-500/20 text-red-500 rounded-xl text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all group relative overflow-hidden"
+                                                >
+                                                    <span className="relative z-10 flex items-center gap-2">
+                                                        <span className="text-sm">💀</span> Eliminar Definitivamente
+                                                    </span>
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-rose-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </button>
+                                            </div>
+                                        )
+                                    )}
+                                    {/* Botones derechos: Cancelar + Guardar */}
+                                    <div className="flex gap-3 ml-auto">
+                                        <button type="button" onClick={() => setEditingClient(null)} className="px-6 py-3 border border-white/10 rounded-xl text-sm font-bold text-gray-400 hover:bg-white/5">Cancelar</button>
+                                        <button type="submit" className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-sm rounded-xl transition-all shadow-lg shadow-orange-500/20">Guardar Cliente</button>
+                                    </div>
                                 </div>
                             </form>
                         </div>
@@ -501,6 +624,39 @@ export const GrandezaParamsUI = ({ onBack }) => {
                         </div>
                     </div>
                 )}
+
+                {/* Modal de Confirmación de Eliminación Permanente */}
+                {showDeleteConfirm && clientToDelete && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+                        <div className="absolute inset-0 bg-black/95 backdrop-blur-2xl" onClick={() => setShowDeleteConfirm(false)}></div>
+                        <div className="relative w-full max-w-md bg-[#0a0a0a] border border-red-900/50 rounded-[40px] p-10 shadow-[0_0_100px_-20px_rgba(220,38,38,0.3)] text-center animate-in zoom-in-95 duration-500">
+                            <div className="w-20 h-20 bg-red-600/20 border-2 border-red-600 rounded-3xl mx-auto mb-8 flex items-center justify-center text-5xl animate-pulse">
+                                ⚠️
+                            </div>
+                            <h3 className="text-3xl font-black uppercase italic tracking-tighter text-red-500 mb-4">¡ALERTA CRÍTICA!</h3>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest leading-loose mb-10">
+                                Estás a punto de eliminar permanentemente al cliente:<br/>
+                                <span className="text-white text-sm block mt-2">"{clientToDelete.name}"</span>
+                                {clientToDelete.business_name && <span className="text-amber-400/60 text-[10px] block">{clientToDelete.business_name}</span>}
+                                <span className="text-red-400/60 text-[10px] block mt-4 italic">Esta acción no se puede deshacer. Se borrarán todas sus visitas, historial de ventas, estadísticas y datos asociados.</span>
+                            </p>
+                            <div className="flex gap-4">
+                                <button 
+                                    onClick={() => { setShowDeleteConfirm(false); setClientToDelete(null); }}
+                                    className="flex-1 py-4 bg-gray-800 rounded-2xl text-[10px] font-black uppercase hover:bg-gray-700 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={() => handlePermanentDeleteClient(clientToDelete)}
+                                    className="flex-1 py-4 bg-red-600 rounded-2xl text-[10px] font-black uppercase hover:scale-105 active:scale-95 transition-all shadow-xl shadow-red-600/30"
+                                >
+                                    Confirmar Destrucción
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
@@ -556,10 +712,10 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                         
                                         <button 
                                             onClick={() => handleRemoveClientFromRoute(index)}
-                                            className="w-8 h-8 rounded-full hover:bg-red-500/20 hover:text-red-400 text-gray-600 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+                                            className="w-8 h-8 rounded-full bg-red-500/20 text-red-400 shrink-0 hover:scale-110 transition-all flex items-center justify-center font-black"
                                             title="Remover de este día"
                                         >
-                                            ✕
+                                            -
                                         </button>
                                     </div>
                                 ))}
@@ -580,13 +736,26 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                             <div className="text-sm font-bold text-amber-400 truncate">{c.name}</div>
                                             <div className="text-[10px] text-white truncate">{c.business_name}</div>
                                         </div>
-                                        <button 
-                                            onClick={() => handleAddClientToRoute(c.id)}
-                                            disabled={isAlreadyInDay}
-                                            className="w-8 h-8 rounded-full bg-orange-600 text-white shrink-0 hover:scale-110 disabled:opacity-0 disabled:scale-100 transition-all flex items-center justify-center font-black"
-                                        >
-                                            +
-                                        </button>
+                                        {isAlreadyInDay ? (
+                                            <button 
+                                                onClick={() => {
+                                                    const idx = routeSlots.findIndex(s => s.client_id === c.id);
+                                                    if (idx !== -1) handleRemoveClientFromRoute(idx);
+                                                }}
+                                                className="w-8 h-8 rounded-full bg-red-500/20 text-red-400 shrink-0 hover:scale-110 transition-all flex items-center justify-center font-black"
+                                                title="Quitar de este día"
+                                            >
+                                                -
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                onClick={() => handleAddClientToRoute(c.id)}
+                                                className="w-8 h-8 rounded-full bg-orange-600 text-white shrink-0 hover:scale-110 transition-all flex items-center justify-center font-black"
+                                                title="Agregar a este día"
+                                            >
+                                                +
+                                            </button>
+                                        )}
                                     </div>
                                 );
                             })}
