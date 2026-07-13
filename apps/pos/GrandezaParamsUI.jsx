@@ -333,14 +333,14 @@ export const GrandezaParamsUI = ({ onBack }) => {
 
         return (
             <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="flex justify-between items-center bg-black/70 p-6 rounded-[24px] border border-white/5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-black/70 p-4 md:p-6 rounded-[24px] border border-white/5">
                     <div>
-                        <h3 className="text-xl font-black uppercase tracking-tighter text-white mb-1">Directorio de Clientes</h3>
-                        <p className="text-sm text-white">Gestiona los clientes de la ruta Grandeza.</p>
+                        <h3 className="text-lg md:text-xl font-black uppercase tracking-tighter text-white mb-1">Directorio de Clientes</h3>
+                        <p className="text-xs md:text-sm text-white">Gestiona los clientes de la ruta Grandeza.</p>
                     </div>
                     <button 
                         onClick={() => setEditingClient({ active: true })}
-                        className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-xs rounded-xl transition-all"
+                        className="w-full sm:w-auto px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-xs rounded-xl transition-all"
                     >
                         + Nuevo Cliente
                     </button>
@@ -370,7 +370,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                     </button>
                 </div>
 
-                <div className="bg-black/70 rounded-[24px] border border-white/5 overflow-x-auto">
+                <div className="bg-black/70 rounded-[24px] border border-white/5 overflow-hidden">
                     {displayedClients.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 text-gray-500">
                             <span className="text-3xl mb-3">{clientTab === 'active' ? '👥' : '📭'}</span>
@@ -378,66 +378,93 @@ export const GrandezaParamsUI = ({ onBack }) => {
                             <p className="text-xs mt-1">{clientTab === 'active' ? 'Agrega un nuevo cliente con el botón de arriba.' : 'Los clientes desactivados aparecerán aquí.'}</p>
                         </div>
                     ) : (
-                    <table className="w-full min-w-[800px] text-left">
-                        <thead className="bg-black/40 text-xs font-bold text-amber-400 uppercase tracking-widest border-b border-white/5">
-                            <tr>
-                                <th className="p-4">Cliente / Negocio</th>
-                                <th className="p-4">Contacto</th>
-                                <th className="p-4">Ubicación</th>
-                                <th className="p-4 text-center">Estado</th>
-                                <th className="p-4 text-right">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
+                    <>
+                        {/* Vista Móvil: Tarjetas */}
+                        <div className="md:hidden divide-y divide-white/5">
                             {displayedClients.map(c => (
-                                <tr key={c.id} className="hover:bg-white/5 transition-colors">
-                                    <td className="p-4">
-                                        <div className="font-bold text-amber-400">{c.name}</div>
-                                        <div className="text-xs text-white">{c.business_name || 'Sin negocio registrado'}</div>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="text-sm text-white">{c.phone || '-'}</div>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="text-sm text-white truncate max-w-[200px]">{c.address || '-'}</div>
-                                        {c.google_maps_url && (
-                                            <a href={c.google_maps_url} target="_blank" rel="noreferrer" className="text-xs text-orange-400 hover:underline">Ver en Mapa</a>
-                                        )}
-                                    </td>
-                                    <td className="p-4 text-center">
-                                        <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${c.active ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                <div key={c.id} className="p-4 hover:bg-white/5 transition-colors">
+                                    <div className="flex items-start justify-between gap-3 mb-2">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-amber-400 truncate">{c.name}</div>
+                                            <div className="text-xs text-white truncate">{c.business_name || 'Sin negocio'}</div>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0 ${c.active ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
                                             {c.active ? 'Activo' : 'Inactivo'}
                                         </span>
-                                    </td>
-                                    <td className="p-4 text-right">
-                                        <div className="flex gap-2 justify-end">
-                                            <button 
-                                                onClick={() => fetchClientStats(c)}
-                                                className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-xs font-bold text-cyan-400 transition-all"
-                                            >
-                                                📊
-                                            </button>
-                                            <button 
-                                                onClick={() => setEditingClient(c)}
-                                                className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-white transition-all"
-                                            >
-                                                Editar
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                    {c.phone && <div className="text-xs text-gray-400 mb-1">📞 {c.phone}</div>}
+                                    {c.address && <div className="text-xs text-gray-500 truncate mb-3">📍 {c.address}</div>}
+                                    <div className="flex gap-2">
+                                        <button onClick={() => fetchClientStats(c)} className="flex-1 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-xs font-bold text-cyan-400">📊 Stats</button>
+                                        <button onClick={() => setEditingClient(c)} className="flex-1 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-white">Editar</button>
+                                    </div>
+                                </div>
                             ))}
-                        </tbody>
-                    </table>
+                        </div>
+                        {/* Vista Desktop: Tabla */}
+                        <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-black/40 text-xs font-bold text-amber-400 uppercase tracking-widest border-b border-white/5">
+                                <tr>
+                                    <th className="p-4">Cliente / Negocio</th>
+                                    <th className="p-4">Contacto</th>
+                                    <th className="p-4">Ubicación</th>
+                                    <th className="p-4 text-center">Estado</th>
+                                    <th className="p-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                {displayedClients.map(c => (
+                                    <tr key={c.id} className="hover:bg-white/5 transition-colors">
+                                        <td className="p-4">
+                                            <div className="font-bold text-amber-400">{c.name}</div>
+                                            <div className="text-xs text-white">{c.business_name || 'Sin negocio registrado'}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="text-sm text-white">{c.phone || '-'}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="text-sm text-white truncate max-w-[200px]">{c.address || '-'}</div>
+                                            {c.google_maps_url && (
+                                                <a href={c.google_maps_url} target="_blank" rel="noreferrer" className="text-xs text-orange-400 hover:underline">Ver en Mapa</a>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${c.active ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                                {c.active ? 'Activo' : 'Inactivo'}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <div className="flex gap-2 justify-end">
+                                                <button 
+                                                    onClick={() => fetchClientStats(c)}
+                                                    className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-xs font-bold text-cyan-400 transition-all"
+                                                >
+                                                    📊
+                                                </button>
+                                                <button 
+                                                    onClick={() => setEditingClient(c)}
+                                                    className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-white transition-all"
+                                                >
+                                                    Editar
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        </div>
+                    </>
                     )}
                 </div>
 
                 {/* Modal de Edición de Cliente */}
                 {editingClient && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
                         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setEditingClient(null)}></div>
-                        <div className="relative bg-[#111] border border-white/10 rounded-[32px] p-8 max-w-2xl w-full shadow-2xl animate-in zoom-in-95">
-                            <h2 className="text-2xl font-black uppercase tracking-tighter text-white mb-6">
+                        <div className="relative bg-[#111] border border-white/10 rounded-t-[32px] md:rounded-[32px] p-5 md:p-8 max-w-2xl w-full shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                            <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-white mb-4 md:mb-6">
                                 {editingClient.id ? 'Editar Cliente' : 'Nuevo Cliente'}
                             </h2>
                             <form onSubmit={handleSaveClient} className="space-y-4">
@@ -461,20 +488,20 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                             <option value="false">Inactivo</option>
                                         </select>
                                     </div>
-                                    <div className="col-span-2">
+                                    <div className="md:col-span-2">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Dirección Física</label>
                                         <input name="address" defaultValue={editingClient.address} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500" />
                                     </div>
-                                    <div className="col-span-2">
+                                    <div className="md:col-span-2">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">URL Google Maps</label>
                                         <input name="google_maps_url" defaultValue={editingClient.google_maps_url} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500 text-orange-400" />
                                     </div>
-                                    <div className="col-span-2">
+                                    <div className="md:col-span-2">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Notas / Instrucciones de entrega</label>
                                         <textarea name="notes" defaultValue={editingClient.notes} rows="2" className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-orange-500"></textarea>
                                     </div>
                                 </div>
-                                <div className="flex justify-between gap-3 mt-8">
+                                <div className="flex flex-col md:flex-row justify-between gap-3 mt-6 md:mt-8">
                                     {/* Botón izquierdo: Desactivar o Eliminar según contexto */}
                                     {editingClient.id && (
                                         editingClient.active ? (
@@ -489,7 +516,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                                 <div className="absolute inset-0 bg-gradient-to-r from-orange-600 to-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                                             </button>
                                         ) : (
-                                            <div className="flex gap-2">
+                                            <div className="flex flex-col sm:flex-row gap-2">
                                                 <button 
                                                     type="button" 
                                                     onClick={() => handleReactivateClient(editingClient)}
@@ -517,9 +544,9 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                         )
                                     )}
                                     {/* Botones derechos: Cancelar + Guardar */}
-                                    <div className="flex gap-3 ml-auto">
-                                        <button type="button" onClick={() => setEditingClient(null)} className="px-6 py-3 border border-white/10 rounded-xl text-sm font-bold text-gray-400 hover:bg-white/5">Cancelar</button>
-                                        <button type="submit" className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-sm rounded-xl transition-all shadow-lg shadow-orange-500/20">Guardar Cliente</button>
+                                    <div className="flex gap-3 md:ml-auto">
+                                        <button type="button" onClick={() => setEditingClient(null)} className="flex-1 md:flex-none px-6 py-3 border border-white/10 rounded-xl text-sm font-bold text-gray-400 hover:bg-white/5">Cancelar</button>
+                                        <button type="submit" className="flex-1 md:flex-none px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-sm rounded-xl transition-all shadow-lg shadow-orange-500/20">Guardar</button>
                                     </div>
                                 </div>
                             </form>
@@ -665,18 +692,18 @@ export const GrandezaParamsUI = ({ onBack }) => {
         return (
             <div className="space-y-6 animate-in fade-in duration-500">
                 {/* Días de la Semana */}
-                <div className="flex flex-wrap md:flex-nowrap gap-2 p-2 bg-black/40 rounded-2xl border border-white/5">
+                <div className="flex gap-2 p-2 bg-black/40 rounded-2xl border border-white/5 overflow-x-auto custom-scrollbar">
                     {DAYS.map(day => (
                         <button
                             key={day}
                             onClick={() => setSelectedDay(day)}
-                            className={`flex-1 min-w-[100px] py-3 px-2 md:px-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all ${
+                            className={`flex-none md:flex-1 min-w-[80px] py-3 px-3 md:px-4 rounded-xl font-black uppercase tracking-widest text-[10px] md:text-xs transition-all ${
                                 selectedDay === day 
                                 ? 'bg-orange-600 text-white shadow-lg shadow-orange-500/20 scale-[1.02]' 
                                 : 'text-white hover:bg-white/5 hover:text-white'
                             }`}
                         >
-                            {day}
+                            {day.slice(0, 3)}<span className="hidden md:inline">{day.slice(3)}</span>
                         </button>
                     ))}
                 </div>
