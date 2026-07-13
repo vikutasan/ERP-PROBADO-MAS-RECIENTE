@@ -27,6 +27,7 @@ import { AuditoriaUI as AuditoriaControlUI } from './AuditoriaControlUI';
 import { SystemSettingsUI } from './settings/SystemSettingsUI';
 import { NetworkMonitorUI } from './network/NetworkMonitorUI';
 import { RepartoPanGrandezaUI } from './pos/RepartoPanGrandezaUI';
+import { CONFIG } from './pos/config';
 import REAL_PRODUCTS from '../importar_productos_AQUI.json';
 
 /**
@@ -111,7 +112,7 @@ export const ExperimentCenterUI = () => {
         { id: 'auditoria', name: 'Auditoría y Control', color: 'bg-slate-900', icon: '📋', access: ['ADMIN', 'MANAGER'] },
         { id: 'settings', name: 'Ajustes del Sistema', color: 'bg-red-900', icon: '⚙️', access: ['ADMIN'] },
         { id: 'network_monitor', name: 'Monitoreo de Red', color: 'bg-cyan-900', icon: '📡', access: ['ADMIN', 'MANAGER'] },
-        { id: 'reparto_grandeza', name: 'Reparto Pan Grandeza', color: 'bg-amber-700', icon: `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`, access: ['ADMIN', 'MANAGER', 'LOGISTICS', 'DRIVER'] },
+        { id: 'reparto_grandeza', name: 'Reparto Pan Grandeza', color: 'bg-amber-700', icon: `${CONFIG.API_BASE_URL.replace(/\/api\/v1$/, '')}/static/images/grandeza/logo.png`, access: ['ADMIN', 'MANAGER', 'LOGISTICS', 'DRIVER'] },
     ];
 
 
@@ -159,18 +160,39 @@ export const ExperimentCenterUI = () => {
     };
 
     return (
-        <div className="bg-[#050505] h-screen text-white font-sans flex overflow-hidden">
+        <div className="bg-[#050505] h-screen text-white font-sans flex overflow-hidden relative">
 
             {/* Sidebar de Control */}
-            <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-80'} bg-black/40 border-r border-gray-800 p-8 flex flex-col backdrop-blur-3xl transition-all duration-500 ease-in-out relative group`}>
+            <aside className={`
+                ${isSidebarCollapsed ? 'md:w-20 pointer-events-none md:pointer-events-auto' : 'w-80 pointer-events-auto'} 
+                md:relative h-full bg-[#050505] md:bg-black/40 border-r border-gray-800 p-8 flex flex-col backdrop-blur-3xl transition-all duration-500 ease-in-out group shadow-2xl md:shadow-none
+            `}
+            style={{
+                position: window.innerWidth < 768 ? 'fixed' : 'relative',
+                top: 0,
+                left: window.innerWidth < 768 ? (isSidebarCollapsed ? '-100%' : '0') : 'auto',
+                zIndex: 999990
+            }}>
 
-                {/* Botón para Colapsar/Expandir */}
+                {/* Botón para Cerrar en MÓVIL */}
                 <button
-                    onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                    className="absolute -right-4 top-10 w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center border border-white/10 shadow-xl z-50 hover:scale-110 active:scale-95 transition-all text-[10px]"
+                    onClick={() => setIsSidebarCollapsed(true)}
+                    className={`absolute right-4 top-10 w-10 h-10 bg-orange-600 rounded-full md:hidden flex items-center justify-center border border-white/10 shadow-xl hover:scale-110 active:scale-95 transition-all text-sm z-[99999] ${isSidebarCollapsed ? 'hidden' : 'flex'} text-white outline-none focus:outline-none pointer-events-auto`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
-                    {isSidebarCollapsed ? '→' : '←'}
+                    ←
                 </button>
+
+                {/* Medio-Botón para ESCRITORIO (Cortado a la mitad exactamente en el borde) */}
+                <div className="hidden md:block absolute right-0 top-10 w-4 h-8 overflow-hidden z-[99999]">
+                    <button
+                        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                        className="absolute left-0 top-0 w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center border border-white/10 shadow-xl hover:scale-110 active:scale-95 transition-all text-[10px] text-white outline-none focus:outline-none"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                        {isSidebarCollapsed ? '→' : '←'}
+                    </button>
+                </div>
 
                 <div className="mb-12 flex items-center gap-4 group/logo cursor-pointer overflow-hidden">
                     <div className="w-16 h-16 bg-transparent flex items-center justify-center overflow-hidden transition-all group-hover/logo:scale-110 shrink-0">
@@ -332,6 +354,27 @@ export const ExperimentCenterUI = () => {
 
                 </div>
             </main>
+
+            {/* Pestañita flotante para móviles cuando está cerrado - DIAGNÓSTICO */}
+            {isSidebarCollapsed && (
+                <button
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    className="flex items-center justify-center bg-orange-600 text-white text-lg border border-l-0 border-white/20 shadow-[0_0_30px_rgba(234,88,12,0.8)] outline-none focus:outline-none"
+                    style={{ 
+                        position: 'fixed',
+                        left: '0px', 
+                        top: '40px', 
+                        width: '25px', 
+                        height: '50px', 
+                        borderTopRightRadius: '25px',
+                        borderBottomRightRadius: '25px',
+                        zIndex: 2147483647,
+                        WebkitTapHighlightColor: 'transparent'
+                    }}
+                >
+                    <span className="pr-1">▶</span>
+                </button>
+            )}
 
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 6px; }

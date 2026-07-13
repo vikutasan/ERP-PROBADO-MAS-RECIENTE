@@ -190,6 +190,12 @@ async def get_suggestions(client_id: int, db: AsyncSession = Depends(get_db)):
     return await grandeza_service.get_client_suggestions(db, client_id)
 
 
+@router.get("/clients/{client_id}/statistics")
+async def get_client_statistics(client_id: int, db: AsyncSession = Depends(get_db)):
+    """Historial completo de visitas y resumen por producto para el modal de estadísticas del administrador."""
+    return await grandeza_service.get_client_statistics(db, client_id)
+
+
 # ─── Pedidos Grandeza ─────────────────────────────────────────────────────────
 
 @router.get("/orders")

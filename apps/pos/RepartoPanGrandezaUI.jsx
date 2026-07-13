@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GrandezaParamsUI } from './GrandezaParamsUI';
 import { GrandezaDailyUI } from './GrandezaDailyUI';
 import { GrandezaDriverUI } from './GrandezaDriverUI';
+import { CONFIG } from './config';
 
 /**
  * REPARTO PAN GRANDEZA — Landing Page
@@ -17,7 +18,7 @@ export const RepartoPanGrandezaUI = ({ onBack, userPermissions = {}, userRole = 
     const initialSuite = (userRole === 'DRIVER' || isDriverTerminal) ? 'driver' : null;
     
     const [activeSuite, setActiveSuite] = useState(initialSuite);
-    const LOGO_URL = `http://${window.location.hostname}:5001/static/images/grandeza/logo.png`;
+    const LOGO_URL = `${CONFIG.API_BASE_URL.replace('/api/v1', '')}/static/images/grandeza/logo.png`;
 
     // Helper: verificar permiso (Master Access o permiso específico o Rol legado)
     const hasPermission = (permId) => {

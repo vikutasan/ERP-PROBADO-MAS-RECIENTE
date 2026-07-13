@@ -345,7 +345,8 @@ class GrandezaService:
     # ─── Sugerencias ──────────────────────────────────────────────────────
 
     async def get_client_suggestions(self, db: AsyncSession, client_id: int):
-        """Calcula promedio de piezas vendidas netas (frescas - cambios) por producto en las últimas 3 visitas."""
+        """Calcula promedio de piezas vendidas netas (frescas - cambios) por producto en las últimas 3 visitas.
+        También devuelve last_fresh_qty para cálculo dinámico en el frontend."""
         # 1. Obtener las últimas 3 visitas completadas
         visit_stmt = (
             select(GrandezaVisit)
@@ -364,11 +365,16 @@ class GrandezaService:
         # 2. Agrupar items por producto
         from collections import defaultdict
         product_sales = defaultdict(list)
+        # Guardar las frescas de la visita más reciente (índice 0) para sugerencia dinámica
+        last_visit_fresh = {}
         
-        for v in last_visits:
+        for i, v in enumerate(last_visits):
             for item in v.items:
                 net_sale = max(0, (item.actual_fresh_qty or 0) - (item.exchange_qty or 0))
                 product_sales[item.product_id].append(net_sale)
+                # Solo guardar de la visita más reciente (i == 0)
+                if i == 0:
+                    last_visit_fresh[item.product_id] = item.actual_fresh_qty or 0
 
         # 3. Calcular promedios
         suggestions = []
@@ -379,10 +385,90 @@ class GrandezaService:
             suggestions.append({
                 "product_id": pid,
                 "suggested_qty": math.ceil(avg), # Redondeo hacia arriba por seguridad de inventario
-                "visit_count": len(sales)
+                "visit_count": len(sales),
+                "last_fresh_qty": last_visit_fresh.get(pid, 0)  # Frescas dejadas en la última visita
             })
 
         return suggestions
+
+    # ─── Estadísticas por Cliente ─────────────────────────────────────────
+
+    async def get_client_statistics(self, db: AsyncSession, client_id: int):
+        """Historial completo de visitas de un cliente con desglose por producto."""
+        # 1. Obtener TODAS las visitas completadas del cliente
+        visit_stmt = (
+            select(GrandezaVisit)
+            .where(GrandezaVisit.client_id == client_id)
+            .where(GrandezaVisit.status == "COMPLETADA")
+            .order_by(GrandezaVisit.created_at.desc())
+            .options(selectinload(GrandezaVisit.items))
+        )
+        visit_result = await db.execute(visit_stmt)
+        all_visits = visit_result.scalars().all()
+
+        if not all_visits:
+            return {"visits": [], "summary": {}}
+
+        # 2. Construir historial de visitas
+        from collections import defaultdict
+        visits_data = []
+        product_totals = defaultdict(lambda: {"fresh": 0, "exchange": 0, "capitalized": 0, "count": 0, "product_name": ""})
+
+        for v in all_visits:
+            visit_entry = {
+                "visit_id": v.id,
+                "date": v.created_at.strftime("%Y-%m-%d") if v.created_at else None,
+                "sale_amount": v.sale_amount or 0,
+                "items": []
+            }
+            for item in v.items:
+                fresh = item.actual_fresh_qty or 0
+                exchange = item.exchange_qty or 0
+                capitalized = max(0, fresh - exchange)
+                
+                # Obtener nombre del producto
+                prod_stmt = select(Product).where(Product.id == item.product_id)
+                prod_result = await db.execute(prod_stmt)
+                product = prod_result.scalar_one_or_none()
+                product_name = product.name if product else f"Producto #{item.product_id}"
+
+                visit_entry["items"].append({
+                    "product_id": item.product_id,
+                    "product_name": product_name,
+                    "fresh_qty": fresh,
+                    "exchange_qty": exchange,
+                    "capitalized": capitalized,
+                    "unit_price": item.unit_price or 0
+                })
+
+                # Acumular para resumen
+                product_totals[item.product_id]["fresh"] += fresh
+                product_totals[item.product_id]["exchange"] += exchange
+                product_totals[item.product_id]["capitalized"] += capitalized
+                product_totals[item.product_id]["count"] += 1
+                product_totals[item.product_id]["product_name"] = product_name
+
+            visits_data.append(visit_entry)
+
+        # 3. Calcular resumen por producto
+        import math
+        summary = {}
+        for pid, totals in product_totals.items():
+            count = totals["count"]
+            summary[str(pid)] = {
+                "product_id": pid,
+                "product_name": totals["product_name"],
+                "total_visits": count,
+                "total_fresh": totals["fresh"],
+                "total_exchange": totals["exchange"],
+                "total_capitalized": totals["capitalized"],
+                "avg_fresh": round(totals["fresh"] / count, 1) if count else 0,
+                "avg_exchange": round(totals["exchange"] / count, 1) if count else 0,
+                "avg_capitalized": round(totals["capitalized"] / count, 1) if count else 0,
+                "suggested_qty": math.ceil(totals["capitalized"] / count) if count else 0
+            }
+
+        return {"visits": visits_data, "summary": summary}
 
     # ─── Pedidos Grandeza ─────────────────────────────────────────────────
 
