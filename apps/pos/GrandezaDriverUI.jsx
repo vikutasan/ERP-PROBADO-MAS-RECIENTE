@@ -403,7 +403,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             msg += `• *${it.product_name}* ($${it.b2b_price.toFixed(2)})\n  `;
             let details = [];
             if (it.actual_fresh_qty > 0) details.push(`+${it.actual_fresh_qty} entregas`);
-            if (it.exchange_qty > 0) details.push(`-${it.exchange_qty} cambios`);
+            if (it.exchange_qty > 0) details.push(`-${it.exchange_qty} recompras`);
             details.push(`Neto: $${netAmount.toFixed(2)}`);
             
             msg += details.join(' | ') + `\n`;
