@@ -61,6 +61,22 @@ async def update_client(client_id: int, data: schemas.GrandezaClientUpdate, db: 
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return client
 
+@router.patch("/clients/{client_id}/deactivate")
+async def deactivate_client(client_id: int, db: AsyncSession = Depends(get_db)):
+    """Soft delete: desactiva el cliente y lo retira de todas las rutas."""
+    client = await grandeza_service.deactivate_client(db, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return {"message": f"Cliente '{client.name}' desactivado y retirado de rutas"}
+
+@router.delete("/clients/{client_id}")
+async def delete_client_permanently(client_id: int, db: AsyncSession = Depends(get_db)):
+    """Hard delete: elimina el cliente y TODOS sus registros (visitas, items, rutas) permanentemente."""
+    result = await grandeza_service.delete_client_permanently(db, client_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return {"message": "Cliente eliminado permanentemente"}
+
 
 # ─── Rutas por Día ────────────────────────────────────────────────────────────
 
