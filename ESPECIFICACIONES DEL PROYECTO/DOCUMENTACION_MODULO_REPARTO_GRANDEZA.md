@@ -140,36 +140,24 @@ stmt = (
 
 ### Error F: "Failed to fetch" al abrir nueva jornada (Columna de base de datos faltante)
 **Síntoma:** Al intentar "ABRIR JORNADA DE HOY" desde la interfaz, el frontend lanzaba inmediatamente un `Error de red: Failed to fetch`.
-**Diagnóstico:** 
-1. Como se vio en el Error B, un "Failed to fetch" suele ocultar un Error 500 del backend sin cabeceras CORS.
-2. Al revisar la tabla `grandeza_journeys` en PostgreSQL y compararla con `models.py`, el modelo en Python definía el campo `dispatched_at` (añadido recientemente para rastrear la hora de despacho de ruta), pero la tabla física en la base de datos carecía de esta columna.
-3. El script inicial (`auto_seed_on_first_boot`) usa `Base.metadata.create_all`, el cual **no realiza migraciones** en tablas ya existentes. Por tanto, SQLAlchemy fallaba silenciosamente al hacer el `INSERT`.
-**Solución:** Se añadió la columna faltante directamente en la base de datos mediante SQL (`ALTER TABLE grandeza_journeys ADD COLUMN dispatched_at TIMESTAMP WITHOUT TIME ZONE;`).
+**Diagnóstico:** El modelo en Python definía el campo `dispatched_at` (añadido recientemente para rastrear la hora de despacho de ruta), pero la tabla física en la base de datos carecía de esta columna. El script inicial (`auto_seed_on_first_boot`) usa `Base.metadata.create_all`, el cual **no realiza migraciones** en tablas ya existentes.
 
 ### Error G: "SIN CONEXIÓN — MODO LOCAL ACTIVO" falso al acceder desde internet (12/Julio/2026)
-**Síntoma:** El repartidor accedía al sistema desde su celular con datos móviles vía `reparto.rdericotoluca.com`. La interfaz cargaba correctamente (lista de clientes, fondo de caja, inventario), pero el banner ámbar **"📡 Sin conexión — Modo local activo"** permanecía fijo en la parte superior. El repartidor tenía internet funcional.
-**Diagnóstico:**
-1. El frontend se servía correctamente a través del túnel Cloudflare (`reparto.rdericotoluca.com` → `localhost:5000`). Esto confirmaba que el dispositivo sí tenía internet y el túnel del frontend funcionaba.
-2. El banner se activa cuando `isOnline === false`, controlado por `networkMonitor.js`, que hace un heartbeat cada 30s al endpoint `/health` de la API.
-3. **La causa raíz** estaba en `GrandezaDriverUI.jsx` línea 113. El monitor construía la URL de API así:
-   ```javascript
-   // ❌ CÓDIGO VIEJO (roto para acceso por internet)
-   const apiHost = `http://${window.location.hostname}:5001`;
-   ```
-4. Cuando `window.location.hostname` era `reparto.rdericotoluca.com`, la URL resultante era `http://reparto.rdericotoluca.com:5001/health` — un endpoint **inexistente** porque el puerto 5001 no está expuesto a internet (solo el túnel de Cloudflare en `api.rdericotoluca.com` lo enruta).
-5. Mientras tanto, `config.js` (usado por el resto de la app para llamadas de datos) **sí manejaba correctamente** ambos escenarios (LAN vs Internet), por lo que la data sí cargaba. La inconsistencia era exclusiva del monitor de red.
+**Síntoma:** El repartidor accedía al sistema desde su celular con datos móviles vía `reparto.rdericotoluca.com`. La interfaz cargaba correctamente, pero el banner ámbar permanecía fijo en la parte superior porque el heartbeat al endpoint `/health` fallaba al intentar atacar una URL pública con puerto local (ej: `http://reparto.rdericotoluca.com:5001/health`).
+**Solución:** Se reemplazó la construcción manual de la URL por una derivada de `CONFIG.API_BASE_URL`.
 
-| Escenario | URL generada (viejo) | URL correcta |
-|---|---|---|
-| LAN (`192.168.1.x`) | `http://192.168.1.x:5001/health` ✅ | `http://192.168.1.x:5001/health` ✅ |
-| Internet (`reparto.rdericotoluca.com`) | `http://reparto.rdericotoluca.com:5001/health` ❌ | `https://api.rdericotoluca.com/health` ✅ |
-
-**Solución:** Se reemplazó la construcción manual de la URL por una derivada de `CONFIG.API_BASE_URL` (que ya maneja ambos escenarios):
-```javascript
-// ✅ CÓDIGO CORREGIDO — Reutiliza la lógica de config.js
-const apiHost = CONFIG.API_BASE_URL.replace(/\/api\/v1$/, '');
+### Error H: Timestamps del Backend en UTC en vez de Hora de México (13/Julio/2026)
+**Síntoma:** Las visitas del repartidor se registraban con hora UTC en la base de datos. Una visita realizada a las 22:00 hora de México aparecía como `04:00` del día siguiente en `arrived_at` y `completed_at`.
+**Diagnóstico:** La función `create_visit()` en `service.py` usaba `datetime.now()`, que devuelve la hora del **sistema operativo del contenedor Docker**. Los contenedores Docker corren en UTC por defecto, independientemente del timezone del host Windows.
+**Solución:** Se creó una función helper `_now_mexico()` a nivel de módulo en `service.py` que fuerza explícitamente `America/Mexico_City`:
+```python
+# SOLUCIÓN APLICADA EN apps/api/modules/grandeza/service.py
+from zoneinfo import ZoneInfo
+MEXICO_TZ = ZoneInfo('America/Mexico_City')
+def _now_mexico():
+    return datetime.now(MEXICO_TZ).replace(tzinfo=None)
 ```
-**Archivo modificado:** `apps/pos/GrandezaDriverUI.jsx` (línea 113).
+Se reemplazaron los 3 usos de `datetime.now()` en el archivo (despacho, llegada, cierre).
 
 ---
 
@@ -183,6 +171,7 @@ const apiHost = CONFIG.API_BASE_URL.replace(/\/api\/v1$/, '');
 7. **Sincronización de Base de Datos (Migraciones):** Ya que el sistema usa `create_all` al arrancar, este no altera tablas existentes. Si agregas columnas a los modelos de SQLAlchemy, DEBES ejecutar el `ALTER TABLE` correspondiente en la base de datos; de lo contrario, provocarás caídas silenciosas (Error 500).
 8. **No instalar Service Workers ni PWA plugins globales:** El frontend del POS y Grandeza comparten el mismo Vite build. Registrar un Service Worker global interceptaría las peticiones del POS. La funcionalidad offline se resuelve exclusivamente con IndexedDB dentro de `GrandezaDriverUI.jsx`.
 9. **Toda URL de API debe derivarse de `CONFIG.API_BASE_URL`:** Nunca construir URLs de API manualmente con `window.location.hostname + ':5001'`. El archivo `config.js` es la **única fuente de verdad** para la base de la URL de API. Cualquier servicio interno (networkMonitor, GPS, sync) debe derivar su URL desde `CONFIG.API_BASE_URL`. Hardcodear puertos causa falsos negativos de conectividad cuando se accede desde internet vía Cloudflare Tunnels (ver Error G).
+10. **Timestamps del backend en hora de México:** Dentro del módulo Grandeza, **nunca usar `datetime.now()` directamente**. Siempre usar la función helper `_now_mexico()` definida en `service.py`, que fuerza `America/Mexico_City` y devuelve un datetime naive compatible con PostgreSQL. Los contenedores Docker corren en UTC por defecto (ver Error H).
 
 ---
 
@@ -282,3 +271,32 @@ Se agregó un botón **"📊"** en el directorio de clientes de la suite `Grande
 ### 11.3 UI y Comunicación
 - **WhatsApp:** El mensaje fue rediseñado para ser más profesional y ocupar menos espacio en pantalla. Se eliminaron los íconos excesivos y las leyendas de la marca ("R DE RICO", "PAN GRANDEZA"). Se agregó el teléfono de Servicio al Cliente (SAC) al final. El término "cambios" fue reemplazado por "recompras" para mayor claridad del cliente.
 - **Sidebar:** El botón flotante de la suite Grandeza en el menú principal (`ExperimentCenterUI`) fue rediseñado de un cuadrado a un medio círculo estilizado, ocupando menos espacio y mejorando la estética.
+
+---
+
+## 12. Mejoras de Robustez y Correcciones (v7.2.0 — 13/Julio/2026)
+
+### 12.1 Persistencia de Borrador de Visita (Anti-Kill de Pestaña Móvil)
+**Problema:** Cuando el repartidor cambiaba de app en el celular (WhatsApp, llamada, etc.), el SO de Android/iOS podía matar la pestaña del navegador para liberar RAM. Al regresar, la página se recargaba y **todos los datos capturados** (piezas de cambio, frescas, pago recibido, notas) se perdían.
+
+**Solución:** Se implementó un hook `useVisitDraft` en `GrandezaDriverUI.jsx` que persiste automáticamente los datos de la visita activa en `localStorage` del navegador en cada cambio de campo. Al recargar la página, si existe un borrador, se restaura inmediatamente incluyendo la vista activa.
+
+### 12.2 Fix: Modal de Edición de Cliente en Vista de Visita
+**Problema:** El botón ✏️ de editar cliente dentro de la vista de visita no abría el modal. Funcionaba solo si el usuario presionaba "← Ruta" después.
+
+**Causa:** El componente `EditClientModal` estaba renderizado en las vistas de ESPERANDO_FIRMA y Ruta, pero **faltaba en la vista de Visita**. 
+
+**Solución:** Se agregó el renderizado de `EditClientModal` dentro del bloque JSX de la vista de visita. Al guardar cambios del cliente, también se actualiza `activeVisit` para que la UI refleje los datos nuevos inmediatamente.
+
+### 12.3 Protección contra Visitas Duplicadas (Backend)
+**Problema:** Podían registrarse múltiples visitas al mismo cliente en la misma jornada.
+
+**Solución:** Se agregó validación en `create_visit()` de `service.py`. Antes de crear la visita, verifica si ya existe una visita `COMPLETADA` para el mismo `client_id` en la misma jornada. Si existe, rechaza con **HTTP 409**.
+**Frontend:** `saveVisit()` ahora maneja el 409 específicamente: muestra toast "⚠️ Este cliente ya fue visitado hoy", limpia el borrador y regresa a la vista de ruta.
+
+### 12.4 Corrección de Timezone en Timestamps del Backend
+**Problema:** Los timestamps de visitas (`arrived_at`, `completed_at`) y despacho de ruta (`dispatched_at`) se guardaban en UTC en vez de hora de México.
+
+**Solución:** Se creó la función helper `_now_mexico()` a nivel de módulo en `service.py` que fuerza `America/Mexico_City` y devuelve un datetime naive compatible con PostgreSQL. Se reemplazaron los 3 usos de `datetime.now()` en el archivo. (Ver detalles en **Error H**).
+
+> ⚠️ **NOTA:** Esta corrección es exclusiva del módulo Grandeza. Una corrección global a nivel de contenedor Docker queda pendiente como proyecto separado que requiere auditoría completa del ERP.

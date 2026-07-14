@@ -6,8 +6,9 @@ import {
   List, Table, Zap, Target, DollarSign, Package, Percent, X, Check,
   LayoutDashboard, Sparkles, Calendar
 } from 'lucide-react';
+import { CONFIG } from '../pos/config';
 
-const API_BASE = `http://${window.location.hostname}:5001/api/v1`;
+const API_BASE = CONFIG.API_BASE_URL;
 const STORAGE_KEY = 'rderico_sales_dashboard_v2';
 
 const COLOR_PALETTES = {

@@ -7,7 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
+# ─── Timezone: Hora oficial de México para todos los timestamps de Grandeza ───
+# Los contenedores Docker corren en UTC por defecto. Esta función garantiza
+# que los timestamps se guarden en hora local de México sin depender del SO.
+MEXICO_TZ = ZoneInfo('America/Mexico_City')
+
+def _now_mexico():
+    """Retorna datetime naive en hora de Ciudad de México (sin tzinfo, compatible con PostgreSQL)."""
+    return datetime.now(MEXICO_TZ).replace(tzinfo=None)
 
 from .models import (
     GrandezaProductConfig, GrandezaClient, GrandezaRouteSlot,
@@ -209,9 +219,8 @@ class GrandezaService:
         if not journey:
             return None
             
-        from datetime import datetime
         if data.get("status") == "EN_RUTA" and journey.status != "EN_RUTA" and not journey.dispatched_at:
-            journey.dispatched_at = datetime.now()
+            journey.dispatched_at = _now_mexico()
             
         for key, value in data.items():
             if value is not None and hasattr(journey, key):
@@ -329,15 +338,36 @@ class GrandezaService:
         return response
 
     async def create_visit(self, db: AsyncSession, journey_id: int, data: dict):
-        from datetime import datetime
+        from fastapi import HTTPException
+
+        # ─── Protección contra visitas duplicadas ───
+        # Si ya existe una visita COMPLETADA para este client_id en esta jornada,
+        # rechazar para evitar duplicados accidentales.
+        # Las visitas extemporáneas (client_id=None) se excluyen de esta validación.
+        client_id = data.get("client_id")
+        if client_id is not None:
+            existing_stmt = (
+                select(GrandezaVisit)
+                .where(GrandezaVisit.journey_id == journey_id)
+                .where(GrandezaVisit.client_id == client_id)
+                .where(GrandezaVisit.status == "COMPLETADA")
+            )
+            existing_result = await db.execute(existing_stmt)
+            if existing_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Ya existe una visita completada para este cliente (ID: {client_id}) en esta jornada."
+                )
+
+        ahora_mexico = _now_mexico()
         visit = GrandezaVisit(
             journey_id=journey_id,
-            client_id=data.get("client_id"),
+            client_id=client_id,
             visit_order=data.get("visit_order", 0),
             visit_type=data.get("visit_type", "PROGRAMADA"),
             status="COMPLETADA",
-            arrived_at=datetime.now(),
-            completed_at=datetime.now(),
+            arrived_at=ahora_mexico,
+            completed_at=ahora_mexico,
             total_exchange_amount=data.get("total_exchange_amount", 0),
             total_fresh_amount=data.get("total_fresh_amount", 0),
             sale_amount=data.get("sale_amount", 0),

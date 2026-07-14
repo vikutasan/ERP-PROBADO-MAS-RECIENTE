@@ -4,6 +4,28 @@ import { createNetworkMonitor } from './services/networkMonitor';
 import { CONFIG } from './config';
 import { securityService } from './services/securityService';
 
+// ─── Hook: Borrador de visita en localStorage ───
+// Previene pérdida de datos cuando el SO del móvil mata la pestaña
+// al cambiar de app (WhatsApp, llamada, etc.)
+const VISIT_DRAFT_KEY = 'grandeza_visit_draft';
+
+const useVisitDraft = () => {
+    const saveDraft = (data) => {
+        try { localStorage.setItem(VISIT_DRAFT_KEY, JSON.stringify(data)); }
+        catch (e) { /* localStorage lleno o no disponible — falla silenciosa */ }
+    };
+    const loadDraft = () => {
+        try {
+            const raw = localStorage.getItem(VISIT_DRAFT_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    };
+    const clearDraft = () => {
+        try { localStorage.removeItem(VISIT_DRAFT_KEY); } catch (e) {}
+    };
+    return { saveDraft, loadDraft, clearDraft };
+};
+
 const DriverBackground = () => (
     <>
         <div className="absolute inset-0 z-0 pointer-events-none" style={{
@@ -43,6 +65,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const [isOnline, setIsOnline] = useState(true);
     const [pendingSyncCount, setPendingSyncCount] = useState(0);
     const [lastVisitResult, setLastVisitResult] = useState(null); // Para modal post-visita
+    const [selectedVisitDetail, setSelectedVisitDetail] = useState(null); // Para modal detalle de visita en Resumen
     const [pinInput, setPinInput] = useState('');
     const networkMonitorRef = useRef(null);
     const canEditClients = userPermissions.all === 'full' || userPermissions.grandeza_edit_clients === 'full';
@@ -68,6 +91,29 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const todayDay = getTodayDay();
 
     const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null), 3000); };
+
+    // ─── Borrador de visita (anti-kill de pestaña móvil) ───
+    const { saveDraft, loadDraft, clearDraft } = useVisitDraft();
+
+    // Restaurar borrador al montar (si el SO mató la pestaña)
+    useEffect(() => {
+        const draft = loadDraft();
+        if (draft && draft.activeVisit) {
+            setVisitItems(draft.visitItems || []);
+            setPaymentReceived(draft.paymentReceived || '');
+            setIncidentNotes(draft.incidentNotes || '');
+            setActiveVisit(draft.activeVisit);
+            setExtClientName(draft.extClientName || '');
+            setView('visit');
+        }
+    }, []);
+
+    // Persistir borrador en cada cambio mientras la visita está activa
+    useEffect(() => {
+        if (view === 'visit' && activeVisit) {
+            saveDraft({ visitItems, paymentReceived, incidentNotes, activeVisit, extClientName });
+        }
+    }, [visitItems, paymentReceived, incidentNotes, activeVisit, extClientName, view]);
 
     // ─── GPS: Guardar ubicación de un cliente ───
     const saveClientLocation = async (clientId) => {
@@ -349,12 +395,20 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
             });
             if (res.ok) {
+                clearDraft();
                 const visRes = await fetch(`${API}/grandeza/journeys/${journey.id}/visits`);
                 if (visRes.ok) setVisits(await visRes.json());
                 setLastVisitResult({ clientLabel, saleAmount: visitCalc.saleAmount, wasOffline: false,
                     whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
                 });
                 showToast(`✅ Visita registrada — Venta: $${visitCalc.saleAmount.toFixed(2)}`);
+                setView('route'); setActiveVisit(null);
+            } else if (res.status === 409) {
+                // Visita duplicada — el cliente ya fue visitado en esta jornada
+                clearDraft();
+                showToast('⚠️ Este cliente ya fue visitado hoy. La visita anterior se conserva.', 'error');
+                const visRes = await fetch(`${API}/grandeza/journeys/${journey.id}/visits`);
+                if (visRes.ok) setVisits(await visRes.json());
                 setView('route'); setActiveVisit(null);
             } else { showToast('❌ Error del servidor', 'error'); }
         } catch(e) {
@@ -374,6 +428,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             setVisits(prev => [...prev, localVisit]);
             await updateCachedVisits(localVisit);
             setPendingSyncCount(await getPendingCount());
+            clearDraft();
             setLastVisitResult({ clientLabel, saleAmount: visitCalc.saleAmount, wasOffline: true,
                 whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
             });
@@ -595,7 +650,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                                 <h1 className="font-black text-xl uppercase tracking-tighter text-white leading-none"><span className="text-amber-400">{isExt ? 'Venta No Programada' : `Visita #${activeVisit.visit_order}`}</span></h1>
                             </div>
                         </div>
-                        <button onClick={() => { setView('route'); setActiveVisit(null); }} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Ruta</button>
+                        <button onClick={() => { clearDraft(); setView('route'); setActiveVisit(null); }} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Ruta</button>
                     </div>
                 </div>
 
@@ -745,6 +800,26 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         {saving ? 'Guardando...' : '✅ Completar Visita'}
                     </button>
                 </div>
+
+                {/* Toast */}
+                {toast && <div className={`fixed top-4 left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white': toast.type==='warning'?'bg-amber-500 text-black':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
+
+                {/* Modal Editar Cliente (en vista de Visita) */}
+                {editingClient && (
+                    <EditClientModal 
+                        client={editingClient} 
+                        onClose={() => setEditingClient(null)} 
+                        onSave={(updated) => {
+                            setClients(prev => prev.map(c => c.id === updated.id ? updated : c));
+                            setEditingClient(null);
+                            showToast('✅ Cliente actualizado');
+                            if (activeVisit?.client?.id === updated.id) {
+                                setActiveVisit(prev => ({ ...prev, client: updated }));
+                            }
+                        }}
+                        API={API}
+                    />
+                )}
             </div>
         );
     }
@@ -771,49 +846,131 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                     </div>
                 </div>
                 <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
-                            <div className="text-2xl font-black text-emerald-400">{visits.length}</div>
-                            <div className="text-[9px] font-black text-emerald-500/60 uppercase">Visitas</div>
-                        </div>
-                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-center">
-                            <div className="text-2xl font-black text-amber-400">${totalVentas.toFixed(0)}</div>
-                            <div className="text-[9px] font-black text-amber-500/60 uppercase">Venta Total</div>
-                        </div>
-                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 text-center">
-                            <div className="text-2xl font-black text-blue-400">${totalCobrado.toFixed(0)}</div>
-                            <div className="text-[9px] font-black text-blue-500/60 uppercase">Cobrado</div>
-                        </div>
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-                            <div className="text-2xl font-black text-white">${runningTotals.totalCash.toFixed(0)}</div>
-                            <div className="text-[9px] font-black text-gray-300 uppercase">Efectivo en Mano</div>
-                        </div>
+                    {/* Tabla de Inventario en Tiempo Real */}
+                    <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest">Inventario en Ruta</h4>
+                    <div className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-[8px] font-black uppercase text-gray-400 bg-white/[0.03]">
+                                    <th className="text-left py-2 px-3">Producto</th>
+                                    <th className="text-center py-2 px-1 text-blue-400">Inic.</th>
+                                    <th className="text-center py-2 px-1 text-emerald-400">Vend.</th>
+                                    <th className="text-center py-2 px-1 text-red-400">Camb.</th>
+                                    <th className="text-center py-2 px-1 text-amber-400">Rest.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {grandezaProducts.map(gp => {
+                                    const invItem = initialInventory.find(i => i.product_id === gp.product_id);
+                                    const inicial = invItem ? invItem.fresh_qty : 0;
+                                    let vendidas = 0, cambios = 0;
+                                    completedVisits.forEach(v => {
+                                        (v.items || []).forEach(it => {
+                                            if (it.product_id === gp.product_id) {
+                                                vendidas += it.actual_fresh_qty || 0;
+                                                cambios += it.exchange_qty || 0;
+                                            }
+                                        });
+                                    });
+                                    const restantes = inicial - vendidas;
+                                    return (
+                                        <tr key={gp.product_id} className="border-t border-white/5">
+                                            <td className="py-2 px-3 font-bold text-white text-xs">{gp.product_name}</td>
+                                            <td className="py-2 px-1 text-center font-black text-blue-300">{inicial}</td>
+                                            <td className="py-2 px-1 text-center font-black text-emerald-300">{vendidas}</td>
+                                            <td className="py-2 px-1 text-center font-black text-red-300">{cambios}</td>
+                                            <td className={`py-2 px-1 text-center font-black ${restantes > 0 ? 'text-amber-400' : restantes === 0 ? 'text-gray-500' : 'text-red-500'}`}>{restantes}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                     <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest pt-2">Detalle de Visitas</h4>
                     {visits.map((v, i) => (
                         <div key={v.id || i} className="bg-white/[0.02] border border-white/5 rounded-xl p-3 flex justify-between items-center">
-                            <div>
-                                <div className="font-bold text-sm">{v.client_name || v.ext_client_name || `Visita ${i+1}`}</div>
+                            <div className="flex-1 min-w-0">
+                                <div className="font-bold text-sm truncate">{v.client_name || v.ext_client_name || `Visita ${i+1}`}</div>
                                 <div className="text-xs text-gray-300">{v.visit_type === 'EXTEMPORANEA' ? '⚡ Extemporánea' : `📋 Programada`}</div>
                             </div>
-                            <div className="text-right">
-                                <div className="font-black text-emerald-400 text-sm">${(v.sale_amount||0).toFixed(2)}</div>
-                                <div className="text-xs text-gray-300">${(v.payment_received||0).toFixed(2)} cobrado</div>
-                            </div>
+                            <div className="font-black text-emerald-400 text-sm mx-2">${(v.sale_amount||0).toFixed(2)}</div>
+                            <button onClick={() => setSelectedVisitDetail(v)} className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-sm shrink-0 active:scale-90 transition-all hover:bg-amber-500/40">+</button>
                         </div>
                     ))}
                     {visits.length === 0 && <p className="text-center text-gray-400 py-8 font-bold text-sm">Aún no hay visitas registradas</p>}
-                    <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest pt-2">Inventario Restante</h4>
-                    {grandezaProducts.map(gp => {
-                        const remaining = runningTotals.freshRemaining[gp.product_id] || 0;
-                        return (
-                            <div key={gp.product_id} className="flex justify-between items-center bg-white/[0.02] border border-white/5 rounded-xl p-3">
-                                <span className="font-bold text-sm">{gp.product_name}</span>
-                                <span className={`font-black text-sm ${remaining > 0 ? 'text-blue-400' : 'text-gray-500'}`}>{remaining} pzas</span>
-                            </div>
-                        );
-                    })}
+
                 </div>
+
+                {/* Modal Detalle de Visita */}
+                {selectedVisitDetail && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4" onClick={() => setSelectedVisitDetail(null)}>
+                        <div className="bg-[#2a2015] border border-amber-500/20 rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+                            {/* Header del modal */}
+                            <div className="p-4 border-b border-white/10">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h3 className="font-black text-lg text-white">{selectedVisitDetail.client_name || selectedVisitDetail.ext_client_name || 'Cliente'}</h3>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {selectedVisitDetail.visit_type === 'EXTEMPORANEA' ? '⚡ Extemporánea' : '📋 Programada'}
+                                            {selectedVisitDetail.arrived_at && ` — ${new Date(selectedVisitDetail.arrived_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Mexico_City' })}`}
+                                        </p>
+                                    </div>
+                                    <button onClick={() => setSelectedVisitDetail(null)} className="text-gray-400 hover:text-white text-xl font-black px-2">✕</button>
+                                </div>
+                            </div>
+
+                            {/* Tabla de productos */}
+                            {selectedVisitDetail.items && selectedVisitDetail.items.length > 0 ? (
+                                <div className="p-4">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="text-[9px] font-black uppercase text-gray-400">
+                                                <th className="text-left pb-2">Producto</th>
+                                                <th className="text-center pb-2 text-cyan-400">Sug.</th>
+                                                <th className="text-center pb-2 text-emerald-400">Frescas</th>
+                                                <th className="text-center pb-2 text-red-400">Cambios</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {selectedVisitDetail.items.map((item, idx) => (
+                                                <tr key={idx} className="border-t border-white/5">
+                                                    <td className="py-2 font-bold text-white text-xs">{item.product_name || grandezaProducts.find(gp => gp.product_id === item.product_id)?.product_name || `Prod #${item.product_id}`}</td>
+                                                    <td className="py-2 text-center font-black text-cyan-300">{item.suggested_fresh_qty || 0}</td>
+                                                    <td className="py-2 text-center font-black text-emerald-300">{item.actual_fresh_qty || 0}</td>
+                                                    <td className="py-2 text-center font-black text-red-300">{item.exchange_qty || 0}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="p-4 text-center text-gray-500 text-sm font-bold">Sin productos registrados</div>
+                            )}
+
+                            {/* Resumen financiero */}
+                            <div className="p-4 border-t border-white/10 space-y-2">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">Venta total</span>
+                                    <span className="font-black text-emerald-400">${(selectedVisitDetail.sale_amount||0).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">Dinero recibido</span>
+                                    <span className="font-black text-white">${(selectedVisitDetail.payment_received||0).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">Cambio dado</span>
+                                    <span className="font-black text-amber-400">${(selectedVisitDetail.change_given||0).toFixed(2)}</span>
+                                </div>
+                                {selectedVisitDetail.incident_notes && (
+                                    <div className="mt-2 pt-2 border-t border-white/5">
+                                        <span className="text-[9px] font-black text-gray-400 uppercase">Notas:</span>
+                                        <p className="text-xs text-gray-300 mt-1">{selectedVisitDetail.incident_notes}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -844,33 +1001,18 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             )}
             {/* Header */}
             <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center shrink-0">
                             <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                         </div>
                         <div>
                             <h1 className="font-black text-2xl uppercase tracking-tighter text-white leading-none">Herramienta <span className="text-amber-400">Repartidor</span></h1>
-                            <p className="text-[10px] font-bold text-amber-200/70 uppercase tracking-widest mt-1">{todayDay} — {todayStr()}</p>
                         </div>
                     </div>
                     <button onClick={onBack} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Salir</button>
                 </div>
-                {/* Totales en vivo */}
-                <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 text-center">
-                        <div className="text-sm font-black text-emerald-300">${runningTotals.totalCash.toFixed(0)}</div>
-                        <div className="text-[8px] font-black text-emerald-200 uppercase">Efectivo</div>
-                    </div>
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-2 text-center">
-                        <div className="text-sm font-black text-red-300">{runningTotals.totalExchangePieces}</div>
-                        <div className="text-[8px] font-black text-red-200 uppercase">Cambios</div>
-                    </div>
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-2 text-center">
-                        <div className="text-sm font-black text-blue-300">{runningTotals.freshTotal}</div>
-                        <div className="text-[8px] font-black text-blue-200 uppercase">Frescas</div>
-                    </div>
-                </div>
+                <p className="text-sm font-black text-amber-200/80 uppercase tracking-wide mt-3">Ruta {todayDay} {todayStr().split('-').reverse().join('-')}</p>
             </div>
 
             {/* Lista de clientes en ruta */}
