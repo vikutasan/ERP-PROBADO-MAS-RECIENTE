@@ -80,9 +80,67 @@ async def delete_client_permanently(client_id: int, db: AsyncSession = Depends(g
 
 # ─── Rutas por Día ────────────────────────────────────────────────────────────
 
+# IMPORTANTE: Los endpoints con rutas literales (/effective, /extraordinary)
+# van ANTES que /routes/{day_of_week} para evitar que FastAPI los capture
+# como un parámetro de ruta (ej: day_of_week="effective").
+
+@router.get("/routes/effective/{route_date}")
+async def get_effective_route(route_date: date, db: AsyncSession = Depends(get_db)):
+    """Ruta efectiva para una fecha: prioriza extraordinaria sobre regular."""
+    return await grandeza_service.get_effective_route(db, route_date)
+
+@router.get("/routes/extraordinary")
+async def list_extraordinary_routes(db: AsyncSession = Depends(get_db)):
+    """Lista todas las rutas extraordinarias (para el panel de administración)."""
+    return await grandeza_service.list_extraordinary_routes(db)
+
+@router.get("/routes/extraordinary/{route_date}")
+async def get_extraordinary_route(route_date: date, db: AsyncSession = Depends(get_db)):
+    """Obtener los slots de una ruta extraordinaria por fecha."""
+    slots = await grandeza_service.get_extraordinary_route(db, route_date)
+    return [
+        {
+            "slot_id": s.id,
+            "client_id": s.client_id,
+            "visit_order": s.visit_order,
+            "label": s.label,
+            "client": {
+                "id": s.client.id,
+                "name": s.client.name,
+                "business_name": s.client.business_name,
+                "phone": s.client.phone,
+                "address": s.client.address,
+                "google_maps_url": s.client.google_maps_url,
+                "facade_photo_url": s.client.facade_photo_url,
+            } if s.client else None
+        }
+        for s in slots
+    ]
+
+@router.put("/routes/extraordinary/{route_date}")
+async def set_extraordinary_route(
+    route_date: date,
+    data: schemas.GrandezaExtraordinaryRouteCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Crear o reemplazar la ruta extraordinaria de una fecha específica."""
+    await grandeza_service.set_extraordinary_route(
+        db, route_date, [s.model_dump() for s in data.slots], data.label
+    )
+    return {"message": f"Ruta extraordinaria del {route_date} guardada"}
+
+@router.delete("/routes/extraordinary/{route_date}")
+async def delete_extraordinary_route(route_date: date, db: AsyncSession = Depends(get_db)):
+    """Eliminar una ruta extraordinaria."""
+    deleted = await grandeza_service.delete_extraordinary_route(db, route_date)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No existe ruta extraordinaria para esa fecha")
+    return {"message": f"Ruta extraordinaria del {route_date} eliminada"}
+
+
 @router.get("/routes/{day_of_week}")
 async def get_route(day_of_week: str, db: AsyncSession = Depends(get_db)):
-    """Obtener la ruta de un día con clientes en orden de visita."""
+    """Obtener la ruta regular de un día con clientes en orden de visita."""
     slots = await grandeza_service.get_route_by_day(db, day_of_week)
     return [
         {

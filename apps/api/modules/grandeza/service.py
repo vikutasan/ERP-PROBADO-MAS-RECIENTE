@@ -21,6 +21,7 @@ def _now_mexico():
 
 from .models import (
     GrandezaProductConfig, GrandezaClient, GrandezaRouteSlot,
+    GrandezaExtraordinaryRouteSlot,
     GrandezaJourney, GrandezaInventory, GrandezaVisit, GrandezaVisitItem,
     GrandezaDriverLocation, GrandezaSettings
 )
@@ -194,6 +195,126 @@ class GrandezaService:
             )
             db.add(slot)
         await db.flush()
+
+    # ─── Rutas Extraordinarias ────────────────────────────────────────────
+
+    async def get_extraordinary_route(self, db: AsyncSession, route_date: date):
+        """Obtener los slots de una ruta extraordinaria para una fecha específica."""
+        stmt = (
+            select(GrandezaExtraordinaryRouteSlot)
+            .options(selectinload(GrandezaExtraordinaryRouteSlot.client))
+            .where(GrandezaExtraordinaryRouteSlot.route_date == route_date)
+            .order_by(GrandezaExtraordinaryRouteSlot.visit_order)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def set_extraordinary_route(self, db: AsyncSession, route_date: date, slots: list, label: str = None):
+        """Crear o reemplazar una ruta extraordinaria completa para una fecha."""
+        await db.execute(
+            delete(GrandezaExtraordinaryRouteSlot)
+            .where(GrandezaExtraordinaryRouteSlot.route_date == route_date)
+        )
+        for i, slot_data in enumerate(slots):
+            slot = GrandezaExtraordinaryRouteSlot(
+                route_date=route_date,
+                client_id=slot_data["client_id"],
+                visit_order=i + 1,
+                label=label
+            )
+            db.add(slot)
+        await db.flush()
+
+    async def delete_extraordinary_route(self, db: AsyncSession, route_date: date):
+        """Eliminar una ruta extraordinaria por fecha."""
+        result = await db.execute(
+            delete(GrandezaExtraordinaryRouteSlot)
+            .where(GrandezaExtraordinaryRouteSlot.route_date == route_date)
+        )
+        await db.flush()
+        return result.rowcount > 0
+
+    async def list_extraordinary_routes(self, db: AsyncSession):
+        """Lista todas las rutas extraordinarias agrupadas por fecha (para el admin)."""
+        stmt = (
+            select(GrandezaExtraordinaryRouteSlot)
+            .order_by(
+                GrandezaExtraordinaryRouteSlot.route_date,
+                GrandezaExtraordinaryRouteSlot.visit_order
+            )
+        )
+        result = await db.execute(stmt)
+        all_slots = result.scalars().all()
+
+        routes_map = {}
+        for slot in all_slots:
+            date_key = slot.route_date.isoformat()
+            if date_key not in routes_map:
+                routes_map[date_key] = {
+                    "route_date": slot.route_date.isoformat(),
+                    "label": slot.label,
+                    "client_count": 0
+                }
+            routes_map[date_key]["client_count"] += 1
+
+        return list(routes_map.values())
+
+    async def get_effective_route(self, db: AsyncSession, route_date: date):
+        """
+        Ruta efectiva para una fecha: prioriza extraordinaria sobre regular.
+        Retorna dict con type ('EXTRAORDINARIA' o 'REGULAR'), slots serializados, y metadata.
+        """
+        extraordinary_slots = await self.get_extraordinary_route(db, route_date)
+        if extraordinary_slots:
+            label = extraordinary_slots[0].label if extraordinary_slots else None
+            return {
+                "type": "EXTRAORDINARIA",
+                "label": label,
+                "route_date": route_date.isoformat(),
+                "slots": [
+                    {
+                        "slot_id": s.id,
+                        "client_id": s.client_id,
+                        "visit_order": s.visit_order,
+                        "client": {
+                            "id": s.client.id,
+                            "name": s.client.name,
+                            "business_name": s.client.business_name,
+                            "phone": s.client.phone,
+                            "address": s.client.address,
+                            "google_maps_url": s.client.google_maps_url,
+                            "facade_photo_url": s.client.facade_photo_url,
+                        } if s.client else None
+                    }
+                    for s in extraordinary_slots
+                ]
+            }
+
+        day_map = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
+        day_of_week = day_map[route_date.weekday()]
+        regular_slots = await self.get_route_by_day(db, day_of_week)
+        return {
+            "type": "REGULAR",
+            "day_of_week": day_of_week,
+            "route_date": route_date.isoformat(),
+            "slots": [
+                {
+                    "slot_id": s.id,
+                    "client_id": s.client_id,
+                    "visit_order": s.visit_order,
+                    "client": {
+                        "id": s.client.id,
+                        "name": s.client.name,
+                        "business_name": s.client.business_name,
+                        "phone": s.client.phone,
+                        "address": s.client.address,
+                        "google_maps_url": s.client.google_maps_url,
+                        "facade_photo_url": s.client.facade_photo_url,
+                    } if s.client else None
+                }
+                for s in regular_slots
+            ]
+        }
 
     # ─── Jornadas ─────────────────────────────────────────────────────────
 

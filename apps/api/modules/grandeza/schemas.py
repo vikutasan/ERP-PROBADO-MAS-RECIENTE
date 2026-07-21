@@ -84,6 +84,23 @@ class GrandezaRouteSlotUpdate(BaseModel):
     visit_order: Optional[int] = None
 
 
+# ─── Rutas Extraordinarias ────────────────────────────────────────────────────
+
+class GrandezaExtraordinarySlotCreate(BaseModel):
+    client_id: int
+    visit_order: int
+
+class GrandezaExtraordinaryRouteCreate(BaseModel):
+    label: Optional[str] = None
+    slots: List[GrandezaExtraordinarySlotCreate]
+
+class GrandezaExtraordinaryRouteSummary(BaseModel):
+    """Resumen de una ruta extraordinaria para la lista del admin."""
+    route_date: date
+    label: Optional[str] = None
+    client_count: int
+
+
 # ─── Jornadas ─────────────────────────────────────────────────────────────────
 
 class GrandezaJourneyCreate(BaseModel):

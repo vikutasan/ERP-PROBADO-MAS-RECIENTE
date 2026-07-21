@@ -300,3 +300,151 @@ Se agregó un botón **"📊"** en el directorio de clientes de la suite `Grande
 **Solución:** Se creó la función helper `_now_mexico()` a nivel de módulo en `service.py` que fuerza `America/Mexico_City` y devuelve un datetime naive compatible con PostgreSQL. Se reemplazaron los 3 usos de `datetime.now()` en el archivo. (Ver detalles en **Error H**).
 
 > ⚠️ **NOTA:** Esta corrección es exclusiva del módulo Grandeza. Una corrección global a nivel de contenedor Docker queda pendiente como proyecto separado que requiere auditoría completa del ERP.
+
+---
+
+## 13. Rutas Extraordinarias (v7.3.0 — 20/Julio/2026)
+
+### 13.1 Visión General
+Se agregó la capacidad de crear **rutas extraordinarias** para fechas específicas que reemplazan automáticamente la ruta regular del día de la semana. La ruta extraordinaria aplica **solo para ese día**, y al día siguiente el sistema vuelve a las rutas regulares sin intervención manual.
+
+**Casos de uso:**
+- Días festivos donde la ruta cambia (12 de diciembre, Día de Muertos, Navidad).
+- Pedidos especiales para un evento — se agrega un cliente que no está en la ruta regular.
+- Vacaciones de un cliente — se saca de la ruta solo ese día sin alterar la plantilla semanal.
+- Cobertura de otra zona — un repartidor cubre una zona diferente un día específico.
+
+### 13.2 Arquitectura: Endpoint Inteligente `get_effective_route`
+El corazón de esta funcionalidad es un **único endpoint inteligente** que decide qué ruta devolver:
+
+```
+GET /api/v1/grandeza/routes/effective/{fecha}
+```
+
+**Lógica de decisión:**
+1. ¿Existe una ruta extraordinaria para esa fecha exacta? → **SÍ:** Devolver `type: "EXTRAORDINARIA"` con sus slots y etiqueta.
+2. ¿No existe? → Calcular el día de la semana de esa fecha y devolver la ruta regular con `type: "REGULAR"`.
+
+```
+Driver abre la app → fetch /routes/effective/2026-12-25
+                │
+    ┌─────────────────────────────────────┐
+    │  get_effective_route(2026-12-25)    │
+    │  1. ¿Existe extraordinaria? → SÍ   │
+    │  2. Retorna type: EXTRAORDINARIA    │
+    └─────────────────────────────────────┘
+                │
+    Driver ve: ⚡ RUTA EXTRAORDINARIA — "Ruta Navidad"
+                │
+    Al día siguiente (26 Dic)...
+    ┌─────────────────────────────────────┐
+    │  get_effective_route(2026-12-26)    │
+    │  1. ¿Existe extraordinaria? → NO   │
+    │  2. weekday() → VIERNES            │
+    │  3. Retorna type: REGULAR          │
+    └─────────────────────────────────────┘
+```
+
+### 13.3 Base de Datos
+
+**Nueva tabla:** `grandeza_extraordinary_route_slots`
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | SERIAL PK | Identificador único |
+| `route_date` | DATE (indexed) | Fecha exacta de la ruta extraordinaria |
+| `client_id` | INTEGER FK → `grandeza_clients.id` | Cliente asignado |
+| `visit_order` | INTEGER | Posición en la secuencia del día |
+| `label` | VARCHAR (nullable) | Etiqueta opcional (ej: "Ruta Día de Muertos") |
+| `created_at` | TIMESTAMP | Fecha de creación |
+
+**Modelo SQLAlchemy:** `GrandezaExtraordinaryRouteSlot` en `apps/api/modules/grandeza/models.py`
+
+**Migración SQL:**
+```sql
+CREATE TABLE IF NOT EXISTS grandeza_extraordinary_route_slots (
+    id SERIAL PRIMARY KEY,
+    route_date DATE NOT NULL,
+    client_id INTEGER NOT NULL REFERENCES grandeza_clients(id),
+    visit_order INTEGER NOT NULL,
+    label VARCHAR,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_grandeza_extraordinary_route_slots_route_date 
+    ON grandeza_extraordinary_route_slots(route_date);
+```
+
+### 13.4 API — Endpoints Nuevos
+
+| Método | Endpoint | Propósito |
+|--------|----------|-----------|
+| `GET` | `/routes/effective/{fecha}` | **Ruta inteligente:** prioriza extraordinaria sobre regular (usado por el Driver) |
+| `GET` | `/routes/extraordinary` | Lista todas las rutas extraordinarias con resumen (Admin) |
+| `GET` | `/routes/extraordinary/{fecha}` | Obtener los slots de una ruta extraordinaria específica (Admin) |
+| `PUT` | `/routes/extraordinary/{fecha}` | Crear o reemplazar una ruta extraordinaria completa (Admin) |
+| `DELETE` | `/routes/extraordinary/{fecha}` | Eliminar una ruta extraordinaria (Admin) |
+
+> ⚠️ **IMPORTANTE (FastAPI):** Los endpoints con rutas literales (`/effective`, `/extraordinary`) se registran **ANTES** que `/routes/{day_of_week}` en `router.py` para evitar que FastAPI capture "effective" o "extraordinary" como un parámetro `day_of_week`.
+
+### 13.5 Backend — Servicio
+
+5 funciones nuevas en `apps/api/modules/grandeza/service.py`:
+
+| Función | Propósito |
+|---------|-----------|
+| `get_extraordinary_route(db, route_date)` | Obtener slots con eager loading de clientes |
+| `set_extraordinary_route(db, route_date, slots, label)` | Reemplazar ruta completa (delete + insert) |
+| `delete_extraordinary_route(db, route_date)` | Eliminar ruta por fecha |
+| `list_extraordinary_routes(db)` | Agrupar por fecha con conteo de clientes |
+| `get_effective_route(db, route_date)` | **Función inteligente** de decisión |
+
+### 13.6 Frontend — Administrador (`GrandezaParamsUI.jsx`)
+
+Se agregó una sección **⚡ Rutas Extraordinarias** en la pestaña "Rutas por Día", debajo de las rutas regulares. Diseño con tema púrpura para diferenciarse visualmente de las rutas regulares (naranja).
+
+**Componentes:**
+- **Lista de rutas existentes:** Tarjetas con fecha formateada, día de la semana, etiqueta, conteo de clientes, y botones Editar/Eliminar. Las rutas pasadas se muestran con opacidad reducida.
+- **Botón "+ Nueva Ruta":** Abre el modal de edición.
+- **Modal Editor:** Date picker nativo (`<input type="date">`), campo de etiqueta opcional, y la misma mecánica de agregar/quitar/reordenar clientes que las rutas regulares.
+- **Modal de confirmación de eliminación:** Estilo destructivo con nombre de fecha y día.
+
+**Diseño Responsivo:**
+- **Móvil:** Modal se abre desde abajo con bordes redondeados superiores (`items-end`, `rounded-t-[32px]`). Botones full-width. Tarjetas se apilan verticalmente.
+- **Desktop:** Modal centrado. Layout de 3 columnas (lista 2/3 + panel agregar 1/3).
+
+### 13.7 Frontend — Herramienta Repartidor (`GrandezaDriverUI.jsx`)
+
+**Cambio mínimo (3 líneas + badge visual):**
+
+El fetch de la ruta cambió de:
+```javascript
+// ANTES
+const routeRes = await fetch(`${API}/grandeza/routes/${todayDay}`);
+const rSlots = routeRes.ok ? await routeRes.json() : [];
+
+// DESPUÉS
+const routeRes = await fetch(`${API}/grandeza/routes/effective/${todayStr()}`);
+const routeData = routeRes.ok ? await routeRes.json() : { type: 'REGULAR', slots: [] };
+const rSlots = routeData.slots || [];
+```
+
+**Badge visual:** Cuando la ruta es extraordinaria, se muestra un indicador púrpura en el encabezado:
+```
+⚡ Ruta Extraordinaria — "Ruta Navidad"
+```
+Esto avisa al repartidor que no es su ruta habitual.
+
+**Caché offline:** Sigue funcionando sin cambios. La estructura de `rSlots` (array de objetos con `client_id`, `visit_order`, `client`) es idéntica.
+
+### 13.8 Archivos Modificados (Resumen)
+
+| Archivo | Tipo de Cambio |
+|---------|---------------|
+| `apps/api/modules/grandeza/models.py` | Nuevo modelo `GrandezaExtraordinaryRouteSlot` |
+| `apps/api/modules/grandeza/schemas.py` | 3 schemas nuevos |
+| `apps/api/modules/grandeza/service.py` | Import + 5 funciones nuevas |
+| `apps/api/modules/grandeza/router.py` | 5 endpoints nuevos (antes de `{day_of_week}`) |
+| `apps/pos/GrandezaParamsUI.jsx` | Sección UI + state + handlers para rutas extraordinarias |
+| `apps/pos/GrandezaDriverUI.jsx` | Fetch a `/effective/{fecha}` + badge visual |
+| **POS (RetailVisionPOS.jsx)** | **CERO cambios** ✅ |
+

@@ -52,6 +52,8 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const [initialInventory, setInitialInventory] = useState([]);
     const [clients, setClients] = useState([]);
     const [routeSlots, setRouteSlots] = useState([]);
+    const [routeType, setRouteType] = useState('REGULAR');  // REGULAR | EXTRAORDINARIA
+    const [routeLabel, setRouteLabel] = useState(null);     // Etiqueta de la ruta extraordinaria
     const [visits, setVisits] = useState([]);  // Visitas completadas hoy
     const [activeVisit, setActiveVisit] = useState(null); // Visita abierta
     const [visitItems, setVisitItems] = useState([]);
@@ -224,8 +226,11 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             const clis = cliRes.ok ? await cliRes.json() : [];
             setClients(clis);
 
-            const routeRes = await fetch(`${API}/grandeza/routes/${todayDay}`);
-            const rSlots = routeRes.ok ? await routeRes.json() : [];
+            const routeRes = await fetch(`${API}/grandeza/routes/effective/${todayStr()}`);
+            const routeData = routeRes.ok ? await routeRes.json() : { type: 'REGULAR', slots: [] };
+            const rSlots = routeData.slots || [];
+            setRouteType(routeData.type || 'REGULAR');
+            setRouteLabel(routeData.label || null);
             setRouteSlots(rSlots);
 
             let j = null, inv = [], vis = [];
@@ -1013,6 +1018,14 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                     <button onClick={onBack} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Salir</button>
                 </div>
                 <p className="text-sm font-black text-amber-200/80 uppercase tracking-wide mt-3">Ruta {todayDay} {todayStr().split('-').reverse().join('-')}</p>
+                {routeType === 'EXTRAORDINARIA' && (
+                    <div className="mt-2 px-3 py-1.5 bg-purple-600/20 border border-purple-500/30 rounded-xl inline-flex items-center gap-2">
+                        <span className="text-purple-400 text-sm">⚡</span>
+                        <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest">
+                            Ruta Extraordinaria{routeLabel ? ` — ${routeLabel}` : ''}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Lista de clientes en ruta */}

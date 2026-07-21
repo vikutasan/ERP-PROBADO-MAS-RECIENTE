@@ -65,6 +65,25 @@ class GrandezaRouteSlot(Base):
     client = relationship("GrandezaClient", back_populates="route_slots")
 
 
+class GrandezaExtraordinaryRouteSlot(Base):
+    """
+    Slot de ruta extraordinaria: define clientes y orden de visita
+    para una FECHA ESPECÍFICA que reemplaza la ruta regular del día.
+    Cuando el repartidor consulta la ruta del día, el sistema prioriza
+    esta tabla sobre grandeza_route_slots. Solo aplica para la fecha exacta.
+    """
+    __tablename__ = "grandeza_extraordinary_route_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    route_date = Column(Date, nullable=False, index=True)
+    client_id = Column(Integer, ForeignKey("grandeza_clients.id"), nullable=False)
+    visit_order = Column(Integer, nullable=False)
+    label = Column(String, nullable=True)  # Etiqueta opcional: "Ruta Día de Muertos"
+    created_at = Column(DateTime, default=datetime.now)
+
+    client = relationship("GrandezaClient")
+
+
 class GrandezaJourney(Base):
     """
     Jornada de reparto: Un día completo de operación.

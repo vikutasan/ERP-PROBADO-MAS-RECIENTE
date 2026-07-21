@@ -90,6 +90,14 @@ export const GrandezaParamsUI = ({ onBack }) => {
     const [selectedDay, setSelectedDay] = useState('LUNES');
     const [routeSlots, setRouteSlots] = useState([]);
 
+    // Tab: Rutas Extraordinarias
+    const [extraordinaryRoutes, setExtraordinaryRoutes] = useState([]);
+    const [editingExtraRoute, setEditingExtraRoute] = useState(null); // { date, label, slots }
+    const [extraRouteSlots, setExtraRouteSlots] = useState([]);
+    const [extraRouteDate, setExtraRouteDate] = useState('');
+    const [extraRouteLabel, setExtraRouteLabel] = useState('');
+    const [showDeleteExtraConfirm, setShowDeleteExtraConfirm] = useState(null);
+
     const DAYS = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
 
     useEffect(() => {
@@ -98,6 +106,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
         if (activeTab === 'routes') {
             fetchClients();
             fetchRoute(selectedDay);
+            fetchExtraordinaryRoutes();
         }
     }, [activeTab, selectedDay]);
 
@@ -160,6 +169,26 @@ export const GrandezaParamsUI = ({ onBack }) => {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchExtraordinaryRoutes = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/grandeza/routes/extraordinary`);
+            if (res.ok) setExtraordinaryRoutes(await res.json());
+        } catch (error) {
+            console.error('Error fetching extraordinary routes:', error);
+        }
+    };
+
+    const fetchExtraRouteSlots = async (dateStr) => {
+        try {
+            const res = await fetch(`${API_BASE}/grandeza/routes/extraordinary/${dateStr}`);
+            if (res.ok) setExtraRouteSlots(await res.json());
+            else setExtraRouteSlots([]);
+        } catch (error) {
+            console.error(error);
+            setExtraRouteSlots([]);
         }
     };
 
@@ -282,6 +311,82 @@ export const GrandezaParamsUI = ({ onBack }) => {
                 console.error("Error saving route:", err);
             }
             fetchRoute(selectedDay);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    // ─── Handlers Rutas Extraordinarias ──────────────────────────────────
+
+    const handleOpenExtraRouteEditor = async (route = null) => {
+        if (route) {
+            setExtraRouteDate(route.route_date);
+            setExtraRouteLabel(route.label || '');
+            await fetchExtraRouteSlots(route.route_date);
+        } else {
+            setExtraRouteDate('');
+            setExtraRouteLabel('');
+            setExtraRouteSlots([]);
+        }
+        setEditingExtraRoute(route || { isNew: true });
+    };
+
+    const handleAddClientToExtraRoute = async (clientId) => {
+        if (!clientId || !extraRouteDate) return;
+        const newSlots = [...extraRouteSlots, { client_id: parseInt(clientId), visit_order: extraRouteSlots.length + 1 }];
+        setExtraRouteSlots(newSlots);
+        await saveExtraRoute(newSlots);
+    };
+
+    const handleRemoveClientFromExtraRoute = async (index) => {
+        const newSlots = extraRouteSlots.filter((_, i) => i !== index);
+        newSlots.forEach((s, i) => s.visit_order = i + 1);
+        setExtraRouteSlots(newSlots);
+        await saveExtraRoute(newSlots);
+    };
+
+    const moveExtraSlot = async (index, direction) => {
+        if (index === 0 && direction === -1) return;
+        if (index === extraRouteSlots.length - 1 && direction === 1) return;
+        const newSlots = [...extraRouteSlots];
+        const temp = newSlots[index];
+        newSlots[index] = newSlots[index + direction];
+        newSlots[index + direction] = temp;
+        newSlots.forEach((s, i) => s.visit_order = i + 1);
+        setExtraRouteSlots(newSlots);
+        await saveExtraRoute(newSlots);
+    };
+
+    const saveExtraRoute = async (slotsToSave) => {
+        if (!extraRouteDate) return;
+        try {
+            const payload = {
+                label: extraRouteLabel || null,
+                slots: slotsToSave.map((s, i) => ({
+                    client_id: s.client_id,
+                    visit_order: i + 1
+                }))
+            };
+            const res = await fetch(`${API_BASE}/grandeza/routes/extraordinary/${extraRouteDate}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) console.error('Error saving extraordinary route:', await res.json());
+            fetchExtraordinaryRoutes();
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleDeleteExtraRoute = async (dateStr) => {
+        try {
+            const res = await fetch(`${API_BASE}/grandeza/routes/extraordinary/${dateStr}`, { method: 'DELETE' });
+            if (res.ok) {
+                setShowDeleteExtraConfirm(null);
+                setEditingExtraRoute(null);
+                fetchExtraordinaryRoutes();
+            }
         } catch (error) {
             console.error(error);
         }
@@ -689,6 +794,20 @@ export const GrandezaParamsUI = ({ onBack }) => {
     };
 
     const renderRoutesTab = () => {
+        const formatDateDisplay = (dateStr) => {
+            if (!dateStr) return '';
+            const [y, m, d] = dateStr.split('-');
+            const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+            return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
+        };
+
+        const getDayNameFromDate = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr + 'T12:00:00');
+            const names = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+            return names[d.getDay()];
+        };
+
         return (
             <div className="space-y-6 animate-in fade-in duration-500">
                 {/* Días de la Semana */}
@@ -732,9 +851,9 @@ export const GrandezaParamsUI = ({ onBack }) => {
                                             {slot.visit_order}
                                         </div>
                                         
-                                        <div className="flex-1">
-                                            <div className="font-bold text-amber-400">{slot.client?.name}</div>
-                                            <div className="text-xs text-white">{slot.client?.business_name} • {slot.client?.address}</div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-amber-400 truncate">{slot.client?.name}</div>
+                                            <div className="text-xs text-white truncate">{slot.client?.business_name} • {slot.client?.address}</div>
                                         </div>
                                         
                                         <button 
@@ -789,6 +908,258 @@ export const GrandezaParamsUI = ({ onBack }) => {
                         </div>
                     </div>
                 </div>
+
+                {/* ═══ SECCIÓN: RUTAS EXTRAORDINARIAS ═══ */}
+                <div className="bg-black/70 p-4 md:p-6 rounded-[24px] border border-purple-500/20">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+                        <div>
+                            <h3 className="text-lg md:text-xl font-black uppercase tracking-tighter text-white flex items-center gap-2">
+                                <span className="text-purple-400">⚡</span> Rutas Extraordinarias
+                            </h3>
+                            <p className="text-xs md:text-sm text-gray-400 mt-1">
+                                Rutas para fechas específicas que reemplazan la ruta regular del día.
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => handleOpenExtraRouteEditor()}
+                            className="w-full sm:w-auto px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase tracking-widest text-[10px] md:text-xs rounded-xl transition-all shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2"
+                        >
+                            <span>+</span> Nueva Ruta
+                        </button>
+                    </div>
+
+                    {/* Lista de rutas extraordinarias existentes */}
+                    {extraordinaryRoutes.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-purple-500/10 rounded-2xl text-gray-500">
+                            <span className="text-3xl mb-3">📅</span>
+                            <p className="font-bold text-sm">No hay rutas extraordinarias programadas</p>
+                            <p className="text-xs mt-1 text-gray-600">Crea una ruta para un día especial con el botón de arriba.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {extraordinaryRoutes.map(r => {
+                                const isPast = new Date(r.route_date + 'T23:59:59') < new Date();
+                                return (
+                                    <div 
+                                        key={r.route_date} 
+                                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border transition-all ${
+                                            isPast 
+                                            ? 'bg-white/3 border-white/5 opacity-50' 
+                                            : 'bg-purple-500/5 border-purple-500/20 hover:border-purple-500/40'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-lg shrink-0">
+                                                📅
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="font-bold text-white text-sm md:text-base truncate">
+                                                    {formatDateDisplay(r.route_date)}
+                                                    <span className="text-purple-400 text-xs ml-2">({getDayNameFromDate(r.route_date)})</span>
+                                                </div>
+                                                <div className="text-xs text-gray-400 truncate">
+                                                    {r.label ? <span className="text-purple-300 font-bold">{r.label}</span> : <span className="italic">Sin etiqueta</span>}
+                                                    {' · '}{r.client_count} cliente{r.client_count !== 1 ? 's' : ''}
+                                                    {isPast && <span className="text-gray-600 ml-2">(pasada)</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 shrink-0">
+                                            <button 
+                                                onClick={() => handleOpenExtraRouteEditor(r)}
+                                                className="flex-1 sm:flex-none px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs font-bold text-purple-400 hover:bg-purple-500/20 transition-all"
+                                            >
+                                                Editar
+                                            </button>
+                                            <button 
+                                                onClick={() => setShowDeleteExtraConfirm(r.route_date)}
+                                                className="flex-1 sm:flex-none px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs font-bold text-red-400 hover:bg-red-500/20 transition-all"
+                                            >
+                                                Eliminar
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* Modal: Editor de Ruta Extraordinaria */}
+                {editingExtraRoute && (
+                    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+                        <div className="absolute inset-0 bg-black/85 backdrop-blur-sm" onClick={() => setEditingExtraRoute(null)}></div>
+                        <div className="relative bg-[#111] border border-purple-500/20 rounded-t-[32px] md:rounded-[32px] p-5 md:p-8 w-full max-w-4xl shadow-2xl shadow-purple-500/10 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-white flex items-center gap-2">
+                                    <span className="text-purple-400">⚡</span>
+                                    {editingExtraRoute.isNew ? 'Nueva Ruta Extraordinaria' : 'Editar Ruta Extraordinaria'}
+                                </h2>
+                                <button onClick={() => setEditingExtraRoute(null)} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center text-lg transition-all">✕</button>
+                            </div>
+
+                            {/* Fecha y Etiqueta */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-purple-400 uppercase tracking-widest mb-2">Fecha de la Ruta *</label>
+                                    <input 
+                                        type="date" 
+                                        value={extraRouteDate}
+                                        onChange={(e) => setExtraRouteDate(e.target.value)}
+                                        className="w-full bg-black/40 border border-purple-500/30 rounded-xl p-3 text-white outline-none focus:border-purple-500 text-sm"
+                                        min={new Date().toISOString().split('T')[0]}
+                                    />
+                                    {extraRouteDate && (
+                                        <p className="text-xs text-purple-300 mt-1 font-bold">
+                                            {getDayNameFromDate(extraRouteDate)} · {formatDateDisplay(extraRouteDate)}
+                                        </p>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-purple-400 uppercase tracking-widest mb-2">Etiqueta (Opcional)</label>
+                                    <input 
+                                        type="text" 
+                                        value={extraRouteLabel}
+                                        onChange={(e) => setExtraRouteLabel(e.target.value)}
+                                        placeholder="Ej: Ruta Día de Muertos"
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-purple-500 text-sm placeholder-gray-600"
+                                    />
+                                </div>
+                            </div>
+
+                            {!extraRouteDate ? (
+                                <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-purple-500/10 rounded-2xl text-gray-500">
+                                    <span className="text-3xl mb-3">📅</span>
+                                    <p className="font-bold">Selecciona una fecha para comenzar</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    {/* Lista de clientes en la ruta extraordinaria */}
+                                    <div className="col-span-1 lg:col-span-2 bg-black/40 p-4 rounded-2xl border border-purple-500/10 min-h-[200px]">
+                                        <h3 className="text-sm font-black uppercase tracking-widest text-purple-400 mb-1">
+                                            Clientes en esta Ruta
+                                        </h3>
+                                        <p className="text-xs text-gray-500 mb-4">{extraRouteSlots.length} clientes asignados</p>
+
+                                        {extraRouteSlots.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-purple-500/10 rounded-2xl text-gray-500">
+                                                <span className="text-xl mb-2">🚗</span>
+                                                <p className="font-bold text-xs">Agrega clientes desde el panel derecho</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {extraRouteSlots.map((slot, index) => {
+                                                    const client = clients.find(c => c.id === slot.client_id) || slot.client;
+                                                    return (
+                                                        <div key={slot.slot_id || index} className="flex items-center gap-3 p-3 bg-purple-500/5 border border-purple-500/10 rounded-xl group hover:border-purple-500/30 transition-all">
+                                                            <div className="flex flex-col gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
+                                                                <button onClick={() => moveExtraSlot(index, -1)} disabled={index === 0} className="w-5 h-5 rounded bg-black/50 hover:bg-purple-500 text-white flex items-center justify-center text-xs disabled:opacity-0">▲</button>
+                                                                <button onClick={() => moveExtraSlot(index, 1)} disabled={index === extraRouteSlots.length - 1} className="w-5 h-5 rounded bg-black/50 hover:bg-purple-500 text-white flex items-center justify-center text-xs disabled:opacity-0">▼</button>
+                                                            </div>
+                                                            <div className="w-7 h-7 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 font-black text-[10px] shrink-0">
+                                                                {index + 1}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="font-bold text-amber-400 text-sm truncate">{client?.name}</div>
+                                                                <div className="text-[10px] text-white truncate">{client?.business_name}</div>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => handleRemoveClientFromExtraRoute(index)}
+                                                                className="w-7 h-7 rounded-full bg-red-500/20 text-red-400 shrink-0 hover:scale-110 transition-all flex items-center justify-center font-black text-sm"
+                                                            >
+                                                                -
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Panel: Agregar clientes */}
+                                    <div className="bg-black/40 p-4 rounded-2xl border border-purple-500/10 h-fit">
+                                        <h3 className="text-xs font-black uppercase tracking-widest text-purple-400 mb-3">Agregar Cliente</h3>
+                                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                                            {clients.filter(c => c.active).map(c => {
+                                                const isAlreadyInRoute = extraRouteSlots.some(s => s.client_id === c.id);
+                                                return (
+                                                    <div key={c.id} className={`p-2.5 rounded-xl border flex justify-between items-center ${isAlreadyInRoute ? 'bg-black/40 border-white/5 opacity-40' : 'bg-white/5 border-white/10 hover:border-purple-500/40'}`}>
+                                                        <div className="truncate pr-2">
+                                                            <div className="text-xs font-bold text-amber-400 truncate">{c.name}</div>
+                                                            <div className="text-[10px] text-white truncate">{c.business_name}</div>
+                                                        </div>
+                                                        {isAlreadyInRoute ? (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const idx = extraRouteSlots.findIndex(s => s.client_id === c.id);
+                                                                    if (idx !== -1) handleRemoveClientFromExtraRoute(idx);
+                                                                }}
+                                                                className="w-7 h-7 rounded-full bg-red-500/20 text-red-400 shrink-0 hover:scale-110 transition-all flex items-center justify-center font-black text-sm"
+                                                            >
+                                                                -
+                                                            </button>
+                                                        ) : (
+                                                            <button 
+                                                                onClick={() => handleAddClientToExtraRoute(c.id)}
+                                                                className="w-7 h-7 rounded-full bg-purple-600 text-white shrink-0 hover:scale-110 transition-all flex items-center justify-center font-black text-sm"
+                                                            >
+                                                                +
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Botón guardar etiqueta (solo si ya hay fecha y slots) */}
+                            {extraRouteDate && extraRouteSlots.length > 0 && (
+                                <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+                                    <button 
+                                        onClick={() => { saveExtraRoute(extraRouteSlots); setEditingExtraRoute(null); }}
+                                        className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase tracking-widest text-xs rounded-xl transition-all shadow-lg shadow-purple-500/20"
+                                    >
+                                        ✓ Guardar y Cerrar
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal: Confirmar eliminación de ruta extraordinaria */}
+                {showDeleteExtraConfirm && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-6">
+                        <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setShowDeleteExtraConfirm(null)}></div>
+                        <div className="relative w-full max-w-sm bg-[#0a0a0a] border border-purple-900/50 rounded-[32px] p-8 shadow-2xl text-center animate-in zoom-in-95 duration-300">
+                            <div className="w-16 h-16 bg-purple-600/20 border-2 border-purple-600 rounded-2xl mx-auto mb-6 flex items-center justify-center text-3xl">
+                                ⚡
+                            </div>
+                            <h3 className="text-xl font-black uppercase tracking-tighter text-purple-400 mb-3">Eliminar Ruta</h3>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest leading-loose mb-8">
+                                ¿Eliminar la ruta extraordinaria del<br/>
+                                <span className="text-white text-sm block mt-2">{formatDateDisplay(showDeleteExtraConfirm)}</span>
+                                <span className="text-purple-400/60 text-[10px] block mt-1">{getDayNameFromDate(showDeleteExtraConfirm)}</span>
+                            </p>
+                            <div className="flex gap-3">
+                                <button 
+                                    onClick={() => setShowDeleteExtraConfirm(null)}
+                                    className="flex-1 py-3 bg-gray-800 rounded-xl text-[10px] font-black uppercase hover:bg-gray-700 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={() => handleDeleteExtraRoute(showDeleteExtraConfirm)}
+                                    className="flex-1 py-3 bg-red-600 rounded-xl text-[10px] font-black uppercase hover:scale-105 active:scale-95 transition-all shadow-lg shadow-red-600/30"
+                                >
+                                    Confirmar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
