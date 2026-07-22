@@ -270,7 +270,29 @@ async def get_client_statistics(client_id: int, db: AsyncSession = Depends(get_d
     return await grandeza_service.get_client_statistics(db, client_id)
 
 
+# ─── Gastos Operativos ───────────────────────────────────────────────────────
+
+@router.get("/journeys/{journey_id}/expenses")
+async def get_expenses(journey_id: int, db: AsyncSession = Depends(get_db)):
+    """Lista los gastos operativos registrados en una jornada."""
+    return await grandeza_service.get_expenses(db, journey_id)
+
+@router.post("/journeys/{journey_id}/expenses")
+async def create_expense(journey_id: int, data: schemas.GrandezaExpenseCreate, db: AsyncSession = Depends(get_db)):
+    """Registra un gasto operativo (gasolina, comida, casetas, etc.)."""
+    return await grandeza_service.create_expense(db, journey_id, data.model_dump())
+
+@router.delete("/expenses/{expense_id}")
+async def delete_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
+    """Elimina un gasto operativo registrado por error."""
+    deleted = await grandeza_service.delete_expense(db, expense_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    return {"message": "Gasto eliminado"}
+
+
 # ─── Pedidos Grandeza ─────────────────────────────────────────────────────────
+
 
 @router.get("/orders")
 async def get_grandeza_orders(status: str = None, db: AsyncSession = Depends(get_db)):
@@ -287,3 +309,10 @@ async def update_grandeza_order(order_id: int, data: schemas.GrandezaOrderUpdate
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     return order
+
+
+# ─── Estimación de Producción ───────────────────────────────────────────────
+@router.get("/production-estimate/{target_date}")
+async def get_production_estimate(target_date: date, last_n: int = 10, db: AsyncSession = Depends(get_db)):
+    """Retorna estimación de piezas a producir basada en historial de ventas por cliente de la ruta."""
+    return await grandeza_service.get_production_estimate(db, target_date, last_n)

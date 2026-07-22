@@ -4,7 +4,7 @@ Servicios de negocio para el módulo Reparto Pan Grandeza.
 Fase 0: Solo operaciones CRUD base. La lógica inteligente se agrega en fases posteriores.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import date, datetime
@@ -23,7 +23,7 @@ from .models import (
     GrandezaProductConfig, GrandezaClient, GrandezaRouteSlot,
     GrandezaExtraordinaryRouteSlot,
     GrandezaJourney, GrandezaInventory, GrandezaVisit, GrandezaVisitItem,
-    GrandezaDriverLocation, GrandezaSettings
+    GrandezaDriverLocation, GrandezaSettings, GrandezaExpense
 )
 from modules.catalog.models import Product
 
@@ -447,6 +447,7 @@ class GrandezaService:
                 "change_given": v.change_given,
                 "incident_notes": v.incident_notes,
                 "ext_client_name": v.ext_client_name,
+                "ext_client_phone": v.ext_client_phone,
                 "client_name": v.client.name if v.client else v.ext_client_name,
                 "items": [
                     {"id": it.id, "product_id": it.product_id, "exchange_qty": it.exchange_qty,
@@ -496,6 +497,7 @@ class GrandezaService:
             change_given=data.get("change_given", 0),
             incident_notes=data.get("incident_notes"),
             ext_client_name=data.get("ext_client_name"),
+            ext_client_phone=data.get("ext_client_phone"),
         )
         db.add(visit)
         await db.flush()
@@ -662,7 +664,54 @@ class GrandezaService:
 
         return {"visits": visits_data, "summary": summary}
 
+    # ─── Gastos Operativos ────────────────────────────────────────────────
+
+    async def get_expenses(self, db: AsyncSession, journey_id: int):
+        from .models import GrandezaExpense
+        stmt = (
+            select(GrandezaExpense)
+            .where(GrandezaExpense.journey_id == journey_id)
+            .order_by(GrandezaExpense.created_at.asc())
+        )
+        result = await db.execute(stmt)
+        return [
+            {
+                "id": e.id, "journey_id": e.journey_id,
+                "description": e.description, "amount": e.amount,
+                "created_at": str(e.created_at) if e.created_at else None,
+            }
+            for e in result.scalars().all()
+        ]
+
+    async def create_expense(self, db: AsyncSession, journey_id: int, data: dict):
+        from .models import GrandezaExpense
+        expense = GrandezaExpense(
+            journey_id=journey_id,
+            description=data["description"],
+            amount=float(data["amount"]),
+            created_at=_now_mexico(),
+        )
+        db.add(expense)
+        await db.flush()
+        return {
+            "id": expense.id, "journey_id": expense.journey_id,
+            "description": expense.description, "amount": expense.amount,
+            "created_at": str(expense.created_at),
+        }
+
+    async def delete_expense(self, db: AsyncSession, expense_id: int):
+        from .models import GrandezaExpense
+        stmt = select(GrandezaExpense).where(GrandezaExpense.id == expense_id)
+        result = await db.execute(stmt)
+        expense = result.scalar_one_or_none()
+        if not expense:
+            return False
+        await db.delete(expense)
+        await db.flush()
+        return True
+
     # ─── Pedidos Grandeza ─────────────────────────────────────────────────
+
 
     async def get_grandeza_orders(self, db: AsyncSession, status: str = None):
         from .models import GrandezaOrder
@@ -673,7 +722,7 @@ class GrandezaService:
         orders = result.scalars().all()
         return [
             {
-                "id": o.id, "client_id": o.client_id, "client_name": o.client_name,
+                "id": o.id, "client_id": o.client_id, "client_name": o.client_name, "client_phone": o.client_phone,
                 "items": o.items, "total_amount": o.total_amount, "advance_payment": o.advance_payment,
                 "balance_due": max(0.0, o.total_amount - o.advance_payment),
                 "payment_method": o.payment_method, "payment_status": o.payment_status,
@@ -699,6 +748,7 @@ class GrandezaService:
         order = GrandezaOrder(
             client_id=data.get("client_id"),
             client_name=data.get("client_name"),
+            client_phone=data.get("client_phone"),
             items=data.get("items", []),
             total_amount=total,
             advance_payment=advance,
@@ -725,6 +775,152 @@ class GrandezaService:
                 setattr(order, key, value)
         await db.flush()
         return order
+
+
+
+    # ─── Estimación de producción ───
+    async def get_production_estimate(self, db: AsyncSession, target_date: date, last_n: int = 10):
+        """
+        Calcula la estimación de producción para una fecha dada.
+        1. Determina la ruta (extraordinaria o regular)
+        2. Para cada cliente, consulta las últimas N visitas completadas
+        3. Calcula promedio de actual_fresh_qty por producto
+        4. Retorna totales y desglose por cliente
+        """
+        import math
+        
+        # 1. Determinar tipo de ruta y obtener clientes
+        # Verificar si hay ruta extraordinaria para esa fecha
+        ext_result = await db.execute(
+            select(GrandezaExtraordinaryRouteSlot)
+            .where(GrandezaExtraordinaryRouteSlot.route_date == target_date)
+            .order_by(GrandezaExtraordinaryRouteSlot.visit_order)
+        )
+        ext_slots = ext_result.scalars().all()
+        
+        if ext_slots:
+            route_type = "EXTRAORDINARIA"
+            client_ids = [s.client_id for s in ext_slots]
+            label = ext_slots[0].label if ext_slots[0].label else None
+        else:
+            route_type = "REGULAR"
+            label = None
+            # Determinar día de la semana
+            days_map = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
+            day_name = days_map.get(target_date.weekday(), 'LUNES')
+            reg_result = await db.execute(
+                select(GrandezaRouteSlot)
+                .where(GrandezaRouteSlot.day_of_week == day_name)
+                .order_by(GrandezaRouteSlot.visit_order)
+            )
+            reg_slots = reg_result.scalars().all()
+            client_ids = [s.client_id for s in reg_slots]
+        
+        if not client_ids:
+            return {
+                "route_date": str(target_date),
+                "route_type": route_type,
+                "route_label": label,
+                "client_count": 0,
+                "clients": [],
+                "totals": []
+            }
+        
+        # 2. Obtener info de clientes
+        clients_result = await db.execute(
+            select(GrandezaClient).where(GrandezaClient.id.in_(client_ids))
+        )
+        clients_map = {c.id: c for c in clients_result.scalars().all()}
+        
+        # 3. Obtener productos habilitados
+        prods_result = await db.execute(
+            select(GrandezaProductConfig).where(GrandezaProductConfig.is_enabled == True)
+        )
+        products = prods_result.scalars().all()
+        prod_names = {}
+        for p in products:
+            # Obtener nombre del producto del catálogo
+            prod_result = await db.execute(select(Product).where(Product.id == p.product_id))
+            prod = prod_result.scalar_one_or_none()
+            prod_names[p.product_id] = prod.name if prod else f"Producto #{p.product_id}"
+        
+        # 4. Para cada cliente, calcular promedios
+        clients_data = []
+        product_totals = {}  # product_id -> { total_avg, total_estimated }
+        
+        for cid in client_ids:
+            client = clients_map.get(cid)
+            if not client:
+                continue
+            
+            # Obtener últimas N visitas completadas de este cliente
+            visits_result = await db.execute(
+                select(GrandezaVisit)
+                .options(selectinload(GrandezaVisit.items))
+                .where(
+                    GrandezaVisit.client_id == cid,
+                    GrandezaVisit.status == 'COMPLETADA'
+                )
+                .order_by(GrandezaVisit.completed_at.desc())
+                .limit(last_n)
+            )
+            recent_visits = visits_result.scalars().all()
+            visit_count = len(recent_visits)
+            
+            client_products = []
+            for p in products:
+                pid = p.product_id
+                # Sumar actual_fresh_qty de todas las visitas para este producto
+                total_sold = 0
+                for v in recent_visits:
+                    for item in v.items:
+                        if item.product_id == pid:
+                            total_sold += item.actual_fresh_qty or 0
+                
+                avg_qty = total_sold / visit_count if visit_count > 0 else 0
+                estimated = math.ceil(avg_qty) if avg_qty > 0 else 0
+                
+                client_products.append({
+                    "product_id": pid,
+                    "product_name": prod_names.get(pid, f"#{pid}"),
+                    "avg_qty": round(avg_qty, 1),
+                    "estimated_qty": estimated
+                })
+                
+                # Acumular en totales
+                if pid not in product_totals:
+                    product_totals[pid] = {"total_avg": 0, "total_estimated": 0}
+                product_totals[pid]["total_avg"] += avg_qty
+                product_totals[pid]["total_estimated"] += estimated
+            
+            clients_data.append({
+                "client_id": cid,
+                "client_name": client.name,
+                "business_name": client.business_name,
+                "visit_count": visit_count,
+                "products": client_products
+            })
+        
+        # 5. Armar totales
+        totals = []
+        for p in products:
+            pid = p.product_id
+            pt = product_totals.get(pid, {"total_avg": 0, "total_estimated": 0})
+            totals.append({
+                "product_id": pid,
+                "product_name": prod_names.get(pid, f"#{pid}"),
+                "total_avg": round(pt["total_avg"], 1),
+                "total_estimated": pt["total_estimated"]
+            })
+        
+        return {
+            "route_date": str(target_date),
+            "route_type": route_type,
+            "route_label": label,
+            "client_count": len(clients_data),
+            "clients": clients_data,
+            "totals": totals
+        }
 
 
 grandeza_service = GrandezaService()

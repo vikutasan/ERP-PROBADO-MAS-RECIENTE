@@ -3,6 +3,7 @@ import { ChefHat, ArrowRight, Settings2 } from 'lucide-react';
 import { DoughManagerUI } from './DoughManagerUI';
 import { PedidosProduccionUI } from './PedidosProduccionUI';
 import { ProductionEquipmentUI } from './ProductionEquipmentUI';
+import { GrandezaProductionUI } from './GrandezaProductionUI';
 
 /**
  * GESTOR DE PRODUCCIÓN
@@ -24,6 +25,10 @@ export const ProductionManagementUI = () => {
 
     if (view === 'equipment-manager') {
         return <ProductionEquipmentUI onBack={() => setView('dashboard')} />;
+    }
+
+    if (view === 'grandeza-production') {
+        return <GrandezaProductionUI onBack={() => setView('dashboard')} />;
     }
 
     return (
@@ -120,6 +125,29 @@ export const ProductionManagementUI = () => {
                     </div>
 
                     <div className="w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-white group-hover:bg-white group-hover:text-cyan-500 group-hover:border-transparent transition-all duration-500">
+                        <ArrowRight size={16} />
+                    </div>
+                </button>
+
+                <button 
+                    onClick={() => setView('grandeza-production')}
+                    className="w-full group relative flex items-center justify-between bg-white/5 border border-white/10 p-5 rounded-3xl hover:bg-amber-500 hover:border-amber-500 transition-all duration-500 text-left overflow-hidden shadow-xl"
+                >
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-amber-500 group-hover:text-black group-hover:bg-black/10 transition-all duration-500 text-2xl">
+                            🍞
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-white italic uppercase tracking-tight group-hover:text-black transition-colors">
+                                PRODUCCIÓN <span className="text-amber-500 group-hover:text-black">GRANDEZA</span>
+                            </h2>
+                            <p className="text-[8px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-0.5 group-hover:text-black/60 transition-colors">
+                                Estimación de piezas por ruta
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-white group-hover:bg-black group-hover:text-amber-500 group-hover:border-transparent transition-all duration-500">
                         <ArrowRight size={16} />
                     </div>
                 </button>

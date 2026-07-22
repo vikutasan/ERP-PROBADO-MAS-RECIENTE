@@ -15,7 +15,7 @@ from modules.grandeza.router import router as grandeza_router
 from core.database import AsyncSessionLocal, engine, Base
 from modules.catalog.models import Category, Product, ProductTechnicalSheet
 from modules.security.models import SecurityProfile, Employee
-from sqlalchemy import select
+from sqlalchemy import select, text
 from modules.settings.service import seed_settings as seed_system_settings
 
 # Importar TODOS los modelos para que Base.metadata los conozca
@@ -64,6 +64,26 @@ async def auto_seed_on_first_boot():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         print("✅ Tablas verificadas/creadas.")
+
+        # Paso 1.5: Migraciones de columnas nuevas (idempotente)
+        # create_all no agrega columnas a tablas existentes (ver Error F — Grandeza docs).
+        # Cada migración verifica existencia antes de ejecutar ALTER TABLE.
+        migrations = [
+            ("grandeza_visits", "ext_client_phone", "VARCHAR"),
+            ("grandeza_orders", "client_phone", "VARCHAR"),
+        ]
+        async with engine.begin() as conn:
+            for table, column, col_type in migrations:
+                check = await conn.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name = :table AND column_name = :column"
+                    ),
+                    {"table": table, "column": column}
+                )
+                if not check.scalar():
+                    await conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}'))
+                    print(f"  ✅ Migración: {table}.{column} agregada.")
 
         async with AsyncSessionLocal() as session:
             # Paso 2: Sembrar perfiles de seguridad base

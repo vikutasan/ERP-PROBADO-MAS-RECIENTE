@@ -60,13 +60,19 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     const [paymentReceived, setPaymentReceived] = useState('');
     const [incidentNotes, setIncidentNotes] = useState('');
     const [extClientName, setExtClientName] = useState('');
+    const [extClientPhone, setExtClientPhone] = useState('');
     const [toast, setToast] = useState(null);
     const [saving, setSaving] = useState(false);
-    const [view, setView] = useState('route'); // route | visit | summary | order
+    const [view, setView] = useState('route'); // route | visit | summary | order | expenses
+    const [expenses, setExpenses] = useState([]);
+    const [expDesc, setExpDesc] = useState('');
+    const [expAmount, setExpAmount] = useState('');
+    const [expSaving, setExpSaving] = useState(false);
     const [editingClient, setEditingClient] = useState(null);
     const [isOnline, setIsOnline] = useState(true);
     const [pendingSyncCount, setPendingSyncCount] = useState(0);
     const [lastVisitResult, setLastVisitResult] = useState(null); // Para modal post-visita
+    const [showPaymentWarning, setShowPaymentWarning] = useState(false); // Modal aviso de pago faltante
     const [selectedVisitDetail, setSelectedVisitDetail] = useState(null); // Para modal detalle de visita en Resumen
     const [pinInput, setPinInput] = useState('');
     const networkMonitorRef = useRef(null);
@@ -106,6 +112,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             setIncidentNotes(draft.incidentNotes || '');
             setActiveVisit(draft.activeVisit);
             setExtClientName(draft.extClientName || '');
+            setExtClientPhone(draft.extClientPhone || '');
             setView('visit');
         }
     }, []);
@@ -113,9 +120,22 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     // Persistir borrador en cada cambio mientras la visita está activa
     useEffect(() => {
         if (view === 'visit' && activeVisit) {
-            saveDraft({ visitItems, paymentReceived, incidentNotes, activeVisit, extClientName });
+            saveDraft({ visitItems, paymentReceived, incidentNotes, activeVisit, extClientName, extClientPhone });
         }
-    }, [visitItems, paymentReceived, incidentNotes, activeVisit, extClientName, view]);
+    }, [visitItems, paymentReceived, incidentNotes, activeVisit, extClientName, extClientPhone, view]);
+
+    // Cargar gastos al entrar a la vista de gastos o resumen
+    const fetchExpenses = async () => {
+        if (!journey?.id) return;
+        try {
+            const res = await fetch(`${API}/grandeza/journeys/${journey.id}/expenses`);
+            if (res.ok) setExpenses(await res.json());
+        } catch(e) { console.error(e); }
+    };
+    useEffect(() => {
+        if ((view === 'expenses' || view === 'summary') && journey?.id) fetchExpenses();
+    }, [view, journey?.id]);
+
 
     // ─── GPS: Guardar ubicación de un cliente ───
     const saveClientLocation = async (clientId) => {
@@ -318,6 +338,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         setVisitItems(items);
         setPaymentReceived(''); setIncidentNotes('');
         setExtClientName(isExt ? null : (client?.name || ''));
+        setExtClientPhone('');
         setActiveVisit({ client_id: isExt ? null : slot.client_id, client,
             visit_order: isExt ? 999 : slot.visit_order,
             visit_type: isExt ? 'EXTEMPORANEA' : 'PROGRAMADA', slot });
@@ -374,6 +395,15 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         }
     };
 
+    // ─── Visita: Validar pago antes de guardar ───
+    const handleCompleteVisit = () => {
+        if (visitCalc.saleAmount > 0 && (!paymentReceived || parseFloat(paymentReceived) <= 0)) {
+            setShowPaymentWarning(true);
+            return;
+        }
+        saveVisit();
+    };
+
     // ─── Visita: Guardar (persiste en API o encola offline) ───
     const saveVisit = async () => {
         setSaving(true);
@@ -382,6 +412,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             visit_order: activeVisit.visit_order,
             visit_type: activeVisit.visit_type,
             ext_client_name: activeVisit.visit_type === 'EXTEMPORANEA' ? extClientName : null,
+            ext_client_phone: activeVisit.visit_type === 'EXTEMPORANEA' ? (extClientPhone || null) : null,
             items: visitItems.filter(it => it.exchange_qty > 0 || it.actual_fresh_qty > 0).map(it => ({
                 product_id: it.product_id, exchange_qty: it.exchange_qty,
                 suggested_fresh_qty: it.suggested_fresh_qty, actual_fresh_qty: it.actual_fresh_qty,
@@ -404,7 +435,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 const visRes = await fetch(`${API}/grandeza/journeys/${journey.id}/visits`);
                 if (visRes.ok) setVisits(await visRes.json());
                 setLastVisitResult({ clientLabel, saleAmount: visitCalc.saleAmount, wasOffline: false,
-                    whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
+                    whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, extPhone: extClientPhone, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
                 });
                 showToast(`✅ Visita registrada — Venta: $${visitCalc.saleAmount.toFixed(2)}`);
                 setView('route'); setActiveVisit(null);
@@ -435,7 +466,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
             setPendingSyncCount(await getPendingCount());
             clearDraft();
             setLastVisitResult({ clientLabel, saleAmount: visitCalc.saleAmount, wasOffline: true,
-                whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
+                whatsappURL: buildWhatsAppURL({ client: activeVisit?.client, clientName: extClientName, extPhone: extClientPhone, items: visitItems, saleAmount: visitCalc.saleAmount, paymentRec: parseFloat(paymentReceived) || 0, change: visitCalc.change, notes: incidentNotes }),
             });
             showToast('📡 Visita guardada localmente. Se enviará al recuperar señal.', 'warning');
             setView('route'); setActiveVisit(null);
@@ -443,8 +474,8 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
     };
 
     // ─── WhatsApp: Generar URL con datos de la visita ───
-    const buildWhatsAppURL = ({ client, clientName, items, saleAmount, paymentRec, change, notes }) => {
-        const phone = client?.phone?.replace(/\D/g, '');
+    const buildWhatsAppURL = ({ client, clientName, extPhone, items, saleAmount, paymentRec, change, notes }) => {
+        const phone = (client?.phone || extPhone || '')?.replace(/\D/g, '');
         const phoneClean = phone && phone.length === 10 ? phone : (phone && phone.length > 10 ? phone.slice(-10) : null);
 
         let msg = `*NOTA DE VENTA*\n`;
@@ -487,6 +518,7 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         const url = buildWhatsAppURL({
             client: activeVisit?.client,
             clientName: extClientName,
+            extPhone: extClientPhone,
             items: visitItems,
             saleAmount: visitCalc.saleAmount,
             paymentRec: parseFloat(paymentReceived) || 0,
@@ -683,7 +715,10 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                                     {clients.map(c => <option key={c.id} value={c.id} style={{ background: '#000', color: '#fff' }}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
                                 </select>
                                 {(!activeVisit.client_id && extClientName !== null) && (
-                                    <input value={extClientName || ''} onChange={e => setExtClientName(e.target.value)} placeholder="¿A quién le vendes?" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500 focus:border-amber-500" autoFocus />
+                                    <>
+                                        <input value={extClientName || ''} onChange={e => setExtClientName(e.target.value)} placeholder="¿A quién le vendes?" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500 focus:border-amber-500" autoFocus />
+                                        <input value={extClientPhone || ''} onChange={e => setExtClientPhone(e.target.value)} placeholder="📱 Teléfono (para ticket WhatsApp)" type="tel" inputMode="tel" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500 focus:border-amber-500" />
+                                    </>
                                 )}
                             </div>
                         ) : (
@@ -801,13 +836,27 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
 
                 {/* Barra de acciones fija */}
                 <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 flex z-50">
-                    <button onClick={saveVisit} disabled={saving} className="w-full py-4 bg-[#A04000] rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50 active:scale-95 transition-all">
+                    <button onClick={handleCompleteVisit} disabled={saving} className="w-full py-4 bg-[#A04000] rounded-xl text-sm font-black text-white uppercase shadow-lg disabled:opacity-50 active:scale-95 transition-all">
                         {saving ? 'Guardando...' : '✅ Completar Visita'}
                     </button>
                 </div>
 
                 {/* Toast */}
                 {toast && <div className={`fixed top-4 left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white': toast.type==='warning'?'bg-amber-500 text-black':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
+
+                {/* Modal: Aviso de pago faltante */}
+                {showPaymentWarning && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPaymentWarning(false)}></div>
+                        <div className="relative bg-[#1a1a1a] border border-red-500/30 rounded-[24px] p-6 max-w-sm w-full shadow-2xl text-center">
+                            <div className="text-5xl mb-4">💰</div>
+                            <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Pago no registrado</h3>
+                            <p className="text-sm text-gray-400 mb-2">La venta es de <span className="text-white font-black">${visitCalc.saleAmount.toFixed(2)}</span> pero no has registrado ningún pago.</p>
+                            <p className="text-xs text-red-400 font-bold mb-6">Captura el monto recibido en el campo "💵 Dinero Recibido" antes de completar la visita.</p>
+                            <button onClick={() => setShowPaymentWarning(false)} className="w-full py-3 bg-amber-500 rounded-xl text-sm font-black text-black uppercase tracking-widest active:scale-95 transition-all">Entendido</button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Modal Editar Cliente (en vista de Visita) */}
                 {editingClient && (
@@ -834,6 +883,9 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
         const totalVentas = visits.reduce((s,v) => s + (v.sale_amount||0), 0);
         const totalCobrado = visits.reduce((s,v) => s + (v.payment_received||0), 0);
         const totalCambiosDado = visits.reduce((s,v) => s + (v.change_given||0), 0);
+        const totalGastos = expenses.reduce((s,e) => s + (e.amount||0), 0);
+        const fondoCaja = journey?.cash_fund || 0;
+        const efectivoEsperado = fondoCaja + totalVentas - totalGastos;
         return (
             <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
                 <DriverBackground />
@@ -903,6 +955,31 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         </div>
                     ))}
                     {visits.length === 0 && <p className="text-center text-gray-400 py-8 font-bold text-sm">Aún no hay visitas registradas</p>}
+
+                    {/* Arqueo de Caja */}
+                    <h4 className="text-xs font-black text-amber-400/80 uppercase tracking-widest pt-2">💰 Arqueo de Caja</h4>
+                    <div className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden">
+                        <table className="w-full text-sm">
+                            <tbody>
+                                <tr className="border-b border-white/5">
+                                    <td className="py-3 px-3 font-bold text-gray-300">Fondo de Caja</td>
+                                    <td className="py-3 px-3 text-right font-black text-blue-400">${fondoCaja.toFixed(2)}</td>
+                                </tr>
+                                <tr className="border-b border-white/5">
+                                    <td className="py-3 px-3 font-bold text-gray-300">(+) Dinero de las Ventas</td>
+                                    <td className="py-3 px-3 text-right font-black text-emerald-400">${totalVentas.toFixed(2)}</td>
+                                </tr>
+                                <tr className="border-b border-white/5">
+                                    <td className="py-3 px-3 font-bold text-gray-300">(-) Gastos Operativos</td>
+                                    <td className="py-3 px-3 text-right font-black text-red-400">-${totalGastos.toFixed(2)}</td>
+                                </tr>
+                                <tr className="bg-white/[0.04]">
+                                    <td className="py-3 px-3 font-black text-white uppercase text-xs">= Efectivo Esperado</td>
+                                    <td className={`py-3 px-3 text-right font-black text-lg ${efectivoEsperado >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>${efectivoEsperado.toFixed(2)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
                 </div>
 
@@ -976,6 +1053,94 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                         </div>
                     </div>
                 )}
+            </div>
+        );
+    }
+
+    // ─── Render: Vista de Gastos ───
+    if (view === 'expenses') {
+        const totalGastosView = expenses.reduce((s,e) => s + (e.amount||0), 0);
+
+        const submitExpense = async () => {
+            if (!expDesc.trim()) { showToast('⚠️ Escribe una descripción del gasto', 'error'); return; }
+            if (!expAmount || parseFloat(expAmount) <= 0) { showToast('⚠️ Ingresa el monto del gasto', 'error'); return; }
+            setExpSaving(true);
+            try {
+                const res = await fetch(`${API}/grandeza/journeys/${journey.id}/expenses`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ description: expDesc.trim(), amount: parseFloat(expAmount) })
+                });
+                if (res.ok) {
+                    const newExp = await res.json();
+                    setExpenses(prev => [...prev, newExp]);
+                    setExpDesc(''); setExpAmount('');
+                    showToast('✅ Gasto registrado');
+                } else { showToast('❌ Error al registrar gasto', 'error'); }
+            } catch(e) { showToast('❌ Error de red', 'error'); }
+            finally { setExpSaving(false); }
+        };
+
+        const deleteExpense = async (expenseId) => {
+            try {
+                const res = await fetch(`${API}/grandeza/expenses/${expenseId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    setExpenses(prev => prev.filter(e => e.id !== expenseId));
+                    showToast('✅ Gasto eliminado');
+                }
+            } catch(e) { showToast('❌ Error al eliminar', 'error'); }
+        };
+
+        return (
+            <div className="h-screen flex flex-col text-white overflow-hidden relative" style={{ backgroundColor: '#3a2e1e' }}>
+                <DriverBackground />
+                <div className="relative z-20 p-4 border-b border-white/10 bg-black shadow-2xl">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-2xl shadow-orange-500/20 border-2 border-amber-500/30 flex items-center justify-center shrink-0">
+                                <img src={LOGO_URL} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
+                            </div>
+                            <div>
+                                <h1 className="font-black text-xl uppercase tracking-tighter text-white leading-none"><span className="text-red-400">Gastos</span></h1>
+                            </div>
+                        </div>
+                        <button onClick={() => setView('route')} className="text-xs text-gray-400 font-bold uppercase px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:text-white hover:bg-white/10 transition-all shrink-0">← Ruta</button>
+                    </div>
+                </div>
+                <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-3 pb-60">
+                    {/* Total de gastos */}
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex justify-between items-center">
+                        <span className="text-sm font-black text-red-300 uppercase">Total Gastos del Día</span>
+                        <span className="text-2xl font-black text-red-400">${totalGastosView.toFixed(2)}</span>
+                    </div>
+
+                    {/* Lista de gastos */}
+                    {expenses.length > 0 ? expenses.map(exp => (
+                        <div key={exp.id} className="bg-white/[0.02] border border-white/5 rounded-xl p-3 flex justify-between items-center">
+                            <div className="flex-1 min-w-0">
+                                <div className="font-bold text-sm text-white truncate">{exp.description}</div>
+                                <div className="text-[10px] text-gray-400">{exp.created_at ? new Date(exp.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Mexico_City' }) : ''}</div>
+                            </div>
+                            <div className="font-black text-red-400 text-sm mx-3">${exp.amount.toFixed(2)}</div>
+                            <button onClick={() => deleteExpense(exp.id)} className="w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 font-black text-xs shrink-0 active:scale-90 transition-all">✕</button>
+                        </div>
+                    )) : (
+                        <p className="text-center text-gray-400 py-8 font-bold text-sm">No hay gastos registrados hoy</p>
+                    )}
+                </div>
+
+                {/* Formulario fijo abajo */}
+                <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4 z-50 space-y-2">
+                    <label className="text-[10px] font-black text-amber-400 uppercase block">Registrar Nuevo Gasto</label>
+                    <input type="text" value={expDesc} onChange={e => setExpDesc(e.target.value)} placeholder="Ej: Gasolina, Caseta, Comida..." className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none placeholder:text-gray-500 focus:border-amber-500" />
+                    <div className="flex gap-2">
+                        <input type="number" inputMode="decimal" value={expAmount} onChange={e => setExpAmount(e.target.value)} placeholder="$0.00" className="flex-1 bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none placeholder:text-gray-500 focus:border-amber-500" />
+                        <button onClick={submitExpense} disabled={expSaving} className="px-6 py-3 bg-red-500 rounded-xl text-sm font-black text-white uppercase active:scale-95 transition-all disabled:opacity-50 shrink-0">
+                            {expSaving ? '...' : '+ Agregar'}
+                        </button>
+                    </div>
+                </div>
+
+                {toast && <div className={`fixed top-4 left-4 right-4 px-4 py-3 rounded-xl font-bold text-sm z-[100] text-center ${toast.type==='error'?'bg-red-500 text-white': toast.type==='warning'?'bg-amber-500 text-black':'bg-emerald-500 text-black'}`}>{toast.msg}</div>}
             </div>
         );
     }
@@ -1071,6 +1236,10 @@ export const GrandezaDriverUI = ({ onBack, userPermissions = {} }) => {
                 <button onClick={() => setView('order')}
                     className="flex-1 py-3 px-1 bg-blue-500/10 border border-blue-500/30 rounded-xl text-[10px] sm:text-xs font-black text-blue-400 uppercase leading-tight flex flex-col items-center justify-center text-center">
                     <span>📋</span><span>Pedido</span>
+                </button>
+                <button onClick={() => { setView('expenses'); }}
+                    className="flex-1 py-3 px-1 bg-red-500/10 border border-red-500/30 rounded-xl text-[10px] sm:text-xs font-black text-red-400 uppercase leading-tight flex flex-col items-center justify-center text-center">
+                    <span>🧾</span><span>Gastos</span>
                 </button>
                 <button onClick={() => setView('summary')}
                     className="flex-1 py-3 px-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-xs font-black text-gray-300 uppercase leading-tight flex flex-col items-center justify-center text-center">
@@ -1189,6 +1358,7 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
     const LOGO_URL = `${API.replace('/api/v1', '')}/static/images/grandeza/logo.png`;
     const [selectedClient, setSelectedClient] = useState('');
     const [customClientName, setCustomClientName] = useState('');
+    const [customClientPhone, setCustomClientPhone] = useState('');
     const [orderItems, setOrderItems] = useState(grandezaProducts.map(gp => ({ product_id: gp.product_id, product_name: gp.product_name, qty: 0, unit_price: gp.b2b_price, lead_time_hours: gp.order_lead_time_hours || 0 })));
     const [deliveryDate, setDeliveryDate] = useState('');
     const [deliveryTime, setDeliveryTime] = useState('');
@@ -1236,6 +1406,7 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                 body: JSON.stringify({
                     client_id: selectedClient === 'CUSTOM' ? null : (parseInt(selectedClient) || null),
                     client_name: selectedClient === 'CUSTOM' ? (customClientName || 'Cliente no registrado') : (client?.name || 'Cliente en ruta'),
+                    client_phone: selectedClient === 'CUSTOM' ? (customClientPhone || null) : (client?.phone || null),
                     items: orderItems.filter(it => it.qty > 0),
                     total_amount: totalAmount,
                     advance_payment: advanceAmount,
@@ -1273,13 +1444,16 @@ const OrderView = ({ API, clients, grandezaProducts, onBack, showToast }) => {
                 {/* Cliente */}
                 <div>
                     <label className="text-[10px] font-black text-amber-400/80 uppercase block mb-1">Cliente</label>
-                    <select value={selectedClient} onChange={e => { setSelectedClient(e.target.value); if (e.target.value !== 'CUSTOM') setCustomClientName(''); }} className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }}>
+                    <select value={selectedClient} onChange={e => { setSelectedClient(e.target.value); if (e.target.value !== 'CUSTOM') { setCustomClientName(''); setCustomClientPhone(''); } }} className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none" style={{ colorScheme: 'dark' }}>
                         <option value="" style={{ background: '#000', color: '#fff' }}>Seleccionar cliente...</option>
                         <option value="CUSTOM" style={{ background: '#000', color: '#fbbf24' }}>✏️ Cliente no registrado (escribir nombre)</option>
                         {clients.map(c => <option key={c.id} value={c.id} style={{ background: '#000', color: '#fff' }}>{c.name} {c.business_name ? `(${c.business_name})` : ''}</option>)}
                     </select>
                     {selectedClient === 'CUSTOM' && (
-                        <input type="text" value={customClientName} onChange={e => setCustomClientName(e.target.value)} placeholder="¿Cómo se llama el cliente?" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500" autoFocus />
+                        <>
+                            <input type="text" value={customClientName} onChange={e => setCustomClientName(e.target.value)} placeholder="¿Cómo se llama el cliente?" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500" autoFocus />
+                            <input type="tel" inputMode="tel" value={customClientPhone} onChange={e => setCustomClientPhone(e.target.value)} placeholder="📱 Teléfono (para ticket WhatsApp)" className="w-full bg-black border border-amber-500/30 rounded-xl p-3 text-white font-bold outline-none mt-2 placeholder:text-gray-500" />
+                        </>
                     )}
                 </div>
                 {/* Fecha y Hora de entrega */}

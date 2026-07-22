@@ -169,8 +169,9 @@ class GrandezaVisit(Base):
     # Incidentes y notas
     incident_notes = Column(Text, nullable=True)
     
-    # Para ventas extemporáneas: nombre del cliente no programado
+    # Para ventas extemporáneas: nombre y teléfono del cliente no programado
     ext_client_name = Column(String, nullable=True)
+    ext_client_phone = Column(String, nullable=True)  # Para envío de ticket digital vía WhatsApp
     
     # Vinculación con pedido de producción (opcional)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
@@ -234,6 +235,22 @@ class GrandezaSettings(Base):
     value = Column(String, nullable=True)
     description = Column(String, nullable=True)
 
+class GrandezaExpense(Base):
+    """
+    Gastos operativos registrados por el repartidor durante la jornada.
+    Ejemplos: gasolina, comida, casetas, viáticos.
+    Vinculado a la jornada para el arqueo de caja.
+    """
+    __tablename__ = "grandeza_expenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    journey_id = Column(Integer, ForeignKey("grandeza_journeys.id"), nullable=False)
+    description = Column(String, nullable=False)  # Texto libre: "Gasolina", "Caseta Palmillas"
+    amount = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime, default=datetime.now)
+
+    journey = relationship("GrandezaJourney")
+ 
 
 class GrandezaOrder(Base):
     """
@@ -243,9 +260,11 @@ class GrandezaOrder(Base):
     """
     __tablename__ = "grandeza_orders"
 
+
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(Integer, ForeignKey("grandeza_clients.id"), nullable=True)
     client_name = Column(String, nullable=True)  # Snapshot o nombre manual
+    client_phone = Column(String, nullable=True)  # Para envío de ticket digital vía WhatsApp
     
     # Productos del pedido (JSON: [{product_id, product_name, qty, unit_price}])
     items = Column(JSON, nullable=False, default=[])

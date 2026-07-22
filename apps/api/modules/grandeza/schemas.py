@@ -237,7 +237,15 @@ class GrandezaSettingUpdate(BaseModel):
     value: str
 
 
+# ─── Gastos Operativos ───────────────────────────────────────────────────────
+
+class GrandezaExpenseCreate(BaseModel):
+    description: str
+    amount: float
+
+
 # ─── Pedidos Grandeza ─────────────────────────────────────────────────────────
+
 
 class GrandezaOrderCreate(BaseModel):
     client_id: Optional[int] = None

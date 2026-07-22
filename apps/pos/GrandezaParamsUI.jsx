@@ -566,9 +566,9 @@ export const GrandezaParamsUI = ({ onBack }) => {
 
                 {/* Modal de Edición de Cliente */}
                 {editingClient && (
-                    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setEditingClient(null)}></div>
-                        <div className="relative bg-[#111] border border-white/10 rounded-t-[32px] md:rounded-[32px] p-5 md:p-8 max-w-2xl w-full shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div className="relative bg-[#111] border border-white/10 rounded-[24px] md:rounded-[32px] p-5 md:p-8 max-w-2xl w-full shadow-2xl animate-in zoom-in-95 max-h-[85vh] overflow-y-auto custom-scrollbar">
                             <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-white mb-4 md:mb-6">
                                 {editingClient.id ? 'Editar Cliente' : 'Nuevo Cliente'}
                             </h2>
@@ -1233,7 +1233,7 @@ export const GrandezaParamsUI = ({ onBack }) => {
             )}
 
             {/* Contenido Dinámico */}
-            <div className="relative z-10 flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+            <div className="relative flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
                 <div className="max-w-7xl mx-auto">
                     {activeTab === 'products' && renderProductsTab()}
                     {activeTab === 'clients' && renderClientsTab()}

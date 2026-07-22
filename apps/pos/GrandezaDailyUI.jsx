@@ -380,12 +380,6 @@ export const GrandezaDailyUI = ({ onBack }) => {
                                         Piezas frescas que sube el repartidor a la camioneta
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-full md:w-auto bg-orange-500/10 border border-orange-500/20 rounded-2xl px-5 py-2 text-center">
-                                        <div className="text-2xl font-black text-orange-400">{totalPiezas}</div>
-                                        <div className="text-[9px] font-black text-orange-500/60 uppercase tracking-widest">Piezas Total</div>
-                                    </div>
-                                </div>
                             </div>
 
                             <div className="p-6">
@@ -437,13 +431,13 @@ export const GrandezaDailyUI = ({ onBack }) => {
                                 </h3>
                                 <p className="text-xs text-white mb-3">Dinero que se le entrega al repartidor para dar cambio.</p>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-2xl text-orange-500 font-black">$</span>
+                                    <span className="text-xl text-orange-500 font-black shrink-0">$</span>
                                     <input
                                         type="number"
                                         value={cashFund}
                                         onChange={(e) => setCashFund(e.target.value)}
                                         placeholder="0.00"
-                                        className="flex-1 bg-black/90 border border-white/10 rounded-2xl p-4 text-2xl font-black text-white outline-none focus:border-orange-500 transition-all"
+                                        className="min-w-0 flex-1 bg-black/90 border border-white/10 rounded-2xl p-3 text-xl font-black text-white outline-none focus:border-orange-500 transition-all"
                                         disabled={journey.status !== 'PREPARANDO'}
                                     />
                                 </div>
@@ -492,7 +486,7 @@ export const GrandezaDailyUI = ({ onBack }) => {
                         )}
 
                         {journey.status === 'EN_RUTA' && (
-                            <CierreJornada journey={journey} API_BASE={API_BASE} showToast={showToast} onReload={loadData} cashFund={cashFund} totalPiezas={totalPiezas} />
+                            <CierreJornada journey={journey} API_BASE={API_BASE} showToast={showToast} onReload={loadData} cashFund={cashFund} totalPiezas={totalPiezas} grandezaProducts={grandezaProducts} inventory={inventory} />
                         )}
 
                         {journey.status === 'CERRADA' && (
@@ -584,35 +578,84 @@ export const GrandezaDailyUI = ({ onBack }) => {
 };
 
 // ─── Sub-componente: Cierre de Jornada ───────────────────────────────────────
-const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, totalPiezas }) => {
+const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, totalPiezas, grandezaProducts, inventory }) => {
     const [visits, setVisits] = useState([]);
+    const [expenses, setExpenses] = useState([]);
     const [cashReceived, setCashReceived] = useState('');
-    const [exchangePiecesReceived, setExchangePiecesReceived] = useState('');
-    const [freshLeftoverReceived, setFreshLeftoverReceived] = useState('');
+    const [productReceipts, setProductReceipts] = useState({}); // { product_id: { freshReceived: '', exchangeReceived: '' } }
     const [feedbackNotes, setFeedbackNotes] = useState('');
     const [saving, setSaving] = useState(false);
     const [loaded, setLoaded] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [lastLocation, setLastLocation] = useState(null);
 
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await fetch(`${API_BASE}/grandeza/journeys/${journey.id}/visits`);
-                if (res.ok) setVisits(await res.json());
-            } catch(e) {}
+                const [visitsRes, expensesRes, locRes] = await Promise.all([
+                    fetch(`${API_BASE}/grandeza/journeys/${journey.id}/visits`),
+                    fetch(`${API_BASE}/grandeza/journeys/${journey.id}/expenses`),
+                    fetch(`${API_BASE}/grandeza/journeys/${journey.id}/locations`),
+                ]);
+                if (visitsRes.ok) setVisits(await visitsRes.json());
+                if (expensesRes.ok) setExpenses(await expensesRes.json());
+                if (locRes.ok) {
+                    const locs = await locRes.json();
+                    if (locs.length > 0) setLastLocation(locs[locs.length - 1]);
+                }
+            } catch(e) { console.error(e); }
             setLoaded(true);
         };
         load();
     }, [journey.id]);
 
-    // Cálculos esperados
+    // ─── Cálculos por producto ───
+    const productStats = useMemo(() => {
+        return grandezaProducts.map(gp => {
+            const invItem = (inventory || []).find(i => i.product_id === gp.product_id);
+            const inicial = invItem ? invItem.fresh_qty : 0;
+            let vendidas = 0, cambios = 0;
+            visits.forEach(v => {
+                (v.items || []).forEach(it => {
+                    if (it.product_id === gp.product_id) {
+                        vendidas += it.actual_fresh_qty || 0;
+                        cambios += it.exchange_qty || 0;
+                    }
+                });
+            });
+            const sobrantesEsperadas = inicial - vendidas;
+            return { ...gp, inicial, vendidas, cambios, sobrantesEsperadas };
+        });
+    }, [grandezaProducts, inventory, visits]);
+
+    // ─── Cálculos de dinero ───
     const totalVentas = visits.reduce((s,v) => s + (v.sale_amount || 0), 0);
-    const totalCobrado = visits.reduce((s,v) => s + (v.payment_received || 0), 0);
-    const totalCambiosDado = visits.reduce((s,v) => s + (v.change_given || 0), 0);
-    const cashExpected = parseFloat(cashFund || 0) + totalCobrado - totalCambiosDado;
-    const totalExchangePieces = visits.reduce((s,v) => (v.items||[]).reduce((ss,it) => ss + (it.exchange_qty||0), s), 0);
-    const totalFreshSold = visits.reduce((s,v) => (v.items||[]).reduce((ss,it) => ss + (it.actual_fresh_qty||0), s), 0);
-    const freshLeftoverExpected = totalPiezas - totalFreshSold;
+    const totalGastos = expenses.reduce((s,e) => s + (e.amount || 0), 0);
+    const fondoCaja = parseFloat(cashFund || 0);
+    const cashExpected = fondoCaja + totalVentas - totalGastos;
+    const cashReceivedNum = parseFloat(cashReceived) || 0;
+    const cashDiff = cashReceivedNum - cashExpected;
+
+    // ─── Totales de mercancía ───
+    const totalExchangeExpected = productStats.reduce((s,p) => s + p.cambios, 0);
+    const totalFreshLeftoverExpected = productStats.reduce((s,p) => s + p.sobrantesEsperadas, 0);
+    const totalExchangeReceived = productStats.reduce((s,p) => s + (parseInt(productReceipts[p.product_id]?.exchangeReceived) || 0), 0);
+    const totalFreshReceived = productStats.reduce((s,p) => s + (parseInt(productReceipts[p.product_id]?.freshReceived) || 0), 0);
+
+    const updateReceipt = (productId, field, value) => {
+        setProductReceipts(prev => ({
+            ...prev,
+            [productId]: { ...prev[productId], [field]: value }
+        }));
+    };
+
+    const openGoogleMaps = () => {
+        if (lastLocation) {
+            window.open(`https://www.google.com/maps?q=${lastLocation.lat},${lastLocation.lng}`, '_blank');
+        } else {
+            showToast('⚠️ No hay ubicación registrada del repartidor', 'warning');
+        }
+    };
 
     const handleCerrarRequest = () => setShowConfirmModal(true);
 
@@ -625,11 +668,11 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
                 body: JSON.stringify({
                     status: 'CERRADA',
                     cash_expected: cashExpected,
-                    cash_received: parseFloat(cashReceived) || 0,
-                    exchange_pieces_expected: totalExchangePieces,
-                    exchange_pieces_received: parseInt(exchangePiecesReceived) || 0,
-                    fresh_leftover_expected: freshLeftoverExpected,
-                    fresh_leftover_received: parseInt(freshLeftoverReceived) || 0,
+                    cash_received: cashReceivedNum,
+                    exchange_pieces_expected: totalExchangeExpected,
+                    exchange_pieces_received: totalExchangeReceived,
+                    fresh_leftover_expected: totalFreshLeftoverExpected,
+                    fresh_leftover_received: totalFreshReceived,
                     feedback_notes: feedbackNotes || null,
                 })
             });
@@ -643,12 +686,12 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
 
     return (
         <div className="space-y-4">
-            {/* Estado en ruta */}
+            {/* Header: Ruta en Curso (sin los 3 recuadros) */}
             <div className="bg-black border border-blue-500/20 rounded-[24px] p-4 md:p-6 shadow-xl">
-                <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg border border-blue-500/30 flex items-center justify-center shrink-0">
-                            <img src={`${API_BASE.replace('/api/v1', '')}/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35] md:scale-[1.35]" />
+                            <img src={`${API_BASE.replace('/api/v1', '')}/static/images/grandeza/logo.png`} alt="Grandeza" className="w-full h-full object-cover scale-[1.35]" />
                         </div>
                         <div>
                             <h3 className="text-xl font-black uppercase tracking-tighter text-white">Ruta en <span className="text-blue-400">Curso</span></h3>
@@ -659,46 +702,39 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
                             )}
                         </div>
                     </div>
-                    <span className="text-xs font-bold text-white">{visits.length} visitas registradas</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-black/70 backdrop-blur-md rounded-xl p-3 text-center">
-                        <div className="text-lg font-black text-orange-400">${totalVentas.toFixed(0)}</div>
-                        <div className="text-[8px] font-black text-white uppercase">Venta Total</div>
-                    </div>
-                    <div className="bg-black/70 backdrop-blur-md rounded-xl p-3 text-center">
-                        <div className="text-lg font-black text-amber-400">${cashExpected.toFixed(0)}</div>
-                        <div className="text-[8px] font-black text-white uppercase">Efectivo Esperado</div>
-                    </div>
-                    <div className="bg-black/70 backdrop-blur-md rounded-xl p-3 text-center">
-                        <div className="text-lg font-black text-blue-400">{freshLeftoverExpected}</div>
-                        <div className="text-[8px] font-black text-white uppercase">Frescas Sobrantes</div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">{visits.length} visitas</span>
+                        <button onClick={openGoogleMaps} className="px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs font-black text-blue-400 uppercase active:scale-95 transition-all flex items-center gap-1">
+                            📍 Ver en Mapa
+                        </button>
                     </div>
                 </div>
             </div>
 
             {/* Bitácora de Visitas */}
             {visits.length > 0 && (
-                <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-[24px] p-6 space-y-4">
+                <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-[24px] p-4 md:p-6 space-y-3">
                     <h3 className="text-sm font-black uppercase tracking-widest text-white flex items-center gap-2">
                         <span>📝</span> Bitácora de Visitas
                     </h3>
-                    <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                         {visits.slice().reverse().map(v => (
                             <div key={v.id} className="bg-black rounded-xl p-3 flex justify-between items-center border border-white/10">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-black text-white uppercase">{v.client_name || 'Cliente de Ruta'}</span>
-                                    {v.completed_at ? (
-                                        <span className="text-xs font-black text-blue-400">
-                                            • {new Date(v.completed_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                                        </span>
-                                    ) : (
-                                        <span className="text-xs font-bold text-gray-500">• Hora no registrada</span>
-                                    )}
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-xs font-black text-white uppercase truncate block">{v.client_name || v.ext_client_name || 'Cliente de Ruta'}</span>
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                        {v.completed_at ? (
+                                            <span className="text-[10px] font-bold text-blue-400">
+                                                🕒 {new Date(v.completed_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-bold text-gray-500">• Hora no registrada</span>
+                                        )}
+                                        <span className="text-[10px] font-bold text-gray-500">{v.visit_type === 'EXTEMPORANEA' ? '⚡ Extra' : '📋 Prog.'}</span>
+                                    </div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-right shrink-0 ml-2">
                                     <div className="text-sm font-black text-emerald-400">${(v.sale_amount||0).toFixed(2)}</div>
-                                    <div className="text-[9px] font-bold text-gray-400 uppercase mt-1">{v.status}</div>
                                 </div>
                             </div>
                         ))}
@@ -706,56 +742,142 @@ const CierreJornada = ({ journey, API_BASE, showToast, onReload, cashFund, total
                 </div>
             )}
 
-            {/* Formulario de cierre */}
-            <div className="bg-black/70 backdrop-blur-md border border-amber-500/20 rounded-[24px] p-6 space-y-4">
+            {/* ─── Recepción de Mercancía ─── */}
+            <div className="bg-black/70 backdrop-blur-md border border-amber-500/20 rounded-[24px] p-4 md:p-6 space-y-4">
                 <h3 className="text-sm font-black uppercase tracking-widest text-amber-400 flex items-center gap-2">
-                    <span>🔒</span> Cierre de Jornada
+                    <span>📦</span> Recepción de Mercancía
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label className="text-[10px] font-black text-white uppercase block mb-1">💰 Efectivo Recibido</label>
-                        <input type="number" value={cashReceived} onChange={e => setCashReceived(e.target.value)} placeholder={cashExpected.toFixed(2)}
-                            className="w-full bg-black/90 border border-white/10 rounded-xl p-3 text-lg font-black text-white outline-none focus:border-amber-500" />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black text-white uppercase block mb-1">🔄 Piezas Cambio Recibidas</label>
-                        <input type="number" value={exchangePiecesReceived} onChange={e => setExchangePiecesReceived(e.target.value)} placeholder={String(totalExchangePieces)}
-                            className="w-full bg-black/90 border border-white/10 rounded-xl p-3 text-lg font-black text-white outline-none focus:border-amber-500" />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black text-white uppercase block mb-1">🍞 Frescas Sobrantes Recibidas</label>
-                        <input type="number" value={freshLeftoverReceived} onChange={e => setFreshLeftoverReceived(e.target.value)} placeholder={String(freshLeftoverExpected)}
-                            className="w-full bg-black/90 border border-white/10 rounded-xl p-3 text-lg font-black text-white outline-none focus:border-amber-500" />
-                    </div>
+                <div className="overflow-x-auto -mx-2">
+                    <table className="w-full text-[10px] md:text-xs min-w-[600px]">
+                        <thead>
+                            <tr className="text-[8px] md:text-[9px] font-black uppercase text-gray-400 bg-white/[0.03]">
+                                <th className="text-left py-2 px-2">Producto</th>
+                                <th className="text-center py-2 px-1 text-blue-400">Inic.</th>
+                                <th className="text-center py-2 px-1 text-emerald-400">Vend.</th>
+                                <th className="text-center py-2 px-1 text-amber-400">Sobr. Esp.</th>
+                                <th className="text-center py-2 px-1 text-white">Sobr. Rec.</th>
+                                <th className="text-center py-2 px-1">Dif.</th>
+                                <th className="text-center py-2 px-1 text-red-400">Camb. Esp.</th>
+                                <th className="text-center py-2 px-1 text-white">Camb. Rec.</th>
+                                <th className="text-center py-2 px-1">Dif.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {productStats.map(p => {
+                                const freshRec = parseInt(productReceipts[p.product_id]?.freshReceived) || 0;
+                                const exchRec = parseInt(productReceipts[p.product_id]?.exchangeReceived) || 0;
+                                const freshDiff = freshRec - p.sobrantesEsperadas;
+                                const exchDiff = exchRec - p.cambios;
+                                return (
+                                    <tr key={p.product_id} className="border-t border-white/5">
+                                        <td className="py-2 px-2 font-bold text-white">{p.product_name}</td>
+                                        <td className="py-2 px-1 text-center font-black text-blue-300">{p.inicial}</td>
+                                        <td className="py-2 px-1 text-center font-black text-emerald-300">{p.vendidas}</td>
+                                        <td className="py-2 px-1 text-center font-black text-amber-300">{p.sobrantesEsperadas}</td>
+                                        <td className="py-2 px-1 text-center">
+                                            <input type="number" value={productReceipts[p.product_id]?.freshReceived || ''} onChange={e => updateReceipt(p.product_id, 'freshReceived', e.target.value)}
+                                                placeholder={String(p.sobrantesEsperadas)} className="w-12 md:w-14 bg-black border border-white/10 rounded-lg text-center text-xs font-black text-white outline-none focus:border-amber-500 p-1" />
+                                        </td>
+                                        <td className={`py-2 px-1 text-center font-black ${productReceipts[p.product_id]?.freshReceived !== undefined && productReceipts[p.product_id]?.freshReceived !== '' ? (freshDiff >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-600'}`}>
+                                            {productReceipts[p.product_id]?.freshReceived !== undefined && productReceipts[p.product_id]?.freshReceived !== '' ? freshDiff : '—'}
+                                        </td>
+                                        <td className="py-2 px-1 text-center font-black text-red-300">{p.cambios}</td>
+                                        <td className="py-2 px-1 text-center">
+                                            <input type="number" value={productReceipts[p.product_id]?.exchangeReceived || ''} onChange={e => updateReceipt(p.product_id, 'exchangeReceived', e.target.value)}
+                                                placeholder={String(p.cambios)} className="w-12 md:w-14 bg-black border border-white/10 rounded-lg text-center text-xs font-black text-white outline-none focus:border-amber-500 p-1" />
+                                        </td>
+                                        <td className={`py-2 px-1 text-center font-black ${productReceipts[p.product_id]?.exchangeReceived !== undefined && productReceipts[p.product_id]?.exchangeReceived !== '' ? (exchDiff >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-600'}`}>
+                                            {productReceipts[p.product_id]?.exchangeReceived !== undefined && productReceipts[p.product_id]?.exchangeReceived !== '' ? exchDiff : '—'}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
-                <div>
-                    <label className="text-[10px] font-black text-white uppercase block mb-1">📝 Notas de Retroalimentación</label>
-                    <textarea value={feedbackNotes} onChange={e => setFeedbackNotes(e.target.value)} placeholder="Observaciones del gerente..." className="w-full bg-black/90 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-amber-500 min-h-[60px] resize-none" />
-                </div>
-                <button onClick={handleCerrarRequest} disabled={saving}
-                    className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl text-sm font-black uppercase tracking-widest text-white shadow-2xl shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50">
-                    {saving ? 'Cerrando...' : '🔒 Cerrar Jornada'}
-                </button>
             </div>
 
-            {/* Custom Modal for Cierre */}
+            {/* ─── Recepción de Dinero ─── */}
+            <div className="bg-black/70 backdrop-blur-md border border-amber-500/20 rounded-[24px] p-4 md:p-6 space-y-4">
+                <h3 className="text-sm font-black uppercase tracking-widest text-amber-400 flex items-center gap-2">
+                    <span>💰</span> Recepción de Dinero
+                </h3>
+                <div className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden">
+                    <table className="w-full text-sm">
+                        <tbody>
+                            <tr className="border-b border-white/5">
+                                <td className="py-3 px-3 font-bold text-gray-300">Fondo de Caja</td>
+                                <td className="py-3 px-3 text-right font-black text-blue-400">${fondoCaja.toFixed(2)}</td>
+                            </tr>
+                            <tr className="border-b border-white/5">
+                                <td className="py-3 px-3 font-bold text-gray-300">(+) Dinero de las Ventas</td>
+                                <td className="py-3 px-3 text-right font-black text-emerald-400">${totalVentas.toFixed(2)}</td>
+                            </tr>
+                            <tr className="border-b border-white/5">
+                                <td className="py-3 px-3 font-bold text-gray-300">(-) Gastos Operativos</td>
+                                <td className="py-3 px-3 text-right font-black text-red-400">-${totalGastos.toFixed(2)}</td>
+                            </tr>
+                            {expenses.length > 0 && expenses.map(exp => (
+                                <tr key={exp.id} className="border-b border-white/5 bg-white/[0.01]">
+                                    <td className="py-2 px-3 pl-8 text-xs text-gray-500 italic">{exp.description}</td>
+                                    <td className="py-2 px-3 text-right text-xs font-bold text-red-400/60">-${exp.amount.toFixed(2)}</td>
+                                </tr>
+                            ))}
+                            <tr className="bg-white/[0.04] border-b border-white/10">
+                                <td className="py-3 px-3 font-black text-white uppercase text-xs">= Efectivo Esperado</td>
+                                <td className="py-3 px-3 text-right font-black text-lg text-amber-400">${cashExpected.toFixed(2)}</td>
+                            </tr>
+                            <tr className="border-b border-white/5">
+                                <td className="py-3 px-3 font-bold text-white">Efectivo Recibido</td>
+                                <td className="py-3 px-3 text-right">
+                                    <input type="number" value={cashReceived} onChange={e => setCashReceived(e.target.value)} placeholder={cashExpected.toFixed(2)}
+                                        className="w-28 bg-black border border-white/10 rounded-xl text-right text-lg font-black text-white outline-none focus:border-amber-500 p-2" />
+                                </td>
+                            </tr>
+                            {cashReceived && (
+                                <tr className="bg-white/[0.04]">
+                                    <td className="py-3 px-3 font-black text-white uppercase text-xs">Diferencia</td>
+                                    <td className={`py-3 px-3 text-right font-black text-lg ${cashDiff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        {cashDiff >= 0 ? '+' : ''}${cashDiff.toFixed(2)}
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* ─── Notas de Retroalimentación ─── */}
+            <div className="bg-black/70 backdrop-blur-md border border-white/10 rounded-[24px] p-4 md:p-6 space-y-3">
+                <label className="text-[10px] font-black text-white uppercase block">📝 Notas de Retroalimentación</label>
+                <textarea value={feedbackNotes} onChange={e => setFeedbackNotes(e.target.value)} placeholder="Observaciones del gerente sobre la jornada..." className="w-full bg-black/90 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-amber-500 min-h-[80px] resize-none" />
+            </div>
+
+            {/* ─── Botón Cerrar Jornada ─── */}
+            <button onClick={handleCerrarRequest} disabled={saving}
+                className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl text-sm font-black uppercase tracking-widest text-white shadow-2xl shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50">
+                {saving ? 'Cerrando...' : '🔒 Cerrar Jornada'}
+            </button>
+
+            {/* Modal Confirmación */}
             {showConfirmModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-[#2a2216] border border-white/10 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                    <div className="bg-[#2a2216] border border-white/10 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
                         <div className="text-4xl mb-4 text-center">🔒</div>
-                        <h3 className="text-xl font-black uppercase tracking-tighter text-amber-400 text-center mb-6">Confirmar Cierre</h3>
-                        <p className="text-white text-center mb-8 font-medium">¿Cerrar la jornada? Esta acción no se puede deshacer.</p>
+                        <h3 className="text-xl font-black uppercase tracking-tighter text-amber-400 text-center mb-4">Confirmar Cierre</h3>
+                        <div className="space-y-2 text-sm text-center mb-6">
+                            <p className="text-white font-medium">¿Cerrar la jornada? Esta acción no se puede deshacer.</p>
+                            {cashReceived && (
+                                <p className={`font-black ${cashDiff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    Diferencia en efectivo: {cashDiff >= 0 ? '+' : ''}${cashDiff.toFixed(2)}
+                                </p>
+                            )}
+                        </div>
                         <div className="flex gap-4">
-                            <button
-                                onClick={() => setShowConfirmModal(false)}
-                                className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl font-bold text-white hover:bg-white/10 transition-all"
-                            >
+                            <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl font-bold text-white hover:bg-white/10 transition-all">
                                 CANCELAR
                             </button>
-                            <button
-                                onClick={handleCerrar}
-                                className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl font-black uppercase tracking-widest text-white hover:scale-[1.02] active:scale-[0.98] transition-all"
-                            >
+                            <button onClick={handleCerrar} className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl font-black uppercase tracking-widest text-white hover:scale-[1.02] active:scale-[0.98] transition-all">
                                 CERRAR
                             </button>
                         </div>
