@@ -448,3 +448,205 @@ Esto avisa al repartidor que no es su ruta habitual.
 | `apps/pos/GrandezaDriverUI.jsx` | Fetch a `/effective/{fecha}` + badge visual |
 | **POS (RetailVisionPOS.jsx)** | **CERO cambios** ✅ |
 
+---
+
+## 14. Gastos Operativos del Repartidor (v7.4.0 — 22/Julio/2026)
+
+### 14.1 Visión General
+Se agregó la capacidad de que el repartidor registre **gastos operativos** durante su jornada (gasolina, peajes, estacionamiento, reparaciones, comida, etc.). Estos gastos se persisten en PostgreSQL y se integran al arqueo de caja.
+
+### 14.2 Base de Datos
+
+**Nueva tabla:** `grandeza_expenses`
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | SERIAL PK | Identificador único |
+| `journey_id` | INTEGER FK → `grandeza_journeys.id` | Jornada asociada |
+| `description` | VARCHAR | Descripción del gasto (ej: "Gasolina") |
+| `amount` | FLOAT | Monto del gasto |
+| `created_at` | TIMESTAMP | Fecha de creación |
+
+**Modelo SQLAlchemy:** `GrandezaExpense` en `apps/api/modules/grandeza/models.py`
+
+### 14.3 API — Endpoints
+
+| Método | Endpoint | Propósito |
+|--------|----------|-----------|
+| `GET` | `/journeys/{id}/expenses` | Listar gastos de una jornada |
+| `POST` | `/journeys/{id}/expenses` | Registrar un nuevo gasto |
+| `DELETE` | `/expenses/{expense_id}` | Eliminar un gasto |
+
+### 14.4 Frontend — Herramienta Repartidor (`GrandezaDriverUI.jsx`)
+
+- Nuevo botón **💸 Gastos** en la barra de navegación inferior.
+- Vista `expenses` con lista de gastos existentes + formulario para agregar nuevos.
+- Botón de eliminar por gasto individual.
+- Diseño mobile-first con el mismo estilo oscuro del resto de la app.
+
+### 14.5 Arqueo de Caja (Fórmula Simplificada)
+Se implementó la sección **"Arqueo de Caja"** en la vista `summary` del repartidor, usando la fórmula:
+
+```
+Efectivo Esperado = Fondo de Caja + Dinero de las Ventas - Gastos Operativos
+```
+
+Se muestra en una tabla clara con filas para cada componente, colores diferenciados (azul para fondo, verde para ventas, rojo para gastos, ámbar para el total esperado).
+
+> ⚠️ **NOTA:** El usuario solicitó específicamente usar "Dinero de las ventas" en lugar de "Dinero cobrado" y "Cambios entregados". La fórmula simplificada refleja el neto real de la operación.
+
+---
+
+## 15. Mejoras a la Herramienta del Gerente — Cierre de Jornada (v7.4.0)
+
+### 15.1 Cambios en la UI Principal (`GrandezaDailyUI.jsx`)
+
+| Cambio | Detalle |
+|--------|---------|
+| ❌ Piezas Total | Eliminado del encabezado de inventario inicial (era redundante) |
+| 🔧 Fondo de Caja | Corregida responsividad: `min-w-0` en input, fuente reducida, `shrink-0` en el signo `$` |
+| ❌ Ruta en Curso (3 recuadros) | Eliminados los recuadros de Venta Total, Efectivo Esperado y Frescas Sobrantes |
+| 📍 Google Maps | Botón "Ver en Mapa" que abre la última ubicación GPS del repartidor usando el endpoint `GET /journeys/{id}/locations` |
+| 📝 Bitácora mejorada | Se muestra tipo de visita (⚡ Extra / 📋 Prog.) y hora de cada visita |
+
+### 15.2 Recepción de Mercancía (Tabla por Producto)
+
+Se reemplazó el formulario simple de 3 inputs por una **tabla detallada por producto** con las siguientes columnas:
+
+| Producto | Inic. | Vend. | Sobr. Esp. | Sobr. Rec. | Dif. | Camb. Esp. | Camb. Rec. | Dif. |
+|----------|:-----:|:-----:|:----------:|:----------:|:----:|:----------:|:----------:|:----:|
+| Concha Fina | 50 | 35 | 15 | _input_ | auto | 8 | _input_ | auto |
+
+- **Datos automáticos:** Inventario Inicial, Vendidas, Sobrantes Esperadas, Cambios Esperados → calculados desde las visitas completadas.
+- **Datos editables:** Sobrantes Recibidas y Cambios Recibidos → inputs para el gerente.
+- **Diferencia:** Calculada en tiempo real (`recibido - esperado`). Verde si ≥ 0, rojo si < 0.
+- **State:** `productReceipts` → objeto `{ product_id: { freshReceived: '', exchangeReceived: '' } }`
+
+### 15.3 Recepción de Dinero (Tabla con Gastos)
+
+Se agregó una tabla financiera completa que integra los gastos operativos:
+
+| Concepto | Monto |
+|----------|------:|
+| Fondo de Caja | $500.00 (auto) |
+| (+) Dinero de las Ventas | $3,240.00 (auto) |
+| (-) Gastos Operativos | -$350.00 (auto, con detalle expandido) |
+|     _→ Gasolina_ | _-$200.00_ |
+|     _→ Estacionamiento_ | _-$150.00_ |
+| **= Efectivo Esperado** | **$3,390.00** (auto) |
+| Efectivo Recibido | _input_ |
+| **Diferencia** | **auto** (verde si ≥ 0, rojo si < 0) |
+
+Los gastos se obtienen del endpoint `GET /journeys/{id}/expenses`.
+
+### 15.4 Modal de Confirmación Mejorado
+El modal de cierre ahora muestra la diferencia de efectivo antes de confirmar, con color verde/rojo según corresponda.
+
+### 15.5 Datos Enviados al Cerrar
+El payload de `PATCH /journeys/{id}` ahora incluye totales por producto:
+
+```json
+{
+    "status": "CERRADA",
+    "cash_expected": 3390.00,
+    "cash_received": 3400.00,
+    "exchange_pieces_expected": 25,
+    "exchange_pieces_received": 24,
+    "fresh_leftover_expected": 45,
+    "fresh_leftover_received": 44,
+    "feedback_notes": "Todo bien, un cliente cerrado"
+}
+```
+
+---
+
+## 16. Módulo Producción Grandeza (v7.4.0)
+
+### 16.1 Visión General
+Se agregó un nuevo módulo al **Gestor de Producción** que permite al gerente de producción ver **cuántas piezas de cada producto necesita producir** para la ruta del día siguiente, basado en el historial de ventas de cada cliente incluido en la ruta.
+
+**Contexto operativo:**
+- La producción se efectúa a las **20:00 hrs** (horario central de México).
+- El empaquetado es entre **6:00 y 9:00 hrs** del día de reparto.
+- Las cantidades son **dinámicas**: si se modifica la ruta extraordinaria del día siguiente, las cantidades se recalculan automáticamente.
+
+### 16.2 Backend — Endpoint de Estimación
+
+```
+GET /api/v1/grandeza/production-estimate/{fecha}?last_n=10
+```
+
+**Lógica del algoritmo:**
+1. Determinar la ruta del `{fecha}`: si existe `extraordinary_route_slots` para esa fecha, usar esos clientes; si no, usar `route_slots` del `day_of_week` correspondiente.
+2. Para cada cliente en la ruta, consultar sus **últimas N visitas completadas** (default: 10).
+3. Calcular el **promedio de `actual_fresh_qty`** por producto por cliente.
+4. Aplicar `Math.ceil(promedio)` para redondear hacia arriba (no quedarse corto).
+5. Sumar los estimados de todos los clientes para obtener el total por producto.
+
+**Respuesta:**
+```json
+{
+    "route_date": "2026-07-23",
+    "route_type": "REGULAR",
+    "route_label": null,
+    "client_count": 12,
+    "clients": [
+        {
+            "client_id": 5,
+            "client_name": "Tienda Doña Mary",
+            "business_name": "Abarrotes Mary",
+            "visit_count": 10,
+            "products": [
+                { "product_id": 1, "product_name": "Concha Fina", "avg_qty": 4.5, "estimated_qty": 5 }
+            ]
+        }
+    ],
+    "totals": [
+        { "product_id": 1, "product_name": "Concha Fina", "total_avg": 42.3, "total_estimated": 45 }
+    ]
+}
+```
+
+### 16.3 Frontend — Botón en Gestor de Producción (`ProductionManagementUI.jsx`)
+
+Se agregó un **4to botón** con estilo amber/gold y emoji 🍞:
+```
+🍞 PRODUCCIÓN GRANDEZA
+   Estimación de piezas por ruta
+```
+Hover: fondo amber-500, texto negro, flecha oscura.
+
+### 16.4 Frontend — Suite de Producción (`GrandezaProductionUI.jsx`)
+
+**Archivo nuevo:** `apps/production/GrandezaProductionUI.jsx`
+
+**Componentes:**
+1. **Header:** Logo Grandeza + título "PRODUCCIÓN GRANDEZA" + botón Volver.
+2. **Selector de fecha:** Default = mañana. Muestra día de la semana.
+3. **Badge de tipo de ruta:** Azul "📋 Ruta Regular" o Púrpura "⚡ Ruta Extraordinaria" con etiqueta si aplica.
+4. **Tabla resumen "Piezas a Producir":** Cards por producto con total estimado prominente + badge de total general.
+5. **Tabla "Desglose por Cliente":** Tabla con una **columna por cada producto** habilitado:
+
+| # | Cliente | Concha Fina | Cuernito | Polvorón | Total |
+|:-:|---------|:-----------:|:--------:|:--------:|:-----:|
+| 1 | Tienda Doña Mary | **5** | **3** | — | 8 |
+| 2 | Abarrotes El Sol | **8** | — | **2** | 10 |
+| **Total a Producir** | | **13** | **3** | **2** | **18** |
+
+- Celdas con valor > 0 en naranja, celdas vacías muestran "—" en gris.
+- Fila de totales al pie con fondo naranja sutil.
+- Scroll horizontal en móvil (`overflow-x-auto`).
+
+### 16.5 Archivos Modificados (Resumen)
+
+| Archivo | Tipo de Cambio |
+|---------|---------------|
+| `apps/api/modules/grandeza/models.py` | Nuevo modelo `GrandezaExpense` |
+| `apps/api/modules/grandeza/schemas.py` | Schema `GrandezaExpenseCreate` |
+| `apps/api/modules/grandeza/service.py` | CRUD gastos + `get_production_estimate()` |
+| `apps/api/modules/grandeza/router.py` | Endpoints gastos + `/production-estimate/{date}` |
+| `apps/pos/GrandezaDriverUI.jsx` | Vista gastos + Arqueo de Caja |
+| `apps/pos/GrandezaDailyUI.jsx` | Cierre de Jornada rediseñado (tablas Mercancía/Dinero, Google Maps) |
+| `apps/production/ProductionManagementUI.jsx` | Botón 🍞 Producción Grandeza |
+| `apps/production/GrandezaProductionUI.jsx` | **NUEVO** — Suite de estimación de producción |
+| **POS (RetailVisionPOS.jsx)** | **CERO cambios** ✅ |
